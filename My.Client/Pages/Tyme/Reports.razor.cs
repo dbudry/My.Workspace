@@ -122,6 +122,8 @@ namespace My.Client.Pages.Tyme
 
         private async Task LoadProjects()
         {
+            // Used only for empty-search suggestions (first page of lookup). Typed search
+            // hits the server via SearchProjects so projects past the first 25 still appear.
             try
             {
                 projects = (await ProjectsCache.LookupAsync()).ToList();
@@ -253,14 +255,23 @@ namespace My.Client.Pages.Tyme
             await ApplyFilters();
         }
 
-        private Task<IEnumerable<Project>> SearchProjects(string? value, CancellationToken token)
+        private async Task<IEnumerable<Project>> SearchProjects(string? value, CancellationToken token)
         {
+            // Must query the server — Lookup is capped at 25 rows. Filtering the
+            // preloaded list made projects like "IT Support" invisible when they
+            // fall outside the first page alphabetically.
             if (string.IsNullOrWhiteSpace(value))
-                return Task.FromResult(projects.AsEnumerable());
+                return projects;
 
-            var results = projects.Where(p =>
-                p.SearchText.Contains(value, StringComparison.OrdinalIgnoreCase));
-            return Task.FromResult(results);
+            try
+            {
+                return await ProjectsCache.LookupAsync(search: value);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't search projects.");
+                return Enumerable.Empty<Project>();
+            }
         }
 
         private static List<TrackedTask> BuildTaskDetailRows(IEnumerable<TrackedTask> tasks)

@@ -29,7 +29,7 @@ public class CustomAccountFactoryTests
     public void IsMissingAppProfile_true_when_authenticated_without_app_user_id()
     {
         var user = new ClaimsPrincipal(new ClaimsIdentity(
-            new[] { new Claim(ClaimTypes.Email, "a@example.com") },
+            new[] { new Claim(ClaimTypes.Email, "a@profitpt.com") },
             authenticationType: "GoogleOIDC"));
 
         Assert.True(CustomAccountFactory.IsMissingAppProfile(user));
@@ -41,7 +41,7 @@ public class CustomAccountFactoryTests
         var user = new ClaimsPrincipal(new ClaimsIdentity(
             new[]
             {
-                new Claim(ClaimTypes.Email, "a@example.com"),
+                new Claim(ClaimTypes.Email, "a@profitpt.com"),
                 new Claim(Constants.Claims.AppUserId, "user-guid"),
             },
             authenticationType: "GoogleOIDC"));
@@ -81,7 +81,7 @@ public class CustomAccountFactoryTests
         handler.SuccessBody = new UserDto
         {
             Id = "app-id-1",
-            Email = "a@example.com",
+            Email = "a@profitpt.com",
             Roles = new List<string> { "User:Tyme" },
         };
 
@@ -136,7 +136,7 @@ public class CustomAccountFactoryTests
         AdditionalProperties = new Dictionary<string, object>
         {
             // JsonElement is what the OIDC library stores; string fallback also works in some versions.
-            ["email"] = JsonSerializer.SerializeToElement("a@example.com"),
+            ["email"] = JsonSerializer.SerializeToElement("a@profitpt.com"),
             ["sub"] = JsonSerializer.SerializeToElement("google-sub"),
             ["name"] = JsonSerializer.SerializeToElement("Test User"),
         }

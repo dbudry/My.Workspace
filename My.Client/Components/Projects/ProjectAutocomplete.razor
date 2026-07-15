@@ -10,11 +10,12 @@
     arrow-key press after clicking a pre-selected value doesn't navigate the list.
 *@
 
-<div @onfocusin="HandleFocus">
+<div @onfocusin="HandleFocusIn">
 <MudAutocomplete @ref="_input" T="Project" Value="Value" ValueChanged="OnValueChanged"
                  Label="@Label" Variant="@Variant" Margin="@Margin" Dense="@Dense"
                  Clearable="true" OpenOnFocus="true" CoerceText="false"
                  ResetValueOnEmptyText="true"
+                 DebounceInterval="200"
                  Placeholder="@Placeholder"
                  AdornmentIcon="@Icons.Material.Filled.Search"
                  AdornmentColor="Color.Default"
@@ -56,16 +57,33 @@
 
     private MudAutocomplete<Project>? _input;
 
-    private Task OnValueChanged(Project? value) => ValueChanged.InvokeAsync(value);
+    /// <summary>
+    /// Select-all only once per focus session. MudAutocomplete re-renders the input
+    /// after each SearchFunc result; if we SelectAsync on every focusin, the second
+    /// keystroke replaces the first letter instead of appending (one-letter typing).
+    /// </summary>
+    private bool _selectAllDoneThisFocus;
 
-    // Standard browser-input behavior: focus selects the existing text so the user's
-    // first keystroke replaces it. Removes the "click X first, then type" friction
-    // when switching projects on an existing task. MudAutocomplete doesn't expose an
-    // OnFocus event of its own, so we catch the bubbled `focusin` on a wrapper div
-    // and call SelectAsync() on the inner input via the ref.
-    private async Task HandleFocus()
+    private Task OnValueChanged(Project? value)
     {
-        if (_input != null)
+        // After pick/clear, allow select-all the next time the field is focused.
+        _selectAllDoneThisFocus = false;
+        return ValueChanged.InvokeAsync(value);
+    }
+
+    private async Task HandleFocusIn()
+    {
+        if (_input is null || Value is null || _selectAllDoneThisFocus)
+            return;
+
+        _selectAllDoneThisFocus = true;
+        try
+        {
             await _input.SelectAsync();
+        }
+        catch
+        {
+            // SelectAsync can throw if the input was disposed mid-render.
+        }
     }
 }
