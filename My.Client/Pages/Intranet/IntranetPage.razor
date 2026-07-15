@@ -1,0 +1,320 @@
+@page "/intranet/pages/{id}"
+@implements IDisposable
+@using System.Net.Http.Json
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using My.Client.Layout
+@using My.Shared
+@using My.Shared.Constants
+@using My.Shared.Dtos.Intranet
+@using My.Client.Services
+@using Microsoft.JSInterop
+
+<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" ScopedOnly="true">
+    <Authorized>
+        <PageTitle>@(currentPage?.Title ?? "Intranet Page")</PageTitle>
+
+        @if (isLoading)
+        {
+            <div class="d-flex justify-center align-center" style="height: 200px;">
+                <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+            </div>
+        }
+        else if (currentPage == null)
+        {
+            <MudAlert Severity="Severity.Error">
+                Page not found or you do not have access.
+            </MudAlert>
+        }
+        else
+        {
+            <MudStack Spacing="4">
+                @if (!currentPage.IsPublished && canViewUnpublishedPages)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
+                        This page is a <strong>draft</strong> (unpublished). Regular intranet users cannot see it in the menu or open it by link until you publish it.
+                    </MudAlert>
+                }
+
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween"
+                          Wrap="Wrap.Wrap" Spacing="2" Class="mb-2 intranet-page-header">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="intranet-page-title-row">
+                        <MudText Typo="Typo.h4" Class="intranet-page-title">@currentPage.Title</MudText>
+                        <MudTooltip Text="@(isFavorited ? "Remove from favorites" : "Add to favorites (shown on your dashboard)")">
+                            <MudIconButton Icon="@(isFavorited ? Icons.Material.Filled.Star : Icons.Material.Filled.StarBorder)"
+                                           Color="@(isFavorited ? Color.Warning : Color.Default)"
+                                           Size="Size.Small"
+                                           OnClick="ToggleFavorite" />
+                        </MudTooltip>
+                    </MudStack>
+                    <ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Editor" ScopedOnly="true">
+                        <Authorized>
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.EditNote"
+                                       OnClick="NavigateToEditor"
+                                       Class="intranet-page-edit-btn">
+                                Edit this page
+                            </MudButton>
+                        </Authorized>
+                    </ScopedAuthorizeView>
+                </MudStack>
+
+                @if (!string.IsNullOrWhiteSpace(currentPage.ContentMarkdown))
+                {
+                    <MudPaper id="intranet-page-content" Elevation="1" Class="pa-4 intranet-rich-content" Style="font-family: inherit; line-height: 1.5;">
+                        @((MarkupString)currentPage.ContentMarkdown)
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">This page has no content yet.</MudText>
+                }
+
+                @if (currentPage.Documents?.Any() == true)
+                {
+                    <MudStack Spacing="2">
+                        <MudText Typo="Typo.h6">Attachments</MudText>
+                        @foreach (var doc in currentPage.Documents.OrderBy(d => d.SortOrder))
+                        {
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudLink Href="@doc.WebViewLink" Target="_blank" Typo="Typo.body1">
+                                    @doc.Name
+                                </MudLink>
+                                @if (!string.IsNullOrWhiteSpace(doc.Caption))
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">— @doc.Caption</MudText>
+                                }
+                            </MudStack>
+                        }
+                    </MudStack>
+                }
+
+                @if (currentPage.ChildPages?.Any() == true)
+                {
+                    <MudStack Spacing="1">
+                        <MudText Typo="Typo.h6">Sub-pages</MudText>
+                        @foreach (var child in currentPage.ChildPages.OrderBy(c => c.SortOrder))
+                        {
+                            <MudLink Href="@IntranetPageUrlHelper.GetViewPath(child.PageId, child.Slug)">@child.Title</MudLink>
+                        }
+                    </MudStack>
+                }
+
+            </MudStack>
+        }
+    </Authorized>
+    <NotAuthorized>
+        @if (context.User.Identity?.IsAuthenticated != true)
+        {
+            <RedirectToLogin />
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning">
+                You need an Intranet role (User or higher) to view intranet pages.
+            </MudAlert>
+        }
+    </NotAuthorized>
+</ScopedAuthorizeView>
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private UserSettingsService SettingsService { get; set; } = null!;
+    [Inject] private IntranetMediaService IntranetMedia { get; set; } = null!;
+    [Inject] private AuthenticationStateProvider AuthStateProvider { get; set; } = null!;
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
+
+    [CascadingParameter(Name = "SetPageTitle")]
+    private Action<string>? SetPageTitle { get; set; }
+
+    private IntranetPageDto? currentPage;
+    private string? loadedPageRouteId;
+    private bool isLoading = true;
+    private bool isFavorited;
+    private bool canViewUnpublishedPages;
+    private MediaHydrationCoordinator? _hydration;
+    private CancellationTokenSource? _loadCts;
+
+    protected override void OnInitialized()
+    {
+        AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo($"{Navigation.BaseUri}auth/login?returnUrl={Uri.EscapeDataString(Navigation.Uri)}", true);
+            return;
+        }
+
+        canViewUnpublishedPages = Constants.Roles.HasScopedAccess(
+            authState.User, Constants.Scopes.Intranet, Constants.Roles.Editor);
+
+        // Only fetch when the route id changes. Parent re-renders (including the app-bar
+        // title update itself) re-enter OnParametersSetAsync — reloading every time raced
+        // concurrent GETs so the app bar title flickered through several page names.
+        if (string.Equals(loadedPageRouteId, Id, StringComparison.OrdinalIgnoreCase)
+            && currentPage != null)
+        {
+            SyncAppBarTitle();
+            return;
+        }
+
+        await LoadPageAsync(force: false);
+    }
+
+    private void OnAuthStateChanged(Task<AuthenticationState> t) => _ = ReloadForAuthChangeAsync();
+
+    private async Task ReloadForAuthChangeAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var canViewDrafts = Constants.Roles.HasScopedAccess(
+            authState.User, Constants.Scopes.Intranet, Constants.Roles.Editor);
+
+        // Auth refresh should not re-fetch published content. Only reload when draft
+        // visibility flips (editor vs reader) so unpublished pages appear/disappear.
+        if (canViewDrafts == canViewUnpublishedPages && currentPage != null)
+        {
+            canViewUnpublishedPages = canViewDrafts;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        canViewUnpublishedPages = canViewDrafts;
+        await LoadPageAsync(force: true);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+    }
+
+    private async Task LoadPageAsync(bool force)
+    {
+        var routeId = Id;
+        if (string.IsNullOrWhiteSpace(routeId))
+            return;
+
+        // Cancel any in-flight load so a fast click-through of nav items cannot apply
+        // an older response's title after a newer page has already been selected.
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        var ct = _loadCts.Token;
+
+        if (!force && string.Equals(loadedPageRouteId, routeId, StringComparison.OrdinalIgnoreCase)
+            && currentPage != null)
+        {
+            SyncAppBarTitle();
+            return;
+        }
+
+        if (!string.Equals(loadedPageRouteId, routeId, StringComparison.OrdinalIgnoreCase))
+        {
+            currentPage = null;
+            loadedPageRouteId = routeId;
+            // Clear the app bar immediately so the previous page title does not linger
+            // (or stack visually while multiple loads complete).
+            SetPageTitle?.Invoke(string.Empty);
+        }
+
+        isLoading = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var path = IntranetPageUrlHelper.LooksLikePageId(routeId)
+                ? $"{Constants.API.Intranet.Pages.GetById}{routeId}"
+                : $"{Constants.API.Intranet.Pages.GetBySlug}{Uri.EscapeDataString(routeId)}";
+            using var response = await client.GetAsync(path, ct);
+            if (ct.IsCancellationRequested || !string.Equals(routeId, Id, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                currentPage = null;
+                return;
+            }
+
+            var page = await response.Content.ReadFromJsonAsync<IntranetPageDto>(cancellationToken: ct);
+            if (ct.IsCancellationRequested || !string.Equals(routeId, Id, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            currentPage = page;
+            if (currentPage != null)
+            {
+                currentPage.ContentMarkdown = IntranetFileHelper.PrepareDriveImageHtmlForView(
+                    currentPage.ContentMarkdown, currentPage.Documents);
+                var settings = await SettingsService.GetSettingsAsync();
+                isFavorited = settings.FavoriteIntranetPageIds?.Contains(currentPage.PageId) == true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch
+        {
+            if (!ct.IsCancellationRequested && string.Equals(routeId, Id, StringComparison.OrdinalIgnoreCase))
+                currentPage = null;
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested && string.Equals(routeId, Id, StringComparison.OrdinalIgnoreCase))
+            {
+                isLoading = false;
+                SyncAppBarTitle();
+            }
+        }
+    }
+
+    private void SyncAppBarTitle()
+    {
+        // Only the loaded page title — never a breadcrumb or accumulated path.
+        var title = currentPage?.Title?.Trim();
+        SetPageTitle?.Invoke(string.IsNullOrEmpty(title) ? "Intranet" : title);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (isLoading || currentPage == null || string.IsNullOrWhiteSpace(currentPage.ContentMarkdown))
+            return;
+
+        // Re-run hydration on every render rather than once per page. The auth state settling
+        // fires a second page load that recreates the image elements (back on the placeholder)
+        // after the first hydrate already ran; a one-shot guard let those elements slip through
+        // un-hydrated. HydrateAsync is idempotent — it skips images already showing a blob — so
+        // repeating it simply heals whatever a re-render left behind. The coordinator coalesces
+        // overlapping renders and guarantees one final pass after any render that lands mid-
+        // hydration, so the last-rendered elements always get a hydration attempt.
+        _hydration ??= new MediaHydrationCoordinator(() => IntranetMedia.HydrateAsync("intranet-page-content"));
+        await _hydration.RequestAsync();
+    }
+
+    private void NavigateToEditor()
+    {
+        if (currentPage == null) return;
+        Navigation.NavigateTo($"/intranet/editor?pageId={currentPage.PageId}&fromView=1");
+    }
+
+    private async Task ToggleFavorite()
+    {
+        if (currentPage == null) return;
+
+        await SettingsService.ToggleIntranetFavoriteAsync(currentPage.PageId);
+
+        // Re-read from (now refreshed) cache
+        var s = await SettingsService.GetSettingsAsync();
+        isFavorited = s.FavoriteIntranetPageIds?.Contains(currentPage.PageId) == true;
+        StateHasChanged();
+    }
+}

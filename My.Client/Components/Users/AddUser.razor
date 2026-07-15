@@ -1,0 +1,23 @@
+@using My.Shared.Constants
+
+<EditForm Model="@NewUser" OnValidSubmit="@HandleValidSubmit" OnInvalidSubmit="HandleInvalidSubmit">
+    <DataAnnotationsValidator />
+    <div class="d-flex align-center gap-3 flex-wrap">
+        <MudTextField @bind-Value="NewUser.FirstName" Label="First Name" Variant="Variant.Outlined"
+                      Required="true" RequiredError="First name is required" Style="min-width: 150px;" />
+        <MudTextField @bind-Value="NewUser.LastName" Label="Last Name" Variant="Variant.Outlined"
+                      Required="true" RequiredError="Last name is required" Style="min-width: 150px;" />
+        <MudTextField @bind-Value="NewUser.Email" Label="Email" Variant="Variant.Outlined"
+                      Required="true" RequiredError="Email is required" Style="min-width: 250px;"
+                      OnBlur="@AutoFillNameFromEmail" />
+        <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="SelectedRoles"
+                   Label="Roles" Variant="Variant.Outlined" Dense="true" Style="min-width: 250px;">
+            @foreach (var role in AvailableRoles)
+            {
+                <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+            }
+        </MudSelect>
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Add User</MudButton>
+    </div>
+    <ValidationSummary />
+</EditForm>

@@ -1,0 +1,319 @@
+@namespace My.Client.Components.TimeSubmissions
+@using My.Client.Services
+@using My.Shared.Constants
+@using My.Shared.Dtos.TimeSubmission
+@using System.Net
+@using System.Net.Http.Json
+@inject IHttpClientFactory ClientFactory
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject TimeSubmissionEvents SubmissionEvents
+
+@*
+    Reusable manager view of (user × month) submission rows.
+
+    Two consumers:
+      - /tyme/submit page: ShowFilters=true, DefaultStatusFilter="all", no MaxRows.
+      - Dashboard widget:  ShowFilters=false, DefaultStatusFilter="unsubmitted", MaxRows=10.
+
+    The component self-fetches via GET /api/timesubmissions/team and re-fetches
+    whenever filters change. Any Unsubmit action refreshes the underlying list.
+*@
+
+<div>
+    @if (ShowFilters)
+    {
+        <div class="d-flex flex-wrap gap-3 mb-3">
+            <MudSelect T="string" @bind-Value="statusFilter" Label="Status" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="min-width:160px;">
+                <MudSelectItem Value="@("all")">All</MudSelectItem>
+                <MudSelectItem Value="@("submitted")">Submitted</MudSelectItem>
+                <MudSelectItem Value="@("unsubmitted")">Unsubmitted</MudSelectItem>
+            </MudSelect>
+            <MudSelect T="string" @bind-Value="userFilter" Label="Employee" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="min-width:200px;">
+                <MudSelectItem T="string" Value="@((string?)null)">All employees</MudSelectItem>
+                @foreach (var u in distinctUsers)
+                {
+                    <MudSelectItem T="string" Value="@u.UserId">@u.UserName</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="yearFilter" Label="Year" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="min-width:120px;">
+                <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
+                @foreach (var y in yearOptions)
+                {
+                    <MudSelectItem T="int?" Value="@y">@y</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="monthFilter" Label="Month" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="min-width:140px;">
+                <MudSelectItem T="int?" Value="@((int?)null)">All months</MudSelectItem>
+                @for (int m = 1; m <= 12; m++)
+                {
+                    var month = m;
+                    <MudSelectItem T="int?" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSpacer />
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="ReloadAsync">Refresh</MudButton>
+        </div>
+    }
+
+    @if (isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-2" />
+    }
+    else if (visibleRows.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+            @EmptyMessage
+        </MudText>
+    }
+    else
+    {
+        <MudTable Items="@visibleRows" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Employee</MudTh>
+                <MudTh Style="width:160px;">Month</MudTh>
+                <MudTh Style="width:140px;">Status</MudTh>
+                <MudTh Style="width:140px; text-align:right;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Employee">@context.UserName</MudTd>
+                <MudTd DataLabel="Month">@(new DateTime(context.Year, context.Month, 1).ToString("MMMM yyyy"))</MudTd>
+                <MudTd DataLabel="Status">
+                    @if (context.IsSubmitted)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
+                            Submitted
+                        </MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Schedule">
+                            Not submitted
+                        </MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align:right;">
+                    @if (context.IsSubmitted && !string.IsNullOrEmpty(context.TimeSubmissionId))
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.LockOpen"
+                                   OnClick="@(() => UnsubmitAsync(context))"
+                                   Disabled="@(busyKey == BusyKeyFor(context))">
+                            Unsubmit
+                        </MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        @if (MaxRows.HasValue && allRows.Count > MaxRows.Value)
+        {
+            <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
+                Showing @visibleRows.Count of @allRows.Count rows. Visit Submit to see and filter the full list.
+            </MudText>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>When true, render the filter bar above the table. Hide on dashboard.</summary>
+    [Parameter] public bool ShowFilters { get; set; } = true;
+
+    /// <summary>Initial status filter ("all" | "submitted" | "unsubmitted").</summary>
+    [Parameter] public string DefaultStatusFilter { get; set; } = "all";
+
+    /// <summary>Initial year filter. Submit page passes the current year so the table
+    /// stays bounded once the workspace has years of history; user can clear to "All
+    /// years" via the dropdown. Dashboard leaves it null (already capped by MaxRows).</summary>
+    [Parameter] public int? DefaultYearFilter { get; set; }
+
+    /// <summary>Cap visible rows. Used by the dashboard widget to keep the card compact.</summary>
+    [Parameter] public int? MaxRows { get; set; }
+
+    /// <summary>Empty-state copy. Override per consumer for context.</summary>
+    [Parameter] public string EmptyMessage { get; set; } = "Nothing to show.";
+
+    private HttpClient client = null!;
+    private bool isLoading = true;
+    private string? busyKey;
+
+    // Filter fields are wrapped as properties so a UI change (via @bind-Value) triggers
+    // a server re-fetch automatically. Without this, MudSelect would update the field
+    // but the table never refreshes until the user manually hits Refresh.
+    private string _statusFilter = "all";
+    private string statusFilter
+    {
+        get => _statusFilter;
+        set { if (_statusFilter == value) return; _statusFilter = value; _ = ReloadAsync(); }
+    }
+    private string? _userFilter;
+    private string? userFilter
+    {
+        get => _userFilter;
+        set { if (_userFilter == value) return; _userFilter = value; _ = ReloadAsync(); }
+    }
+    private int? _yearFilter;
+    private int? yearFilter
+    {
+        get => _yearFilter;
+        set { if (_yearFilter == value) return; _yearFilter = value; _ = ReloadAsync(); }
+    }
+    private int? _monthFilter;
+    private int? monthFilter
+    {
+        get => _monthFilter;
+        set { if (_monthFilter == value) return; _monthFilter = value; _ = ReloadAsync(); }
+    }
+
+    private List<TeamSubmissionRowDto> allRows = new();
+    private List<(string UserId, string UserName)> distinctUsers = new();
+    /// <summary>Fixed range so picking a prior year doesn't require first widening to "All
+    /// years" (the server-filtered result set wouldn't otherwise contain old years to choose
+    /// from). Goes back five years from today, which covers the realistic correction window.</summary>
+    private List<int> yearOptions = Enumerable.Range(0, 6)
+        .Select(i => DateTime.Today.Year - i)
+        .ToList();
+
+    private List<TeamSubmissionRowDto> visibleRows =>
+        MaxRows.HasValue ? allRows.Take(MaxRows.Value).ToList() : allRows;
+
+    protected override async Task OnInitializedAsync()
+    {
+        client = ClientFactory.CreateClient(Constants.API.ClientName);
+        // Set backing fields directly to avoid the property setters firing extra
+        // ReloadAsync calls before we've assigned the HttpClient.
+        _statusFilter = DefaultStatusFilter ?? "all";
+        _yearFilter = DefaultYearFilter;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            var qs = new List<string> { $"status={Uri.EscapeDataString(statusFilter)}" };
+            if (!string.IsNullOrEmpty(userFilter)) qs.Add($"userId={Uri.EscapeDataString(userFilter)}");
+            if (yearFilter.HasValue) qs.Add($"year={yearFilter}");
+            if (monthFilter.HasValue) qs.Add($"month={monthFilter}");
+            var url = $"{Constants.API.TimeSubmission.GetTeam}?{string.Join("&", qs)}";
+
+            var rows = await client.GetFromJsonAsync<List<TeamSubmissionRowDto>>(url);
+            allRows = rows ?? new();
+            // Employee dropdown is built from the result set — when no employee filter is
+            // active, this lists every employee with at least one row matching the other
+            // filters. Year dropdown is a fixed range (yearOptions) so picking a prior
+            // year still works after the default current-year filter narrows the result.
+            distinctUsers = allRows
+                .GroupBy(r => r.UserId)
+                .Select(g => (UserId: g.Key, UserName: g.First().UserName))
+                .OrderBy(x => x.UserName)
+                .ToList();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // Client role claims may lag behind the DB briefly after a self role change;
+            // UnauthorizedDelegatingHandler already surfaces a permission snackbar.
+            allRows = new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Couldn't load team submissions: {ex.Message}", Severity.Error);
+            allRows = new();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UnsubmitAsync(TeamSubmissionRowDto row)
+    {
+        if (string.IsNullOrEmpty(row.TimeSubmissionId)) return;
+
+        busyKey = BusyKeyFor(row);
+        try
+        {
+            var corrections = await client.GetFromJsonAsync<TimeSubmissionCorrectionsDto>(
+                $"{Constants.API.TimeSubmission.GetCorrections}{row.TimeSubmissionId}/corrections");
+
+            string? reconciliation = null;
+            if (corrections?.Items.Any(i => i.Kind == "Alias") == true)
+            {
+                var monthLabel = new DateTime(row.Year, row.Month, 1).ToString("MMMM yyyy");
+                var parameters = new DialogParameters
+                {
+                    ["EmployeeName"] = row.UserName,
+                    ["MonthLabel"] = monthLabel,
+                    ["DirectCorrectionCount"] = corrections.DirectCorrectionCount,
+                    ["AliasItems"] = corrections.Items.Where(i => i.Kind == "Alias").ToList()
+                };
+                var dialog = await DialogService.ShowAsync<UnsubmitReconciliationDialog>(
+                    "Unsubmit with corrections",
+                    parameters,
+                    new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+                var dialogResult = await dialog.Result;
+                if (dialogResult is null or { Canceled: true })
+                    return;
+
+                reconciliation = dialogResult.Data as string;
+            }
+            else if (corrections?.DirectCorrectionCount > 0)
+            {
+                var warn = await DialogService.ShowMessageBoxAsync(
+                    "Unsubmit with direct corrections?",
+                    $"{row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMMM yyyy} has {corrections.DirectCorrectionCount} direct correction(s). Unsubmitting lets the employee edit entries, but correction audit history is kept.",
+                    yesText: "Unsubmit", cancelText: "Cancel");
+                if (warn != true) return;
+            }
+            else
+            {
+                var confirm = await DialogService.ShowMessageBoxAsync(
+                    "Unsubmit?",
+                    $"Unsubmit {row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMMM yyyy} so they can edit their tracked tasks again?",
+                    yesText: "Unsubmit", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
+
+            HttpResponseMessage resp;
+            if (!string.IsNullOrEmpty(reconciliation))
+            {
+                var payload = new UnsubmitTimeSubmissionDto { AliasReconciliation = reconciliation };
+                resp = await client.PostAsJsonAsync(
+                    $"{Constants.API.TimeSubmission.Unsubmit}{row.TimeSubmissionId}/unsubmit", payload);
+            }
+            else if (corrections?.DirectCorrectionCount > 0)
+            {
+                resp = await client.PostAsJsonAsync(
+                    $"{Constants.API.TimeSubmission.Unsubmit}{row.TimeSubmissionId}/unsubmit",
+                    new UnsubmitTimeSubmissionDto());
+            }
+            else
+            {
+                resp = await client.DeleteAsync($"{Constants.API.TimeSubmission.Delete}{row.TimeSubmissionId}");
+            }
+
+            resp.EnsureSuccessStatusCode();
+            Snackbar.Add($"Unsubmitted {row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMM yyyy}.", Severity.Success);
+            SubmissionEvents.NotifyChanged();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Couldn't unsubmit: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            busyKey = null;
+        }
+    }
+
+    private static string BusyKeyFor(TeamSubmissionRowDto row) => $"{row.UserId}-{row.Year}-{row.Month}";
+}

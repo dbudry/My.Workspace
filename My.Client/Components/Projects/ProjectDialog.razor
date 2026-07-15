@@ -1,0 +1,193 @@
+@namespace My.Client.Components.Projects
+@using My.Client.Models
+@using My.Client.Components.Layout
+@using My.Shared.Rules
+@using MudBlazor.Utilities
+
+<MudDialog>
+    <DialogContent>
+        @* Setting Model on MudForm + For lambdas on each field is what makes
+           ValidateAsync walk the DataAnnotations on the Project model. Without
+           this, MudForm only enforces the Required="..." attributes set inline,
+           which previously let invalid slugs (e.g. wrong charset) through to a server 500. *@
+        <MudForm @ref="form" Model="@Model">
+            <DialogFormStack>
+                <MudTextField @bind-Value="Model.Name" For="@(() => Model.Name)"
+                              Label="Project Name" Required="true"
+                              RequiredError="Project name is required"
+                              Immediate="true" AutoFocus="true" />
+
+                <MudTextField @bind-Value="Model.Slug" For="@(() => Model.Slug)"
+                              Label="Slug (optional)"
+                              HelperText="2–10 chars, lowercase letters and digits only"
+                              MaxLength="10"
+                              Immediate="true" />
+
+                <MudSelect T="string" Value="Model.ProjectGroupId" Label="Group"
+                           ValueChanged="@(v => Model.ProjectGroupId = v)">
+                    <MudSelectItem T="string" Value="@((string?)null)">No Group</MudSelectItem>
+                    @foreach (var group in Groups)
+                    {
+                        <MudSelectItem T="string" Value="@group.ProjectGroupId">@group.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="string" Value="Model.OrganizationId" Label="Organization"
+                           ValueChanged="@(v => { Model.OrganizationId = v; Model.DepartmentId = null; })">
+                    <MudSelectItem T="string" Value="@((string?)null)">None</MudSelectItem>
+                    @foreach (var org in OrganizationPickerOptions)
+                    {
+                        <MudSelectItem T="string" Value="@org.OrganizationId">@org.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                @{
+                    var selectedOrg = ResolveSelectedOrganization();
+                    var depts = selectedOrg?.Departments;
+                }
+                @if (depts != null && depts.Any())
+                {
+                    <MudSelect T="string" @bind-Value="Model.DepartmentId" Label="Department">
+                        <MudSelectItem T="string" Value="@((string?)null)">None</MudSelectItem>
+                        @foreach (var dept in depts)
+                        {
+                            <MudSelectItem T="string" Value="@dept.DepartmentId">@dept.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+
+                <DialogFormGroup>
+                    <MudSwitch T="bool" @bind-Value="Model.IsBillable" Label="Billable project"
+                               Color="Color.Primary" Disabled="Model.IsSharedAvailability" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        When on, time logged against this project is marked billable for
+                        Management and future billing workflows. Employees do not choose
+                        billable per entry.
+                    </MudText>
+                </DialogFormGroup>
+
+                <DialogFormGroup>
+                    <MudSwitch T="bool" Value="Model.IsSharedAvailability" Label="Share availability with team"
+                               Color="Color.Primary"
+                               ValueChanged="OnSharedAvailabilityChanged" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        When on, time logged against this project also writes a sanitized
+                        "[&lt;Name&gt;] &lt;Project&gt;" event to the workspace Team Availability calendar
+                        (e.g. Vacation, OOO). Task names and details stay private.
+                    </MudText>
+                </DialogFormGroup>
+
+                @if (Model.IsSharedAvailability)
+                {
+                    <MudTextField @bind-Value="Model.TeamDisplayName" For="@(() => Model.TeamDisplayName)"
+                                  Label="Team calendar display name (optional)"
+                                  Placeholder="@TeamAvailabilityEventRules.DefaultDisplayName"
+                                  HelperText="Defaults to Out of Office on the Team Availability calendar. Clear to use that default, or type a custom label (e.g. Wedding, Jury Duty)."
+                                  MaxLength="100" Immediate="true" />
+                }
+            </DialogFormStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">@SubmitLabel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter] public Project Model { get; set; } = new();
+    [Parameter] public List<ProjectGroup> Groups { get; set; } = new();
+    [Parameter] public List<Organization> Organizations { get; set; } = new();
+    [Parameter] public string SubmitLabel { get; set; } = "Save";
+
+    private MudForm? form;
+
+    /// <summary>Active orgs for the picker, plus the project's current org when it would
+    /// otherwise be missing (stale cache after import, inactive/archived, etc.). MudSelect
+    /// shows the raw Value when no item matches — never expose a GUID to the user.</summary>
+    private IEnumerable<Organization> OrganizationPickerOptions
+    {
+        get
+        {
+            var options = Organizations
+                .Where(o => o.IsActive && !o.IsArchived)
+                .ToList();
+
+            if (string.IsNullOrEmpty(Model.OrganizationId))
+                return options;
+
+            if (options.Any(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId)))
+                return options;
+
+            var linked = Organizations.FirstOrDefault(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId));
+            var label = linked?.Name
+                ?? Model.OrganizationName
+                ?? "Unknown organization";
+
+            if (linked is { IsArchived: true } or { IsActive: false })
+                label += " (inactive)";
+
+            options.Insert(0, new Organization
+            {
+                OrganizationId = Model.OrganizationId,
+                Name = label,
+                IsActive = linked?.IsActive ?? true,
+                IsArchived = linked?.IsArchived ?? false
+            });
+
+            return options;
+        }
+    }
+
+    private Organization? ResolveSelectedOrganization()
+    {
+        if (string.IsNullOrEmpty(Model.OrganizationId))
+            return null;
+
+        return Organizations.FirstOrDefault(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId))
+            ?? new Organization
+            {
+                OrganizationId = Model.OrganizationId,
+                Name = Model.OrganizationName ?? "Unknown organization"
+            };
+    }
+
+    private static bool OrgIdEquals(string? left, string? right)
+        => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        if (Model.IsSharedAvailability && string.IsNullOrWhiteSpace(Model.TeamDisplayName))
+            Model.TeamDisplayName = TeamAvailabilityEventRules.DefaultDisplayName;
+    }
+
+    private void OnSharedAvailabilityChanged(bool value)
+    {
+        Model.IsSharedAvailability = value;
+        if (value)
+        {
+            Model.IsBillable = false;
+            if (string.IsNullOrWhiteSpace(Model.TeamDisplayName))
+                Model.TeamDisplayName = TeamAvailabilityEventRules.DefaultDisplayName;
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (form != null)
+        {
+            await form.ValidateAsync();
+            if (!form.IsValid) return;
+        }
+
+        // Normalize slug: lowercase + trim, empty → null
+        Model.Slug = string.IsNullOrWhiteSpace(Model.Slug) ? null : Model.Slug.Trim().ToLowerInvariant();
+        // Empty display name → null; server falls back to DefaultDisplayName ("Out of Office").
+        Model.TeamDisplayName = string.IsNullOrWhiteSpace(Model.TeamDisplayName) ? null : Model.TeamDisplayName.Trim();
+        Dialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

@@ -1,0 +1,260 @@
+@page "/settings"
+@attribute [Authorize]
+@using My.Client.Theme
+@using My.Shared.Rules
+
+<PageTitle>Settings</PageTitle>
+
+<PageHeader Title="Settings" Description="Customize how Tyme displays time and integrates with your tools." />
+
+<PageLoader IsLoading="@isLoading">
+    <div class="settings-stack">
+        @* General settings — apply across the whole app regardless of which scope/feature
+           you're using. Theme and time formatting aren't Tyme-specific. *@
+        <div class="settings-group-heading">
+            <MudText Typo="Typo.overline">General</MudText>
+        </div>
+
+        <SectionCard Title="Appearance">
+            <MudText Typo="Typo.body2" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                Theme
+            </MudText>
+            <div class="d-flex gap-2 flex-wrap mb-1">
+                <MudButton StartIcon="@Icons.Material.Filled.LightMode"
+                           Variant="@(Theme.Mode == ThemeMode.Light ? Variant.Filled : Variant.Outlined)"
+                           Color="@(Theme.Mode == ThemeMode.Light ? Color.Primary : Color.Default)"
+                           OnClick="@(() => SetTheme(ThemeMode.Light))">Light</MudButton>
+                <MudButton StartIcon="@Icons.Material.Filled.DarkMode"
+                           Variant="@(Theme.Mode == ThemeMode.Dark ? Variant.Filled : Variant.Outlined)"
+                           Color="@(Theme.Mode == ThemeMode.Dark ? Color.Primary : Color.Default)"
+                           OnClick="@(() => SetTheme(ThemeMode.Dark))">Dark</MudButton>
+                <MudButton StartIcon="@Icons.Material.Filled.SettingsBrightness"
+                           Variant="@(Theme.Mode == ThemeMode.System ? Variant.Filled : Variant.Outlined)"
+                           Color="@(Theme.Mode == ThemeMode.System ? Color.Primary : Color.Default)"
+                           OnClick="@(() => SetTheme(ThemeMode.System))">System</MudButton>
+            </div>
+            <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
+                System matches your device's light/dark setting.
+            </MudText>
+        </SectionCard>
+
+        <SectionCard Title="Display Preferences">
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="6">
+                    <MudSwitch T="bool" @bind-Value="use24HourTime" Label="Use 24-hour time format"
+                               Color="Color.Primary" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Preview: @(use24HourTime ? DateTime.Now.ToString("HH:mm") : DateTime.Now.ToString("h:mm tt"))
+                    </MudText>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudAutocomplete T="string" @bind-Value="selectedTimeZone" Label="Time Zone"
+                                     SearchFunc="SearchTimeZones" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Dense="true" Class="mb-1" MaxItems="50" CoerceText="true"
+                                     AdornmentIcon="@Icons.Material.Filled.Schedule" Adornment="Adornment.Start" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Used to determine day boundaries for time tracking and reports.
+                    </MudText>
+                </MudItem>
+            </MudGrid>
+            <MudButton Variant="Variant.Filled" Class="mt-4" Color="Color.Primary" OnClick="SaveSettings"
+                       Disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Save
+            </MudButton>
+        </SectionCard>
+
+        @* Tyme-scoped settings — only meaningful when using the Tyme time-tracking
+           feature. Will get a sibling group heading per scope as new scopes are added. *@
+        <div class="settings-group-heading mt-4">
+            <MudText Typo="Typo.overline">Tyme</MudText>
+        </div>
+
+        <SectionCard Title="Project Colors"
+                     Description="How project rows and chart segments pick up a color across the app — affects the project list, calendar, stopwatch, tasks, reports, and the dashboard project mix.">
+            <MudSelect T="ProjectColorSource" @bind-Value="projectColorSource"
+                       Label="Color source" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                       Style="max-width: 360px;">
+                <MudSelectItem T="ProjectColorSource" Value="ProjectColorSource.GroupThenOrganization">
+                    Project group, then organization
+                </MudSelectItem>
+                <MudSelectItem T="ProjectColorSource" Value="ProjectColorSource.Organization">
+                    Organization only
+                </MudSelectItem>
+                <MudSelectItem T="ProjectColorSource" Value="ProjectColorSource.ProjectGroup">
+                    Project group only
+                </MudSelectItem>
+                <MudSelectItem T="ProjectColorSource" Value="ProjectColorSource.None">
+                    None
+                </MudSelectItem>
+            </MudSelect>
+            <MudText Typo="Typo.caption" Class="mt-2 mb-1" Style="color: var(--mud-palette-text-secondary);">
+                @ProjectColorSourceCaption(projectColorSource)
+            </MudText>
+            <MudButton Variant="Variant.Filled" Class="mt-3" Color="Color.Primary" OnClick="SaveSettings"
+                       Disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Save
+            </MudButton>
+        </SectionCard>
+
+        <SectionCard Title="Google Calendar &amp; Drive"
+                     Description="Calendar sync and Drive document attachments are normally configured automatically when you sign in with Google. Use the controls below to manage the connection, sync preferences, or reconnect if you previously revoked access.">
+
+            @if (googleError != null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@googleError</MudAlert>
+            }
+
+            @if (isGoogleConnected)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                    Connected as <strong>@googleEmail</strong>
+                </MudAlert>
+
+                <MudSwitch T="bool" @bind-Value="publishToGoogle" Label="Publish Tyme tasks to Google"
+                           Color="Color.Primary" Class="mb-2" />
+                <MudSwitch T="bool" @bind-Value="importFromGoogle" Label="Import slug-tagged Google events into Tyme"
+                           Color="Color.Primary" Class="mb-4" />
+
+                <MudGrid Spacing="3" Class="mb-4">
+                    <MudItem xs="12" md="6">
+                        <MudSelect T="string" @bind-Value="matchedColorId"
+                                   Label="Event color (with project)"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                            <MudSelectItem T="string" Value="@(null!)">Calendar default</MudSelectItem>
+                            @foreach (var c in My.Shared.Rules.GoogleEventColors.All)
+                            {
+                                <MudSelectItem T="string" Value="@c.Id">@c.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Applied to Tyme events whose project slug resolves.
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudSelect T="string" @bind-Value="unmatchedColorId"
+                                   Label="Event color (no project)"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                            <MudSelectItem T="string" Value="@(null!)">Calendar default</MudSelectItem>
+                            @foreach (var c in My.Shared.Rules.GoogleEventColors.All)
+                            {
+                                <MudSelectItem T="string" Value="@c.Id">@c.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Flag color for "needs a project" events. Defaults to Tomato.
+                        </MudText>
+                    </MudItem>
+                </MudGrid>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings"
+                           Disabled="@isSaving" Class="mb-3">
+                    @if (isSaving)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Save Calendar Preferences
+                </MudButton>
+
+                <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined" Class="mb-4">
+                    <MudText Typo="Typo.body2">
+                        <strong>Tag events to import them.</strong> Include the project's
+                        <code>[slug]</code> anywhere in the event title (e.g.
+                        <code>[wrkr] Fixed login bug</code>) and Tyme will route the entry to
+                        that project on import. Events without a slug are skipped entirely so
+                        personal entries on your primary calendar stay private.
+                    </MudText>
+                </MudAlert>
+
+                @* Recovery path for missed webhook deliveries — a user can re-run the
+                   import over a date range without having to disconnect and reconnect. *@
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Pull missed events from Google</MudText>
+                <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                    If a slug-tagged event in your Google Calendar didn't appear in Tyme,
+                    pick a date range and Tyme will re-scan and import anything it missed.
+                    Already-imported events are updated in place; nothing on your timesheet
+                    gets duplicated.
+                </MudText>
+                <div class="d-flex gap-3 flex-wrap mb-2 align-end">
+                    <MudDatePicker @bind-Date="pullFromDate" Label="From" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" Style="min-width: 160px;" />
+                    <MudDatePicker @bind-Date="pullToDate" Label="To" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" Style="min-width: 160px;" />
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Sync"
+                               OnClick="PullFromGoogle" Disabled="@isPullingFromGoogle">
+                        @if (isPullingFromGoogle)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Pull missed events
+                    </MudButton>
+                </div>
+                @if (pullResult != null)
+                {
+                    <MudAlert Severity="@(pullResult.Error != null ? Severity.Warning : Severity.Success)"
+                              Variant="Variant.Outlined" Dense="true" Class="mb-4">
+                        @if (pullResult.Error != null)
+                        {
+                            @pullResult.Error
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.body2">
+                                Scanned <strong>@pullResult.Scanned</strong> events:
+                                <strong>@pullResult.Created</strong> imported,
+                                <strong>@pullResult.Updated</strong> updated,
+                                <strong>@pullResult.Cancelled</strong> removed,
+                                <strong>@(pullResult.SkippedNoTag + pullResult.SkippedUnresolvedTag + pullResult.SkippedOurs + pullResult.SkippedNoDates + pullResult.SkippedDeclinedInvite + pullResult.SkippedMonthSubmitted)</strong> skipped,
+                                <strong>@pullResult.Failed</strong> failed.
+                            </MudText>
+                        }
+                    </MudAlert>
+                }
+
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DisconnectGoogle" Disabled="@isGoogleBusy">
+                    @if (isGoogleBusy)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Disconnect
+                </MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Event"
+                           OnClick="ConnectGoogle" Disabled="@isGoogleBusy">
+                    @if (isGoogleBusy)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Connect Google Calendar &amp; Drive
+                </MudButton>
+            }
+        </SectionCard>
+    </div>
+</PageLoader>
+
+<style>
+    .settings-stack {
+        max-width: 960px;
+    }
+
+    /* Group heading sits above its SectionCards as a faint, uppercase label so users
+       can see at a glance which settings are app-wide vs. Tyme-specific. Border-bottom
+       gives a subtle seam without the visual weight of a full divider. */
+    .settings-group-heading {
+        padding-bottom: 4px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid var(--mud-palette-table-lines);
+        opacity: 0.7;
+        letter-spacing: 0.08em;
+    }
+</style>

@@ -1,0 +1,103 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using My.Client.Components
+@using My.Client.Services
+@using My.Shared.Constants
+
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ImpersonationService Impersonation
+@inject ImpersonationAuthStateProvider ImpersonationAuth
+@inject IDialogService DialogService
+
+<AuthorizeView>
+    <Authorizing>
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+    </Authorizing>
+    <Authorized Context="authContext">
+        <div class="profile-menu">
+            @if (!string.IsNullOrEmpty(avatarUrl))
+            {
+                <img src="@avatarUrl" alt="Profile" class="profile-avatar" referrerpolicy="no-referrer" />
+            }
+            <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown" Dense="true"
+                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                <MudMenuItem Icon="@Icons.Material.Filled.Settings"
+                             OnClick="@(() => Navigation.NavigateTo("/settings"))">Settings</MudMenuItem>
+                <MudDivider />
+                <MudMenuItem Icon="@Icons.Material.Filled.HelpOutline"
+                             OnClick="@(() => Navigation.NavigateTo("/help"))">Help</MudMenuItem>
+                @if (isRealAdmin)
+                {
+                    <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Filled.SwitchAccount"
+                                 OnClick="OpenImpersonateDialog">View as…</MudMenuItem>
+                }
+                <MudDivider />
+                <MudMenuItem Icon="@Icons.Material.Filled.Logout"
+                             OnClick="HandleLogout">Sign out</MudMenuItem>
+            </MudMenu>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="HandleLogin">Log in with Google</MudButton>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string? avatarUrl;
+    private bool isRealAdmin;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        var user = authState.User;
+
+        avatarUrl = user.Identity is { IsAuthenticated: true }
+            ? user.FindFirst("picture")?.Value
+            : null;
+
+        // Real-user check (not the impersonation-filtered principal) — only the *global*
+        // Admin role gates the View as menu, scoped admins like Admin:Tyme do not.
+        var realUser = await ImpersonationAuth.GetRealUserAsync();
+        isRealAdmin = realUser.Identity is { IsAuthenticated: true }
+                      && realUser.IsInRole(Constants.Roles.Admin);
+    }
+
+    private async Task OpenImpersonateDialog()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        await DialogService.ShowAsync<ImpersonateDialog>("View as", options);
+    }
+
+    private void HandleLogin()
+    {
+        Navigation.NavigateToLogin("authentication/login");
+    }
+
+    private async Task HandleLogout()
+    {
+        // Clear any active impersonation so the next session starts fresh
+        await Impersonation.ClearAsync();
+
+        // Set a flag so Index.razor's auto silent-login is suppressed after we land back on /
+        await JS.InvokeVoidAsync("localStorage.setItem", "userLoggedOut", "true");
+
+        // Clear Google auto-connect guard and any pending return-URL so a future login
+        // will re-evaluate whether Calendar+Drive consent is needed (route 2 behavior).
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", "googleAutoConnectAttempted");
+            await JS.InvokeVoidAsync("localStorage.removeItem", "postGoogleConnectReturnUrl");
+        }
+        catch { }
+
+        // NavigateToLogout (not raw NavigateTo) primes the OIDC library's state so the
+        // /authentication/logout-callback handshake succeeds — direct URL navigation
+        // fails the "logout was not initiated from within the page" check.
+        Navigation.NavigateToLogout("authentication/logout");
+    }
+}

@@ -1,0 +1,57 @@
+@namespace My.Client.Pages.Admin
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudText>
+                Re-scan <strong>@TargetEmail</strong>'s Google Calendar over a date range
+                and import any slug-tagged events Tyme missed. Existing imports are
+                updated in place; nothing on their timesheet gets duplicated.
+            </MudText>
+
+            <div class="d-flex gap-3">
+                <MudDatePicker @bind-Date="fromDate" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                <MudDatePicker @bind-Date="toDate" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+            </div>
+
+            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                Pulls run synchronously and may take a few seconds depending on how many
+                events are in the range.
+            </MudText>
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm" StartIcon="@Icons.Material.Filled.Sync">
+            Pull missed events
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter] public string TargetEmail { get; set; } = "";
+
+    [Parameter] public int DefaultDays { get; set; } = 30;
+
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    protected override void OnInitialized()
+    {
+        var today = DateTime.Today;
+        fromDate = today.AddDays(-DefaultDays);
+        toDate = today;
+    }
+
+    private void Confirm()
+    {
+        if (fromDate is null || toDate is null) return;
+        Dialog.Close(DialogResult.Ok(new PullRange(fromDate.Value, toDate.Value)));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+    public record PullRange(DateTime From, DateTime To);
+}

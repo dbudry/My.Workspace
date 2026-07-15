@@ -1,0 +1,27 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using MudBlazor
+
+<div id="@_dropZoneId" tabindex="0" class="file-drop-zone mud-border-dashed pa-6 text-center mb-2" style="cursor: pointer; border-radius: 8px; border-width: 2px; outline: none;">
+    <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Large" Color="Color.Primary" Class="mb-2" />
+    <MudText Typo="Typo.subtitle1">@Title</MudText>
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">@Description</MudText>
+    }
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">Drag and drop, click to browse, or paste an image (Ctrl+V)</MudText>
+</div>
+
+<InputFile id="@_inputId" OnChange="HandleInputChangeAsync" accept="@Accept" style="display: none;" />
+
+<style>
+    .file-drop-zone {
+        border-color: var(--mud-palette-lines-default);
+        background: var(--mud-palette-background-grey);
+        transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .file-drop-zone--active {
+        border-color: var(--mud-palette-primary) !important;
+        background: var(--mud-palette-action-default-hover) !important;
+    }
+</style>
+

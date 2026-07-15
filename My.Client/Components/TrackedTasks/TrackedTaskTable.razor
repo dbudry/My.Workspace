@@ -1,0 +1,63 @@
+<MudContainer MaxWidth="MaxWidth.ExtraLarge">
+
+    <MudText Typo="Typo.h6" Align="Align.Center">Tasks</MudText>
+
+    <PageLoader IsLoading="@isLoading">
+    @if (trackedTasksDictionary.Count <= 0)
+    {
+        <MudText Typo="Typo.h5" Align="Align.Center" Class="my-4" Style="color: var(--mud-palette-text-secondary);">No tasks to display.</MudText>
+    }
+    else
+    {
+        @foreach (var trackedTaskPair in trackedTasksDictionary)
+        {
+            var time = new TimeSpan();
+
+            <MudCard Class="mt-3">
+                <MudCardHeader>
+                    <MudText Typo="Typo.h6">@trackedTaskPair.Key</MudText>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudList T="string" Dense="true">
+                        @foreach (var trackedTask in trackedTaskPair.Value)
+                        {
+                            var capturedTask = trackedTask;
+                            <MudListItem T="string" OnClick="@(() => OpenTaskDialogAsync(capturedTask))" Style="cursor: pointer;">
+                                <div class="d-flex align-center">
+                                    <MudText Style="flex: 1;">@trackedTask.Name</MudText>
+                                    <div style="flex: 1;" class="d-flex align-center" >
+                                        @{
+                                            var rowColor = GetRowColor(trackedTask);
+                                        }
+                                        @if (rowColor != null)
+                                        {
+                                            <MudTooltip Text="@GetRowLabel(trackedTask)" Placement="Placement.Top">
+                                                <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px; margin-right:8px;")"></div>
+                                            </MudTooltip>
+                                        }
+                                        <MudText>@trackedTask.Project?.DisplayName</MudText>
+                                    </div>
+                                    <MudText Style="width: 80px; text-align: right;">@($"{(int)trackedTask.Duration.TotalHours:00}:{trackedTask.Duration.Minutes:00}")</MudText>
+                                    @if (trackedTask.IsLocked)
+                                    {
+                                        <MudTooltip Text="@($"Time for {trackedTask.StartDate:MMM yyyy} has been submitted")">
+                                            <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" Class="ml-2" />
+                                        </MudTooltip>
+                                    }
+                                </div>
+                            </MudListItem>
+                            time += trackedTask.Duration;
+                        }
+                    </MudList>
+                </MudCardContent>
+                <MudCardActions>
+                    <MudText Typo="Typo.body2" Class="ml-2">Total time: @($"{(int)time.TotalHours:00}:{time.Minutes:00}")</MudText>
+                </MudCardActions>
+            </MudCard>
+        }
+
+        <MudPagination Class="mt-4 d-flex justify-center" Count="@pagingAttributes.TotalPageCount" Selected="@(currentPage + 1)" SelectedChanged="@((int p) => PageChanged(p - 1))" />
+    }
+    </PageLoader>
+
+</MudContainer>

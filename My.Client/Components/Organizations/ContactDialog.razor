@@ -1,0 +1,47 @@
+@using My.Client.Models
+@using My.Client.Services
+@using My.Shared.Rules
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudTextField @bind-Value="Model.Name" Label="Contact Name" Required="true"
+                          RequiredError="Contact name is required" Variant="Variant.Outlined" />
+            <ContactTypeSelect @bind-Value="Model.ContactType" Types="contactTypes" Dense="false" />
+            <MudTextField @bind-Value="Model.Title" Label="Title / Position" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="Model.PhoneNumber" Label="Phone" Variant="Variant.Outlined" />
+            <MudTextField @bind-Value="Model.Email" Label="Email" Variant="Variant.Outlined" />
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(Model.Name) || string.IsNullOrWhiteSpace(Model.ContactType))">@SubmitLabel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public ContactModel Model { get; set; } = new();
+
+    [Parameter]
+    public string SubmitLabel { get; set; } = "Save";
+
+    [Inject]
+    private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
+    private IReadOnlyList<string> contactTypes = ContactTypeRules.DefaultTypes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        contactTypes = await ContactTypeOptions.GetAsync(AppSettingsCache);
+        if (string.IsNullOrWhiteSpace(Model.ContactType))
+            Model.ContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+    }
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(Model));
+    private void Cancel() => MudDialog.Cancel();
+}

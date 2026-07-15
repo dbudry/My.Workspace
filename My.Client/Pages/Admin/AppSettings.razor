@@ -1,0 +1,318 @@
+@page "/admin/appsettings"
+@attribute [Authorize]
+
+@using My.Shared.Dtos
+@using My.Shared.Rules
+
+<PageTitle>App Settings</PageTitle>
+
+<PageHeader Title="App Settings" Description="Workspace-wide configuration. General controls apply everywhere; per-category sections apply to that area only." />
+
+<PageLoader IsLoading="@isLoading">
+    <div style="max-width: 700px;">
+        <MudTabs Outlined="true" Rounded="true" Border="true" ApplyEffectsToContainer="true" Class="mb-4">
+            <MudTabPanel Text="General" Icon="@Icons.Material.Filled.Settings">
+                <SectionCard Title="API protection">
+                    <MudSwitch T="bool" Value="rateLimitEnabled" Label="Enable API rate limiting"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => rateLimitEnabled = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Off by default. When enabled, the server caps how many API calls each signed-in user
+                        (or IP for anonymous traffic) can make per minute. Google Calendar webhooks and CORS
+                        preflight are always exempt. Limits apply per rolling one-minute window (per Function instance).
+                    </MudText>
+                    @if (rateLimitEnabled)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Requests per minute</MudText>
+                        <MudGrid Spacing="2" Class="mb-2">
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitAuthenticatedPerMinute"
+                                                 Label="Signed-in user (general API)"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitAnonymousPerMinute"
+                                                 Label="Anonymous (per IP)"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitUploadPerMinute"
+                                                 Label="Document uploads"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitHeavyReadPerMinute"
+                                                 Label="Heavy reads (logs, data extract)"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitProvisionPerMinute"
+                                                 Label="Login provision (per IP)"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitInvalidBearerPerMinute"
+                                                 Label="Invalid Bearer token (per IP)"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudNumericField T="int" @bind-Value="rateLimitFetchExternalImagePerMinute"
+                                                 Label="External image fetch"
+                                                 Variant="Variant.Outlined" Min="1" Max="10000" />
+                            </MudItem>
+                        </MudGrid>
+                        <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                            Defaults: signed-in @RateLimitRules.DefaultAuthenticatedPerMinute, anonymous
+                            @RateLimitRules.DefaultAnonymousPerMinute, uploads @RateLimitRules.UploadPerMinute,
+                            heavy reads @RateLimitRules.HeavyReadPerMinute, provision @RateLimitRules.ProvisionPerMinute.
+                            Raise signed-in if power users hit 429s; keep provision low to slow account probing.
+                        </MudText>
+                    }
+                </SectionCard>
+
+                <SectionCard Title="User Management">
+                    <MudSwitch T="bool" Value="allowUserDelete" Label="Allow User Deletion"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => allowUserDelete = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, an administrator can permanently delete a user — but only if their most recent
+                        tracked task is older than the retention period below. Deletion removes the user, all of their
+                        tracked tasks (and any manager aliases on those tasks), their time submissions, and their
+                        personal settings. <b>Projects owned by the user must be reassigned or deleted first</b> —
+                        the deletion will fail otherwise.
+                    </MudText>
+
+                    <MudNumericField T="int" @bind-Value="dataRetentionDays" Label="Data Retention (days)"
+                                     Variant="Variant.Outlined" Min="0" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        A user can only be deleted if their most recent tracked task is older than this many days.
+                        Default: 2555 (7 years).
+                    </MudText>
+                </SectionCard>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Tyme" Icon="@Icons.Material.Filled.Schedule">
+                <SectionCard Title="Contact Types">
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Types available when adding or editing organization and department contacts.
+                        <b>Primary</b> is always required and is the default for new contacts.
+                        Remove a type only after reassigning any contacts that use it — otherwise those
+                        contacts cannot be saved until their type is changed.
+                    </MudText>
+                    @if (contactTypes.Count > 0)
+                    {
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            @foreach (var type in contactTypes)
+                            {
+                                var inUse = ContactTypeRules.GetUsageCount(type, contactTypeUsage);
+                                var removable = CanRemoveContactType(type);
+                                <MudTooltip Text="@GetContactTypeChipTooltip(type, inUse, removable)">
+                                    @if (removable)
+                                    {
+                                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined"
+                                                 OnClose="@(() => RemoveContactType(type))"
+                                                 CloseIcon="@Icons.Material.Filled.Close">
+                                            @type@(inUse > 0 ? $" ({inUse})" : "")
+                                        </MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined">
+                                            @type@(inUse > 0 ? $" ({inUse})" : "")
+                                        </MudChip>
+                                    }
+                                </MudTooltip>
+                            }
+                        </div>
+                    }
+                    <div class="d-flex gap-2 align-end">
+                        <MudTextField T="string" @bind-Value="newContactType" Label="Add type"
+                                      Variant="Variant.Outlined" Class="flex-grow-1"
+                                      OnKeyDown="OnContactTypeKeyDown" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                   Disabled="@string.IsNullOrWhiteSpace(newContactType)"
+                                   OnClick="AddContactType">Add</MudButton>
+                    </div>
+                </SectionCard>
+
+                <SectionCard Title="Organizations &amp; Projects">
+                    <MudSwitch T="bool" Value="allowOrganizationDelete" Label="Allow Organization / Department Deletion"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => allowOrganizationDelete = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, managers can permanently delete organizations and departments.
+                        Deleting an organization also deletes its departments and any contacts attached directly
+                        to either. <b>Projects under it survive</b> but lose their organization and department
+                        link — they show as "Unspecified" until reassigned. Tracked time on those projects keeps
+                        the project link; only the upstream org/department reference is cleared. Deleting a
+                        department behaves the same way for projects under that department.
+                    </MudText>
+
+                    <MudSwitch T="bool" Value="allowProjectDelete" Label="Allow Project Deletion"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => allowProjectDelete = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, managers can permanently delete projects and availability categories that have
+                        never been used. Delete is blocked once time has been logged, manager overrides exist, or
+                        calendar events were synced — use Archive or Set inactive instead.
+                    </MudText>
+                </SectionCard>
+
+                <SectionCard Title="Time Submission">
+                    <MudNumericField T="int" @bind-Value="submissionMonthInterval" Label="Submission interval (months)"
+                                     Variant="Variant.Outlined" Min="1" Max="12" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        How often employees are expected to submit their time. 1 = monthly. Employees see a dashboard
+                        reminder for any past month they have not yet submitted.
+                    </MudText>
+
+                    <MudSwitch T="bool" Value="allowManagerTimeCorrection" Label="Allow manager time correction"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => allowManagerTimeCorrection = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, Tyme managers and admins can correct employee time after submission.
+                        Turning this off does not remove existing corrections — it only blocks new ones.
+                    </MudText>
+
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">Correction mode</MudText>
+                    <MudRadioGroup T="string" @bind-Value="managerCorrectionMode" Class="mb-2"
+                                   Disabled="@(!allowManagerTimeCorrection)">
+                        <MudRadio T="string" Value="@("Alias")" Color="Color.Primary" Dense="true">
+                            Alias — overlay only; employee's original entry is preserved
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("Direct")" Color="Color.Primary" Dense="true">
+                            Direct — edit the employee's entry in place (manager audit log)
+                        </MudRadio>
+                    </MudRadioGroup>
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        The workspace uses one mode only. Managers cannot mix alias and direct corrections.
+                    </MudText>
+                </SectionCard>
+
+                <SectionCard Title="Google Calendar Backfill">
+                    <MudNumericField T="int" @bind-Value="calendarBackfillDefaultDays" Label="Default lookback (days)"
+                                     Variant="Variant.Outlined" Min="0" Max="3650" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When a user connects Google Calendar, their tracked tasks from the last N days
+                        are pushed onto their primary Google calendar. 0 disables backfill.
+                    </MudText>
+
+                    <MudSwitch T="bool" Value="calendarBackfillPromptUser" Label="Prompt user for date range"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => calendarBackfillPromptUser = v)" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, users can choose a custom date range (or skip backfill entirely) on connect.
+                        When disabled, the default lookback above is applied silently.
+                    </MudText>
+                </SectionCard>
+
+                <SectionCard Title="All-Day Entries">
+                    <MudNumericField T="double" @bind-Value="workdayHours" Label="Workday hours"
+                                     Variant="Variant.Outlined" Min="0.5" Max="24" Step="0.5" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        How many hours count as a full workday. Drives the derived duration for
+                        all-day entries (Vacation, OOO). A 5-day vacation logs <code>5 × workday hours</code>
+                        so reports keep working.
+                    </MudText>
+                </SectionCard>
+
+                <SectionCard Title="Team Availability Calendar">
+                    <MudTextField T="string" @bind-Value="teamAvailabilityCalendarId"
+                                  Label="Team Availability calendar id" Variant="Variant.Outlined"
+                                  Placeholder="abc123@group.calendar.google.com"
+                                  Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Google calendar id of the workspace-shared "Team Availability" calendar.
+                        Time logged against any project flagged <b>Share availability with team</b>
+                        is dual-published here as a sanitized <code>[&lt;Name&gt;] &lt;Project&gt;</code>
+                        event. Empty disables the feature.
+                    </MudText>
+                </SectionCard>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Intranet" Icon="@Icons.Material.Filled.MenuBook">
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-4">
+                    Intranet-specific settings live on this tab — not under General or Tyme.
+                </MudAlert>
+
+                <SectionCard Title="Intranet Sidebar Menu">
+                    <MudNumericField T="int" @bind-Value="intranetNavigationMaxDepth"
+                                     Label="Maximum menu nesting depth"
+                                     Variant="Variant.Outlined" Min="1" Max="50" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Controls how many <strong>levels deep</strong> the curated sidebar menu can nest — not the
+                        total number of menu items. Top-level entries (e.g. Knowledge Base) are depth <strong>1</strong>;
+                        each sub-menu adds one level (Knowledge Base → Google Workspace → Email = depth 3).
+                        Items deeper than this limit are hidden from readers but remain editable under
+                        <strong>Intranet → Navigation</strong>. Default: 10.
+                    </MudText>
+                </SectionCard>
+
+                <SectionCard Title="Editor File Policy">
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Allowed file types for intranet editor uploads, copy, and link. Each entry is extension plus max size (1–50 MB).
+                        Executables and scripts (exe, msi, bat, etc.) cannot be added. If this list is empty, uploads are blocked.
+                    </MudText>
+                    <div class="d-flex gap-2 align-center mb-3">
+                        <MudTextField T="string" @bind-Value="newUploadExtension"
+                                      Variant="Variant.Text"
+                                      Placeholder="Extension"
+                                      Margin="Margin.None"
+                                      Style="width: 9rem;"
+                                      OnKeyDown="OnUploadLimitKeyDown" />
+                        <MudNumericField T="int" @bind-Value="newUploadMaxMegabytes"
+                                         Variant="Variant.Text"
+                                         Margin="Margin.None"
+                                         Min="1" Max="50" HideSpinButtons="true"
+                                         Style="width: 4.5rem;"
+                                         Adornment="Adornment.End" AdornmentText="MB" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                   Disabled="@string.IsNullOrWhiteSpace(newUploadExtension)"
+                                   OnClick="AddIntranetUploadLimit">Add</MudButton>
+                    </div>
+                    @if (intranetUploadLimits.Count > 0)
+                    {
+                        <div class="d-flex flex-column gap-1">
+                            @foreach (var limit in intranetUploadLimits)
+                            {
+                                <div class="d-flex align-center gap-1">
+                                    <MudText Typo="Typo.body2" Style="flex: 1;">
+                                        .@limit.Extension — @limit.MaxMegabytes MB
+                                    </MudText>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                     Size="Size.Small" Color="Color.Default"
+                                                     title="Remove"
+                                                     OnClick="@(() => RemoveIntranetUploadLimit(limit.Extension))" />
+                                </div>
+                            }
+                        </div>
+                    }
+                </SectionCard>
+
+                <SectionCard Title="Google Drive Storage">
+                    <MudTextField T="string" @bind-Value="intranetDriveParentFolderId"
+                                  Label="Intranet Drive Parent Folder ID" Variant="Variant.Outlined"
+                                  Placeholder="0EXAMPLE__NOT_A_REAL_DRIVE_FOLDER_ID"
+                                  Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Google Drive folder ID for the <strong>Intranet root</strong> folder (e.g. <code>IT Resources › Intranet</code>).
+                        Uploads are routed automatically into <code>Images</code>, <code>Videos</code>, and <code>Documents</code> subfolders when those exist.
+                        Do not paste a subfolder ID such as Videos — if you already did, the app will climb to the parent Intranet folder when it can.
+                        Leave blank to upload to each user's own My Drive root.
+                        <br />
+                        To get the ID: open the Intranet folder in Drive and copy the long ID from the URL (after <code>/folders/</code>).
+                    </MudText>
+                </SectionCard>
+            </MudTabPanel>
+        </MudTabs>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings"
+                   Disabled="@isSaving">
+            @if (isSaving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </div>
+</PageLoader>

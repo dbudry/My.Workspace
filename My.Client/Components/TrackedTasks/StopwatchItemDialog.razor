@@ -1,0 +1,68 @@
+@using My.Client.Components.Projects
+@using My.Client.Models
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudTextField @bind-Value="name" Label="Work item" Required="true"
+                          RequiredError="Work item name is required" Variant="Variant.Outlined" />
+            <ProjectAutocomplete @bind-Value="selectedProject" Label="Project" Variant="Variant.Outlined"
+                                 Dense="false" SearchFunc="SearchProjects" />
+            @if (selectedProject == null)
+            {
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    A project is required before you can start or continue logging time.
+                </MudText>
+            }
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(name) || selectedProject == null)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string ItemId { get; set; } = null!;
+
+    [Parameter]
+    public string ItemName { get; set; } = "";
+
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    [Parameter]
+    public string? ProjectName { get; set; }
+
+    [Parameter]
+    public Func<string?, CancellationToken, Task<IEnumerable<Project>>> SearchProjects { get; set; } = null!;
+
+    private string name = "";
+    private Project? selectedProject;
+
+    protected override void OnInitialized()
+    {
+        name = ItemName;
+        if (!string.IsNullOrEmpty(ProjectId))
+        {
+            selectedProject = new Project
+            {
+                ProjectId = ProjectId,
+                Name = ProjectName ?? ProjectId
+            };
+        }
+    }
+
+    private void Submit()
+    {
+        if (selectedProject == null) return;
+        MudDialog.Close(DialogResult.Ok((name.Trim(), selectedProject.ProjectId)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

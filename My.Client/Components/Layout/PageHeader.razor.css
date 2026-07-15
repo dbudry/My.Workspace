@@ -1,0 +1,7 @@
+.page-header {
+    width: 100%;
+}
+
+.page-header-description {
+    color: var(--mud-palette-text-secondary);
+}

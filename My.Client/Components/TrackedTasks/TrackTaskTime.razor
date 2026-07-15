@@ -1,0 +1,14 @@
+@* Input row to create and start a new work item *@
+<EditForm Model="@newEntryModel" OnValidSubmit="@AddAndStartEntry" OnInvalidSubmit="@HandleInvalidSubmit">
+    <DataAnnotationsValidator />
+    <div class="d-flex align-center gap-3 flex-wrap my-3">
+        <MudTextField @bind-Value="newEntryModel.Name" Label="What are you working on?" Variant="Variant.Outlined"
+                      Margin="Margin.Dense" Style="min-width: 250px;" />
+        <ProjectAutocomplete @bind-Value="SelectedProject" Label="Project" Variant="Variant.Outlined"
+                             Style="min-width: 200px;" SearchFunc="SearchProjects" />
+        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   Disabled="@(isBusy || SelectedProject == null)">Start</MudButton>
+    </div>
+    <ValidationSummary />
+</EditForm>

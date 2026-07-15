@@ -1,0 +1,102 @@
+@page "/tyme/tasks"
+@* Tyme module surface. Requires a Tyme-scoped role (even for global Admins).
+   Matches the Intranet scoping model: global Admin is only for cross-cutting setup. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+
+@using My.Client.Components.TrackedTasks
+
+@using My.Client.Models
+
+<PageTitle>Tasks</PageTitle>
+
+<PageHeader Title="Tasks" Description="Tracked time entries across your projects." />
+
+<div>
+    <MudTable @ref="table" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+              AllowUnsorted="false"
+              OnRowClick="@((TableRowClickEventArgs<TaskListRow> args) => { if (args.Item != null) _ = OnRowClickAsync(args.Item); })">
+        <ToolBarContent>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreateDialog">New Task</MudButton>
+            <MudSpacer />
+            <MudTextField Value="searchString" ValueChanged="@(async (string v) => await OnSearchChanged(v))" Placeholder="Search" Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
+                          Immediate="true" DebounceInterval="300" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Name">Name</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Project">Project</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Duration">Duration</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Date" InitialDirection="SortDirection.Descending">Date</MudTableSortLabel></MudTh>
+            <MudTh Style="width:60px; text-align:center;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">
+                <div class="d-flex align-center" style="gap: 8px;">
+                    @if (context.Kind == TaskListRowKind.Stopwatch)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Stopwatch</MudChip>
+                    }
+                    @if (context.IsManagerAdjustmentOverlay)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Adjustment</MudChip>
+                    }
+                    @if (context.IsManagerAdjusted)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
+                    }
+                    <MudText Typo="Typo.body2" Style="@(context.IsRunning ? "font-weight: bold;" : "")">@context.Name</MudText>
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Project">
+                <div class="d-flex align-center" style="gap: 8px;">
+                    @{
+                        var rowColor = GetRowColor(context);
+                    }
+                    @if (rowColor != null)
+                    {
+                        <MudTooltip Text="@GetRowLabel(context)" Placement="Placement.Top">
+                            <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px;")"></div>
+                        </MudTooltip>
+                    }
+                    <span>@context.ProjectDisplayName</span>
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Duration" Style="font-family: monospace;">
+                @FormatDuration(context)
+                @if (context.IsAllDay)
+                {
+                    <MudTooltip Text="All-day entry — duration is workday hours × calendar days">
+                        <MudIcon Icon="@Icons.Material.Filled.BeachAccess" Size="Size.Small" Class="ml-1"
+                                 Style="color: var(--mud-palette-text-secondary);" />
+                    </MudTooltip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Date">@context.DisplayDate.ToString("MM/dd/yyyy")</MudTd>
+            <MudTd DataLabel="Actions" Style="text-align:center;" @onclick:stopPropagation="true">
+                @if (context.Kind == TaskListRowKind.Manual && context.ManualTask != null)
+                {
+                    @if (context.IsLocked)
+                    {
+                        <MudTooltip Text="@($"Time for {context.ManualTask.StartDate:MMM yyyy} has been submitted")">
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" />
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                       OnClick="@(() => DeleteRow(context.ManualTask))" />
+                    }
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <EmptyState Icon="@Icons.Material.Outlined.AccessTime"
+                        Title="No tasks yet"
+                        Message="Click New Task to add a completed entry, or use the Stopwatch page to log live time." />
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+</div>

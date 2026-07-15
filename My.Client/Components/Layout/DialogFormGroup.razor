@@ -1,0 +1,8 @@
+@* Tight grouping for related controls (e.g. switch + helper text). *@
+<MudStack Spacing="1" Class="dialog-form-group">
+    @ChildContent
+</MudStack>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

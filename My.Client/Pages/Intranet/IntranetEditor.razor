@@ -1,0 +1,1840 @@
+@page "/intranet/editor"
+@implements IDisposable
+@using System.Net.Http.Json
+@using System.Text.RegularExpressions
+@using Microsoft.JSInterop
+@using My.Shared
+@using My.Shared.Constants
+@using My.Shared.Dtos.Intranet
+@using My.Shared.Rules
+@using My.Client.Services
+<PageTitle>Intranet Page Editor</PageTitle>
+
+<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Editor" ScopedOnly="true">
+    <Authorized>
+        @if (currentPage == null)
+        {
+            <PageHeader Title="Intranet Page Editor"
+                        Description="Create and edit company pages with a full rich-text editor." />
+
+            <SectionCard Title="Get Started" Icon="@Icons.Material.Filled.EditNote">
+                <MudText Typo="Typo.body1" Class="mb-4">
+                    Create a new page to begin editing. Preferred flow: create pages from the Navigation tree so they land in the menu automatically.
+                </MudText>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="CreateNewPageAsync" Disabled="@isBusy">
+                    @if (isBusy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Create New Page &amp; Start Editing
+                </MudButton>
+
+                <MudText Typo="Typo.caption" Class="mt-4 d-block">
+                    Or load an existing page by ID.
+                </MudText>
+                <div class="d-flex align-center gap-2 mt-2">
+                    <MudTextField @bind-Value="loadPageIdInput" Label="Existing Page ID" Variant="Variant.Outlined" Style="max-width: 320px;" />
+                    <MudButton Variant="Variant.Outlined" OnClick="LoadExistingPageAsync" Disabled="@(isBusy || string.IsNullOrWhiteSpace(loadPageIdInput))">
+                        Load
+                    </MudButton>
+                </div>
+            </SectionCard>
+        }
+        else
+        {
+            <div class="intranet-editor-shell">
+                <div class="intranet-editor-topbar">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                        <MudTextField @bind-Value="currentPage.Title" @bind-Value:after="SyncAppBarTitle"
+                                      Label="Page title" Variant="Variant.Outlined"
+                                      Required="true" Immediate="true" Class="intranet-editor-title-field" />
+
+                        <MudSpacer />
+
+                        <MudTooltip Text="Unpublished pages are hidden from the menu and page links for regular users. Editors can still preview drafts.">
+                            <MudSwitch @bind-Value="currentPage.IsPublished" Label="Published" Color="Color.Primary" />
+                        </MudTooltip>
+
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="ReloadPageAsync" Disabled="@isBusy">
+                            Reload
+                        </MudButton>
+                        <MudTooltip Text="Create another page and switch to editing it (save this page first)">
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.NoteAdd"
+                                       OnClick="CreateNewPageAsync" Disabled="@isBusy">
+                                New Page
+                            </MudButton>
+                        </MudTooltip>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.List"
+                                   OnClick="NavigateToPagesList">
+                            Pages
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Visibility"
+                                   OnClick="ViewPageWithoutSaving" Disabled="@isBusy">
+                            View page
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   OnClick="SavePageAsync" Disabled="@isBusy">
+                            @if (isBusy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                            Save
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   OnClick="SaveAndViewPageAsync" Disabled="@isBusy">
+                            Save &amp; view
+                        </MudButton>
+                    </MudStack>
+                </div>
+
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" KeepPanelsAlive="true"
+                         ActivePanelIndex="activeEditorTab" ActivePanelIndexChanged="OnEditorTabChangedAsync">
+                    <MudTabPanel Text="Content" Icon="@Icons.Material.Filled.Article">
+                        <div class="intranet-editor-tab-panel">
+                            <div class="intranet-editor-frame intranet-quill-host">
+                                <div id="@QuillEditorId"></div>
+                            </div>
+                            <MudText Typo="Typo.caption" Class="mt-2 mud-text-secondary">
+                                Image and folder toolbar buttons open upload/library pickers for images, documents, and other allowed file types. Pasting or dragging a single external image prompts to link or copy. Allowed types and max sizes are configured as extension:MB pairs in App Settings → Intranet. The code button opens the page HTML for viewing, editing, or copying.
+                            </MudText>
+                        </div>
+                    </MudTabPanel>
+
+                    <MudTabPanel Text="Attachments" Icon="@Icons.Material.Filled.AttachFile">
+                        <div class="intranet-editor-tab-panel">
+                            <MudText Typo="Typo.body2" Class="mb-3">
+                                Files linked to this page. Remove attachments that are no longer referenced in the page content.
+                            </MudText>
+
+                            @if (PageAttachments.Count == 0)
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">No attachments on this page yet.</MudText>
+                            }
+                            else
+                            {
+                                <MudStack Row="true" Spacing="2" Class="mb-3" Wrap="Wrap.Wrap">
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Warning"
+                                               StartIcon="@Icons.Material.Filled.DeleteSweep"
+                                               OnClick="RemoveAllUnusedAttachmentsAsync"
+                                               Disabled="@(isBusy || UnusedAttachmentCount == 0)">
+                                        Remove all unused (@UnusedAttachmentCount)
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Size="Size.Small"
+                                               OnClick="RefreshAttachmentUsageAsync" Disabled="isBusy">
+                                        Refresh usage
+                                    </MudButton>
+                                </MudStack>
+
+                                <MudTable Items="PageAttachments" Dense="true" Hover="true">
+                                    <HeaderContent>
+                                        <MudTh>Name</MudTh>
+                                        <MudTh>Type</MudTh>
+                                        <MudTh>Status</MudTh>
+                                        <MudTh></MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd>@context.Doc.Name</MudTd>
+                                        <MudTd>@IntranetFileHelper.GetFileTypeLabel(context.Doc.MimeType, context.Doc.Name)</MudTd>
+                                        <MudTd>
+                                            @if (context.IsUsedInContent)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Success">In content</MudChip>
+                                            }
+                                            else
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">Not in content</MudChip>
+                                            }
+                                        </MudTd>
+                                        <MudTd>
+                                            <MudStack Row="true" Spacing="0">
+                                                @if (!context.IsUsedInContent)
+                                                {
+                                                    <MudTooltip Text="Detach from this page (file stays in Drive)">
+                                                        <MudIconButton Icon="@Icons.Material.Filled.LinkOff" Size="Size.Small" Color="Color.Warning"
+                                                                       aria-label="Remove unused attachment"
+                                                                       OnClick="@(() => RemoveAttachmentAsync(context.Doc))"
+                                                                       Disabled="isBusy" />
+                                                    </MudTooltip>
+                                                }
+                                                @if (context.CanDeleteFromDrive)
+                                                {
+                                                    <MudTooltip Text="Delete from this page and Drive permanently">
+                                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                                       aria-label="Delete from page and Drive"
+                                                                       OnClick="@(() => PurgeAttachmentFromDriveAsync(context.Doc))"
+                                                                       Disabled="isBusy" />
+                                                    </MudTooltip>
+                                                }
+                                            </MudStack>
+                                        </MudTd>
+                                    </RowTemplate>
+                                </MudTable>
+                            }
+                        </div>
+                    </MudTabPanel>
+
+                    <MudTabPanel Text="Page Settings" Icon="@Icons.Material.Filled.Settings">
+                        <div class="intranet-editor-tab-panel intranet-settings-panel">
+                            <MudTextField @bind-Value="currentPage.Slug" Label="Slug (URL friendly, optional)" Variant="Variant.Outlined"
+                                          HelperText="Unique slug for a friendly link, e.g. /intranet/pages/it (save the page after changing)." Class="mb-3" />
+
+                            <MudStack Spacing="1" Class="mb-3">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Parent page (optional)</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1">
+                                    Nests this page under another in Manage Pages. This is separate from sidebar menu placement below.
+                                </MudText>
+                                @if (!string.IsNullOrWhiteSpace(currentPage.ParentPageTitle))
+                                {
+                                    <MudChip T="string" Color="Color.Default" Size="Size.Small">@currentPage.ParentPageTitle</MudChip>
+                                }
+                                else
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Not set</MudText>
+                                }
+                                <MudStack Row Spacing="1">
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="NavigateToPagesList">
+                                        Manage Pages
+                                    </MudButton>
+                                    @if (!string.IsNullOrWhiteSpace(currentPage.ParentPageId))
+                                    {
+                                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text"
+                                                   OnClick="@(() => { currentPage.ParentPageId = null; })">
+                                            Clear Parent
+                                        </MudButton>
+                                    }
+                                </MudStack>
+                            </MudStack>
+
+                            <MudCard Elevation="1">
+                                <MudCardHeader>
+                                    <CardHeaderContent>
+                                        <MudText Typo="Typo.subtitle2">Menu Location</MudText>
+                                    </CardHeaderContent>
+                                </MudCardHeader>
+                                <MudCardContent>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                                        Where this page appears in the intranet sidebar for users.
+                                    </MudText>
+                                    @if (!string.IsNullOrWhiteSpace(selectedNavParentTitle))
+                                    {
+                                        <MudStack Row Spacing="2" AlignItems="AlignItems.Center">
+                                            <MudText Typo="Typo.body2">Sidebar path:</MudText>
+                                            <MudChip T="string" Color="Color.Primary" Size="Size.Medium">@selectedNavParentTitle</MudChip>
+                                        </MudStack>
+                                    }
+                                    else
+                                    {
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary">Not in the sidebar menu yet.</MudText>
+                                    }
+                                    <MudStack Row Spacing="2" Class="mt-3">
+                                        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AccountTree" OnClick="OpenNavPlacementPicker">
+                                            Change Menu Location
+                                        </MudButton>
+                                        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.List" OnClick="@(() => Navigation.NavigateTo("intranet/navigation"))">
+                                            Manage Full Menu
+                                        </MudButton>
+                                    </MudStack>
+                                </MudCardContent>
+                            </MudCard>
+                        </div>
+                    </MudTabPanel>
+                </MudTabs>
+
+                @if (!string.IsNullOrEmpty(saveError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" Class="ma-3">@saveError</MudAlert>
+                }
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">
+            You need the Editor:Intranet (or higher) role to use the page editor.
+        </MudAlert>
+    </NotAuthorized>
+</ScopedAuthorizeView>
+
+<IntranetContentInsertDialog @bind-Visible="showInsertDialog"
+                             Kind="insertKind"
+                             InitialTab="insertDialogInitialTab"
+                             PageId="@currentPage?.PageId"
+                             SelectedLinkText="selectedLinkText"
+                             OnFileInserted="HandleFileInsertedAsync"
+                             OnUrlInserted="HandleUrlInsertedAsync" />
+
+<MudDialog @bind-Visible="showImagePasteDialog" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = false, CloseOnEscapeKey = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Insert image</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="intranet-image-paste-dialog">
+            @if (!string.IsNullOrEmpty(pastePreviewDataUrl))
+            {
+                <div class="intranet-image-paste-preview mb-2">
+                    <MudImage Src="@pastePreviewDataUrl" Alt="Paste preview" ObjectFit="ObjectFit.Contain"
+                              Class="intranet-image-paste-preview-img" />
+                </div>
+            }
+            <MudText Typo="Typo.body2" Class="mb-3 intranet-image-paste-source" title="@pasteSourceTooltip">@pasteSourceDescription</MudText>
+            @if (pasteShowChoiceRadios)
+            {
+                <MudRadioGroup @bind-Value="pasteChoice" T="string" Class="intranet-image-paste-options">
+                    @if (pasteCanLink)
+                    {
+                        <MudRadio T="string" Value="@("link")" Color="Color.Primary" Dense="true">
+                            Link to original URL
+                        </MudRadio>
+                    }
+                    @if (pasteCanUpload)
+                    {
+                        <MudRadio T="string" Value="@("copy")" Color="Color.Primary" Dense="true">
+                            Copy to library and embed on this page
+                        </MudRadio>
+                    }
+                </MudRadioGroup>
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle2" Class="intranet-image-paste-options mb-2">
+                    Copy to library and embed on this page
+                </MudText>
+            }
+            @if (!string.IsNullOrEmpty(pasteCopyRequiredNotice) && pasteCanUpload && !pasteCanLink)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">@pasteCopyRequiredNotice</MudAlert>
+            }
+            @if (!string.IsNullOrEmpty(pasteFetchHint))
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">@pasteFetchHint</MudAlert>
+            }
+            @if (pasteChoice == "copy" && pasteCanUpload)
+            {
+                <MudTextField @bind-Value="pasteFileName" Label="File name" Variant="Variant.Outlined" Immediate="true"
+                              HelperText="@IntranetFileHelper.UploadFileNameHelperText"
+                              inputattributes="PasteFileNameInputAttributes"
+                              Error="pasteFileNameInvalid" ErrorText="@IntranetFileHelper.UploadFileNameValidationError"
+                              Class="mt-2 intranet-image-paste-filename" />
+            }
+            @if (!string.IsNullOrEmpty(pasteError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@pasteError</MudAlert>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CancelImagePasteDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ConfirmImagePasteAsync"
+                   Disabled="@(isBusy || !CanConfirmImagePaste)">
+            @if (isBusy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+            Insert
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="showHtmlCodeDialog" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">HTML / Code</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Page content as HTML. Edit directly or paste from another tool, then apply to update the editor.
+        </MudText>
+        <MudTextField @bind-Value="htmlCodeEditor" Label="Page HTML" Variant="Variant.Outlined"
+                      Lines="16" Immediate="true"
+                      Style="font-family: Consolas, monospace; font-size: 13px;" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyEditorHtmlAsync">
+            Copy HTML
+        </MudButton>
+        <MudSpacer />
+        <MudButton OnClick="CloseHtmlCodeDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ApplyHtmlEditorAsync">
+            Apply to Page
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<MudDialog @bind-Visible="showNavPlacementPicker" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Choose Navigation Location</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Select the parent navigation item under which this page should appear.
+        </MudText>
+        <MudTextField @bind-Value="navPlacementSearch" Label="Search navigation items" Immediate="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mb-3" />
+        <MudTable Items="FilteredNavPlacementOptions" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Location</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SelectNavPlacement(context))">
+                        Select
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseNavPlacementPicker">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private IntranetMediaService IntranetMedia { get; set; } = null!;
+    [Inject] private IntranetMediaPolicyService MediaPolicy { get; set; } = null!;
+    [Inject] private My.Client.Services.IntranetNavigationEvents NavEvents { get; set; } = null!;
+
+    [CascadingParameter(Name = "SetPageTitle")]
+    private Action<string>? SetPageTitle { get; set; }
+
+    private const string QuillEditorId = "intranet-quill-editor";
+
+    private int activeEditorTab;
+
+    private IntranetPageDto? currentPage;
+    private string editorHtml = "";
+    private bool isBusy;
+    private string? saveError;
+
+    private string loadPageIdInput = string.Empty;
+
+    private bool showInsertDialog;
+    private ContentInsertKind insertKind;
+    private int insertDialogInitialTab;
+    private string? selectedLinkText;
+
+    private IntranetMediaPolicyDto _mediaPolicy = new();
+
+    private bool showImagePasteDialog;
+    private ImagePastePayload? pendingImagePaste;
+    private string pasteChoice = "copy";
+    private bool pasteCanLink;
+    private string? pasteCopyRequiredNotice;
+    private string? pasteFetchHint;
+    private bool pasteCanUpload;
+    private bool pasteShowChoiceRadios;
+    private string pasteFileName = "";
+    private string? pasteSourceDescription;
+    private string? pasteSourceTooltip;
+    private string? pastePreviewDataUrl;
+    private string? pasteError;
+
+    private bool pasteFileNameInvalid =>
+        pasteChoice == "copy"
+        && !string.IsNullOrWhiteSpace(pasteFileName)
+        && !IntranetFileHelper.IsValidUploadFileName(IntranetFileHelper.NormalizeUploadFileName(pasteFileName));
+
+    private bool CanConfirmImagePaste =>
+        pendingImagePaste != null
+        && pasteCanUpload
+        && (pasteChoice == "link" && pasteCanLink
+            || pasteChoice == "copy"
+                && !string.IsNullOrWhiteSpace(pasteFileName)
+                && IntranetFileHelper.IsValidUploadFileName(IntranetFileHelper.NormalizeUploadFileName(pasteFileName)));
+
+    private Dictionary<string, object> PasteFileNameInputAttributes => new()
+    {
+        ["onfocusout"] = EventCallback.Factory.Create(this, NormalizePasteFileNameOnBlur)
+    };
+
+    private bool showHtmlCodeDialog;
+    private string htmlCodeEditor = "";
+
+    private List<IntranetNavigationItemDto> navPlacementOptions = new();
+    private string? selectedNavParentId;
+    private string? selectedNavParentTitle;
+    private bool showNavPlacementPicker;
+    private string navPlacementSearch = "";
+
+    private DotNetObjectReference<IntranetEditor>? _dotNetRef;
+    private string? _initializedForPageId;
+    private MediaHydrationCoordinator? _hydration;
+    private bool openedFromView;
+
+    private string? GetPagesBase() => Constants.API.Intranet.Pages.Api;
+
+    private async Task EnsureMediaPolicyLoadedAsync(bool forceRefresh = false) =>
+        _mediaPolicy = await MediaPolicy.GetAsync(forceRefresh);
+
+    private void NotifyMediaPolicyBlocked()
+    {
+        if (MediaPolicy.LastFetchFailed)
+            Snackbar.Add(IntranetMediaPolicyService.FormatLoadFailureMessage(), Severity.Warning);
+        else
+            Snackbar.Add(IntranetMediaPolicyRules.NotConfiguredMessage, Severity.Warning);
+    }
+
+    [JSInvokable]
+    public async Task OnImagePasteDetected(ImagePastePayload payload)
+    {
+        if (currentPage == null) return;
+
+        try { await PullEditorHtmlAsync(); } catch { /* editor may not be mounted */ }
+        await EnsureMediaPolicyLoadedAsync(forceRefresh: true);
+
+        var policy = IntranetMediaPolicyService.ToPolicy(_mediaPolicy);
+        if (!policy.IsConfigured)
+        {
+            NotifyMediaPolicyBlocked();
+            return;
+        }
+
+        pendingImagePaste = payload;
+        pasteError = null;
+        pasteCopyRequiredNotice = null;
+        pasteFetchHint = null;
+
+        var requiresLibraryCopy = IntranetExternalFetchRules.RequiresLibraryCopy(payload.SourceUrl);
+        var linkAllowedByPolicy = IsPasteLinkAllowedByPolicy(payload, policy);
+        string? linkBlockedReason = null;
+        var directlyLinkable = IntranetExternalFetchRules.IsDirectlyLinkable(payload.SourceUrl, out linkBlockedReason);
+
+        pasteCanUpload = ComputePasteCanUpload(payload, policy, requiresLibraryCopy);
+
+        // Never link-only: Link is optional only when Copy is also available.
+        pasteCanLink = pasteCanUpload
+            && linkAllowedByPolicy
+            && directlyLinkable
+            && !requiresLibraryCopy;
+
+        if (requiresLibraryCopy && pasteCanUpload && string.IsNullOrWhiteSpace(payload.Base64))
+        {
+            var (fetched, fetchError) = await TryFetchPasteImageBase64Async(payload);
+            if (!fetched && !string.IsNullOrWhiteSpace(fetchError))
+                pasteFetchHint = fetchError;
+        }
+
+        if (!pasteCanLink && pasteCanUpload && requiresLibraryCopy)
+            pasteCopyRequiredNotice = IntranetExternalFetchRules.GetCopyRequiredNotice(payload.SourceUrl);
+
+        if (!pasteCanUpload)
+        {
+            Snackbar.Add(GetImagePolicyBlockMessage(payload, policy, linkBlockedReason), Severity.Warning);
+            return;
+        }
+
+        pasteShowChoiceRadios = pasteCanLink;
+        pasteChoice = "copy";
+        pasteFileName = IntranetFileHelper.SuggestPageImageFileName(
+            currentPage.Slug,
+            currentPage.Title,
+            payload.FileName,
+            payload.AltText,
+            payload.SourceUrl,
+            GetExistingPageImageFileNames());
+        (pasteSourceDescription, pasteSourceTooltip) = BuildPasteSourceDescription(payload);
+        pastePreviewDataUrl = BuildPastePreviewDataUrl(payload);
+        showImagePasteDialog = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool IsPasteLinkAllowedByPolicy(ImagePastePayload payload, IntranetMediaPolicy policy)
+    {
+        if (!payload.CanLink || string.IsNullOrWhiteSpace(payload.SourceUrl))
+            return false;
+
+        if (IntranetMediaPolicyRules.TryValidateLink(payload.SourceUrl, policy, out _))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(payload.FileName)
+            && IntranetMediaPolicyRules.TryValidateLink(payload.FileName, policy, out _))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(payload.MimeType))
+        {
+            var synthetic = $"pasted-image.{InferExtensionFromMime(payload.MimeType)}";
+            if (IntranetMediaPolicyRules.TryValidateLink(synthetic, policy, out _))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string InferExtensionFromMime(string mimeType) =>
+        mimeType.Trim().ToLowerInvariant() switch
+        {
+            "image/jpeg" => "jpg",
+            "image/png" => "png",
+            "image/gif" => "gif",
+            "image/webp" => "webp",
+            "image/bmp" => "bmp",
+            "image/svg+xml" => "svg",
+            _ when mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) => "jpg",
+            _ => "jpg"
+        };
+
+    private static bool ComputePasteCanUpload(ImagePastePayload payload, IntranetMediaPolicy policy, bool requiresLibraryCopy)
+    {
+        if (!policy.IsConfigured)
+            return false;
+
+        // Clipboard/drag bytes: always offer copy; policy is enforced on Insert.
+        if (!string.IsNullOrWhiteSpace(payload.Base64))
+            return true;
+
+        if (string.IsNullOrWhiteSpace(payload.SourceUrl))
+            return payload.CanUpload || payload.Kind is "file" or "data";
+
+        // URL pastes/drops: offer copy (fetch bytes on Insert when needed).
+        if (requiresLibraryCopy || IsPasteLinkAllowedByPolicy(payload, policy))
+            return true;
+
+        return payload.CanLink || payload.CanUpload || payload.Kind is "url" or "file-url" or "file" or "data";
+    }
+
+    private static bool ImageMayBeCopied(ImagePastePayload img, IntranetMediaPolicy policy)
+    {
+        if (!policy.IsConfigured)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(img.Base64))
+        {
+            var name = img.FileName ?? "image.png";
+            var mime = IntranetFileHelper.InferMimeType(name, img.MimeType);
+            try
+            {
+                var len = Convert.FromBase64String(img.Base64).Length;
+                return IntranetMediaPolicyRules.TryValidateUpload(name, mime, len, policy, out _);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        if (img.Kind is "file" or "data")
+            return true;
+
+        var check = img.FileName ?? img.SourceUrl;
+        return !string.IsNullOrWhiteSpace(check)
+               && IntranetMediaPolicyRules.TryValidateLink(check, policy, out _);
+    }
+
+    private static string GetImagePolicyBlockMessage(ImagePastePayload payload, IntranetMediaPolicy policy, string? linkBlockedReason = null)
+    {
+        if (!string.IsNullOrWhiteSpace(linkBlockedReason)
+            && !(payload.CanUpload || !string.IsNullOrWhiteSpace(payload.Base64)))
+            return linkBlockedReason;
+
+        if (payload.CanLink && !string.IsNullOrWhiteSpace(payload.SourceUrl)
+            && !IntranetMediaPolicyRules.TryValidateLink(payload.SourceUrl, policy, out var linkError))
+            return linkError ?? "File type is not allowed.";
+
+        if (!string.IsNullOrWhiteSpace(payload.Base64))
+        {
+            var name = payload.FileName ?? "image.png";
+            var mime = IntranetFileHelper.InferMimeType(name, payload.MimeType);
+            try
+            {
+                var len = Convert.FromBase64String(payload.Base64).Length;
+                if (!IntranetMediaPolicyRules.TryValidateUpload(name, mime, len, policy, out var uploadError)
+                    && !string.IsNullOrWhiteSpace(uploadError))
+                    return uploadError;
+            }
+            catch
+            {
+                // fall through to generic message
+            }
+        }
+
+        return $"File type is not allowed. Allowed extensions: {IntranetMediaPolicyRules.FormatAllowedExtensions(policy)}.";
+    }
+
+    private void NormalizePasteFileNameOnBlur() =>
+        pasteFileName = IntranetFileHelper.NormalizeUploadFileName(pasteFileName);
+
+    private static (string Label, string? Tooltip) BuildPasteSourceDescription(ImagePastePayload payload)
+    {
+        if (!string.IsNullOrWhiteSpace(payload.SourceUrl) && payload.Kind is "url" or "file-url")
+        {
+            var url = payload.SourceUrl.Trim();
+            try
+            {
+                var uri = new Uri(url);
+                var host = uri.Host;
+                var label = host.Contains("googleusercontent.com", StringComparison.OrdinalIgnoreCase)
+                    || host.Contains("ggpht.com", StringComparison.OrdinalIgnoreCase)
+                    ? "Image from Google"
+                    : $"Image from {host}";
+                return (label, url);
+            }
+            catch
+            {
+                return url.Length > 80 ? (url[..77] + "…", url) : (url, null);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(payload.FileName))
+            return ($"Clipboard image ({payload.FileName})", null);
+
+        return ("Clipboard image", null);
+    }
+
+    private static string? BuildPastePreviewDataUrl(ImagePastePayload payload)
+    {
+        if (!string.IsNullOrWhiteSpace(payload.Base64))
+        {
+            var mime = IntranetFileHelper.InferMimeType(payload.FileName, payload.MimeType);
+            return $"data:{mime};base64,{payload.Base64}";
+        }
+
+        if (payload.Kind == "url" && !string.IsNullOrWhiteSpace(payload.SourceUrl))
+            return payload.SourceUrl.Trim();
+
+        return null;
+    }
+
+    private IEnumerable<string> GetExistingPageImageFileNames()
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (currentPage?.Documents != null)
+        {
+            foreach (var doc in currentPage.Documents)
+            {
+                if (string.IsNullOrWhiteSpace(doc.Name)) continue;
+                if (IntranetFileHelper.ClassifyMimeType(doc.MimeType, doc.Name)
+                    != IntranetFileHelper.FileTypeImage) continue;
+                names.Add(doc.Name);
+            }
+        }
+
+        var html = editorHtml;
+        if (string.IsNullOrWhiteSpace(html) && currentPage != null)
+            html = currentPage.ContentMarkdown;
+
+        if (!string.IsNullOrWhiteSpace(html))
+        {
+            foreach (Match match in Regex.Matches(html, @"<img\b[^>]*\balt=[""']([^""']+)[""']", RegexOptions.IgnoreCase))
+            {
+                var alt = match.Groups[1].Value.Trim();
+                if (!string.IsNullOrEmpty(alt))
+                    names.Add(alt);
+            }
+        }
+
+        return names;
+    }
+
+    private void CancelImagePasteDialog()
+    {
+        showImagePasteDialog = false;
+        pendingImagePaste = null;
+        pasteError = null;
+    }
+
+    private async Task ConfirmImagePasteAsync()
+    {
+        if (currentPage == null || pendingImagePaste == null) return;
+
+        pasteError = null;
+        isBusy = true;
+        try
+        {
+            var policy = IntranetMediaPolicyService.ToPolicy(_mediaPolicy);
+
+            if (pasteChoice == "link")
+            {
+                if (!IntranetMediaPolicyRules.TryValidateLink(pendingImagePaste.SourceUrl, policy, out var linkError))
+                {
+                    pasteError = linkError;
+                    return;
+                }
+
+                if (!IntranetExternalFetchRules.IsDirectlyLinkable(
+                        pendingImagePaste.SourceUrl, out var linkBlockedError))
+                {
+                    pasteError = linkBlockedError;
+                    return;
+                }
+
+                var linked = await InsertPastedImageLinkAsync(pendingImagePaste);
+                if (!linked)
+                    return;
+
+                CancelImagePasteDialog();
+                Snackbar.Add("Image linked at original URL.", Severity.Success);
+                return;
+            }
+
+            var normalizedFileName = IntranetFileHelper.NormalizeUploadFileName(pasteFileName);
+            if (string.IsNullOrWhiteSpace(normalizedFileName)
+                || !IntranetFileHelper.IsValidUploadFileName(normalizedFileName))
+            {
+                pasteError = IntranetFileHelper.UploadFileNameValidationError;
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(pendingImagePaste.Base64))
+            {
+                var (fetched, fetchError) = await TryFetchPasteImageBase64Async(pendingImagePaste);
+                if (!fetched)
+                {
+                    pasteError = string.IsNullOrWhiteSpace(fetchError)
+                        ? IntranetExternalFetchRules.GetBlockedUrlWithoutBytesMessage(pendingImagePaste.SourceUrl)
+                        : fetchError;
+                    return;
+                }
+            }
+
+            var uploadMime = IntranetFileHelper.InferMimeType(normalizedFileName, pendingImagePaste.MimeType);
+            var uploadLen = Convert.FromBase64String(pendingImagePaste.Base64!).Length;
+            if (!IntranetMediaPolicyRules.TryValidateUpload(normalizedFileName, uploadMime, uploadLen, policy, out var uploadError))
+            {
+                pasteError = uploadError;
+                return;
+            }
+
+            var doc = await UploadPastedImageAsync(pendingImagePaste, normalizedFileName);
+            if (doc == null)
+                return;
+
+            var pasted = pendingImagePaste;
+            showImagePasteDialog = false;
+            pendingImagePaste = null;
+            await InsertPastedCopyAsync(doc, pasted);
+            var copyNotice = IntranetExternalFetchRules.GetCopyRequiredNotice(pasted.SourceUrl);
+            Snackbar.Add(
+                string.IsNullOrWhiteSpace(copyNotice)
+                    ? $"Copied image as \"{normalizedFileName}\"."
+                    : $"Copied image as \"{normalizedFileName}\". Display uses the library copy; original URL kept as reference.",
+                Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            pasteError = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task<bool> InsertPastedImageLinkAsync(ImagePastePayload payload)
+    {
+        var url = (payload.SourceUrl ?? "").Trim();
+        if (string.IsNullOrEmpty(url))
+        {
+            pasteError = "No image URL to link.";
+            return false;
+        }
+
+        if (!IntranetExternalFetchRules.IsDirectlyLinkable(url, out var blockedReason))
+        {
+            pasteError = blockedReason;
+            return false;
+        }
+
+        var html = IntranetFileHelper.BuildExternalImageLinkHtml(url, payload.AltText);
+        if (string.IsNullOrEmpty(html))
+        {
+            pasteError = "No image URL to link.";
+            return false;
+        }
+
+        await JS.InvokeVoidAsync("quillEditor.insertHtml", QuillEditorId, html);
+        await Task.Delay(50);
+
+        if (!string.IsNullOrWhiteSpace(payload.Base64))
+        {
+            var mime = IntranetFileHelper.InferMimeType(payload.FileName, payload.MimeType);
+            await JS.InvokeVoidAsync(
+                "quillEditor.applyExternalImagePreview", QuillEditorId, url, payload.Base64, mime);
+        }
+
+        await HydrateEditorImagesAsync();
+        await PullEditorHtmlAsync();
+        return true;
+    }
+
+    private async Task InsertPastedCopyAsync(IntranetDocumentDto doc, ImagePastePayload payload)
+    {
+        if (currentPage == null) return;
+
+        if (string.IsNullOrWhiteSpace(doc.DriveFileId))
+        {
+            Snackbar.Add("That file has no Drive id — pick another file or re-upload.", Severity.Warning);
+            return;
+        }
+
+        await Task.Yield();
+
+        if (!await JS.InvokeAsync<bool>("quillEditor.isMounted", QuillEditorId))
+        {
+            Snackbar.Add("Editor not ready — click in the content area and try again.", Severity.Warning);
+            return;
+        }
+
+        var sourceUrl = (payload.SourceUrl ?? "").Trim();
+        var preserveSource = !string.IsNullOrEmpty(sourceUrl)
+            && !IntranetExternalFetchRules.IsDirectlyLinkable(sourceUrl, out _);
+
+        var html = preserveSource
+            ? IntranetFileHelper.BuildExternalImageLinkHtml(sourceUrl, payload.AltText, doc.DriveFileId)
+            : IntranetFileHelper.BuildInsertHtml(doc);
+
+        var inserted = await JS.InvokeAsync<bool>("quillEditor.insertHtml", QuillEditorId, html);
+        if (!inserted)
+        {
+            Snackbar.Add("Could not insert content — click in the editor and try again.", Severity.Warning);
+            return;
+        }
+
+        await Task.Delay(50);
+        await HydrateEditorImagesAsync();
+        await PullEditorHtmlAsync();
+        MergeAttachmentFromDocument(doc);
+    }
+
+    private async Task<(bool Success, string? Error)> TryFetchPasteImageBase64Async(ImagePastePayload payload)
+    {
+        if (!string.IsNullOrWhiteSpace(payload.Base64))
+            return (true, null);
+
+        if (string.IsNullOrWhiteSpace(payload.SourceUrl))
+            return (false, "No image URL to download.");
+
+        var url = payload.SourceUrl.Trim();
+        var skipClientFetch = Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            && IntranetExternalFetchRules.ShouldSkipClientFetch(uri);
+
+        if (!skipClientFetch)
+        {
+            try
+            {
+                var fetched = await JS.InvokeAsync<FetchedImagePayload?>("quillEditor.fetchImageAsBase64", url);
+                if (fetched != null && !string.IsNullOrWhiteSpace(fetched.Base64))
+                {
+                    ApplyFetchedImage(payload, fetched);
+                    return (true, null);
+                }
+            }
+            catch
+            {
+                // fall through to server fetch
+            }
+        }
+
+        var (fromApi, apiError) = await FetchImageViaApiAsync(url);
+        if (fromApi == null)
+        {
+            if (!string.IsNullOrWhiteSpace(apiError))
+                return (false, apiError);
+
+            if (uri != null)
+            {
+                var googleHint = IntranetExternalFetchRules.GetGoogleFetchBlockedHint(uri);
+                if (!string.IsNullOrWhiteSpace(googleHint))
+                    return (false, googleHint);
+            }
+
+            return (false, "Could not download this image for upload.");
+        }
+
+        ApplyFetchedImage(payload, fromApi);
+        return (true, null);
+    }
+
+    private async Task<(FetchedImagePayload? Payload, string? Error)> FetchImageViaApiAsync(string url)
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.PostAsJsonAsync(Constants.API.Intranet.Documents.FetchExternalImage, new { Url = url });
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = (await resp.Content.ReadAsStringAsync()).Trim();
+                if (body.Length >= 2 && body[0] == '"' && body[^1] == '"')
+                    body = body[1..^1];
+
+                return (null, string.IsNullOrWhiteSpace(body)
+                    ? $"Could not download image (HTTP {(int)resp.StatusCode})."
+                    : body);
+            }
+
+            var result = await resp.Content.ReadFromJsonAsync<FetchExternalImageResultDto>();
+            if (result == null || string.IsNullOrWhiteSpace(result.Base64))
+                return (null, "The server did not return image data.");
+
+            return (new FetchedImagePayload
+            {
+                Base64 = result.Base64,
+                MimeType = result.MimeType,
+                SuggestedFileName = result.SuggestedFileName
+            }, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    private static void ApplyFetchedImage(ImagePastePayload payload, FetchedImagePayload fetched)
+    {
+        payload.Base64 = fetched.Base64;
+        if (!string.IsNullOrWhiteSpace(fetched.MimeType))
+            payload.MimeType = fetched.MimeType;
+        if (string.IsNullOrWhiteSpace(payload.FileName) && !string.IsNullOrWhiteSpace(fetched.SuggestedFileName))
+            payload.FileName = fetched.SuggestedFileName;
+    }
+
+    private async Task<IntranetDocumentDto?> UploadPastedImageAsync(ImagePastePayload payload, string normalizedFileName)
+    {
+        if (string.IsNullOrWhiteSpace(payload.Base64))
+        {
+            pasteError = "No image data to upload.";
+            return null;
+        }
+
+        var client = ClientFactory.CreateClient(Constants.API.ClientName);
+        var body = new
+        {
+            FileName = normalizedFileName,
+            MimeType = IntranetFileHelper.InferMimeType(normalizedFileName, payload.MimeType),
+            ContentBase64 = payload.Base64,
+            PageId = currentPage!.PageId,
+            Caption = (string?)null
+        };
+
+        var resp = await client.PostAsJsonAsync(Constants.API.Intranet.Documents.Upload, body);
+        if (!resp.IsSuccessStatusCode)
+        {
+            pasteError = await resp.Content.ReadAsStringAsync();
+            return null;
+        }
+
+        var result = await resp.Content.ReadFromJsonAsync<UploadLibraryDocResultDto>();
+        return result?.Document;
+    }
+
+    [JSInvokable]
+    public async Task OpenImageInsertDialog()
+    {
+        if (currentPage == null) return;
+        await PullEditorHtmlAsync();
+        await JS.InvokeVoidAsync("quillEditor.saveSelection", QuillEditorId);
+        insertKind = ContentInsertKind.Image;
+        insertDialogInitialTab = 0;
+        showInsertDialog = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OpenWebLinkInsertDialog()
+    {
+        if (currentPage == null) return;
+        await OpenLinkInsertDialogCore(initialTab: 0);
+    }
+
+    [JSInvokable]
+    public async Task OpenLibraryLinkInsertDialog()
+    {
+        if (currentPage == null) return;
+        await OpenLinkInsertDialogCore(initialTab: 1);
+    }
+
+    private async Task OpenLinkInsertDialogCore(int initialTab)
+    {
+        await PullEditorHtmlAsync();
+        await JS.InvokeVoidAsync("quillEditor.saveSelection", QuillEditorId);
+        try { selectedLinkText = await JS.InvokeAsync<string>("quillEditor.getSelectedText", QuillEditorId); }
+        catch { selectedLinkText = ""; }
+        insertKind = ContentInsertKind.Link;
+        insertDialogInitialTab = initialTab;
+        showInsertDialog = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OpenHtmlCodeDialog()
+    {
+        if (currentPage == null) return;
+        await PullEditorHtmlAsync();
+        htmlCodeEditor = editorHtml;
+        showHtmlCodeDialog = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseHtmlCodeDialog() => showHtmlCodeDialog = false;
+
+    private async Task ApplyHtmlEditorAsync()
+    {
+        if (currentPage == null) return;
+        editorHtml = htmlCodeEditor ?? "";
+        currentPage.ContentMarkdown = editorHtml;
+        await PushEditorHtmlAsync(editorHtml);
+        CloseHtmlCodeDialog();
+        Snackbar.Add("Page content updated from HTML.", Severity.Success);
+    }
+
+    private async Task CopyEditorHtmlAsync()
+    {
+        var text = htmlCodeEditor;
+        if (string.IsNullOrEmpty(text))
+        {
+            Snackbar.Add("Nothing to copy.", Severity.Info);
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Snackbar.Add("HTML copied to clipboard.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Could not copy to clipboard. Select and copy from the text box instead.", Severity.Warning);
+        }
+    }
+
+    private async Task HandleFileInsertedAsync(IntranetDocumentDto doc)
+    {
+        if (currentPage == null) return;
+
+        if (string.IsNullOrWhiteSpace(doc.DriveFileId))
+        {
+            Snackbar.Add("That file has no Drive id — pick another file or re-upload.", Severity.Warning);
+            return;
+        }
+
+        // Let the insert dialog close and return focus to the editor before touching Quill.
+        await Task.Yield();
+
+        var forceLink = insertKind == ContentInsertKind.Link;
+
+        if (!await JS.InvokeAsync<bool>("quillEditor.isMounted", QuillEditorId))
+        {
+            Snackbar.Add("Editor not ready — click in the content area and try again.", Severity.Warning);
+            return;
+        }
+
+        var html = IntranetFileHelper.BuildInsertHtml(doc, forceLink);
+        var inserted = await JS.InvokeAsync<bool>("quillEditor.insertHtml", QuillEditorId, html);
+        if (!inserted)
+        {
+            Snackbar.Add("Could not insert content — click in the editor and try again.", Severity.Warning);
+            return;
+        }
+
+        // Let Quill finish DOM updates and the scheduled attr-restore rAF passes complete.
+        await Task.Delay(50);
+        await HydrateEditorImagesAsync();
+        await PullEditorHtmlAsync();
+        MergeAttachmentFromDocument(doc);
+        Snackbar.Add(forceLink ? $"Linked \"{doc.Name}\"." : $"Inserted image \"{doc.Name}\".", Severity.Success);
+    }
+
+    private async Task HandleUrlInsertedAsync((string Url, string Text) link)
+    {
+        var safeUrl = link.Url.Trim().Replace("\"", "&quot;");
+        var label = (string.IsNullOrWhiteSpace(link.Text) ? link.Url : link.Text).Trim()
+            .Replace("<", "&lt;").Replace(">", "&gt;");
+        var html = $"<a href=\"{safeUrl}\" target=\"_blank\" rel=\"noopener noreferrer\">{label}</a>";
+        await JS.InvokeVoidAsync("quillEditor.insertHtml", QuillEditorId, html);
+        await PullEditorHtmlAsync();
+        Snackbar.Add("Link inserted.", Severity.Success);
+    }
+
+    private async Task PullEditorHtmlAsync()
+    {
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("quillEditor.isMounted", QuillEditorId))
+                return;
+
+            editorHtml = await JS.InvokeAsync<string>("quillEditor.getHtml", QuillEditorId) ?? "";
+            if (currentPage != null)
+                currentPage.ContentMarkdown = editorHtml;
+        }
+        catch { /* editor not mounted yet */ }
+    }
+
+    private async Task PushEditorHtmlAsync(string? html)
+    {
+        editorHtml = html ?? "";
+        try
+        {
+            await JS.InvokeVoidAsync("quillEditor.setHtml", QuillEditorId, editorHtml);
+            await HydrateEditorImagesAsync();
+            await JS.InvokeVoidAsync("quillEditor.focus", QuillEditorId);
+        }
+        catch { /* not ready */ }
+    }
+
+    private Task HydrateEditorImagesAsync() => IntranetMedia.HydrateAsync(QuillEditorId);
+
+    private sealed class PageAttachmentRow
+    {
+        public IntranetPageDocumentDto Doc { get; init; } = null!;
+        public bool IsUsedInContent { get; set; }
+        public IReadOnlyList<IntranetDocumentPageUsageDto> UsedOnPages { get; set; } = Array.Empty<IntranetDocumentPageUsageDto>();
+        public bool CanDeleteFromDrive { get; set; }
+    }
+
+    private List<PageAttachmentRow> PageAttachments { get; set; } = new();
+    private int UnusedAttachmentCount => PageAttachments.Count(a => !a.IsUsedInContent);
+
+    private async Task OnEditorTabChangedAsync(int index)
+    {
+        if (activeEditorTab == 0 && index != 0)
+            await PullEditorHtmlAsync();
+
+        if (index == 1)
+            await RefreshAttachmentUsageAsync();
+
+        if (index == 0 && currentPage != null)
+        {
+            try
+            {
+                var mounted = await JS.InvokeAsync<bool>("quillEditor.isMounted", QuillEditorId);
+                if (!mounted)
+                    _initializedForPageId = null;
+            }
+            catch
+            {
+                _initializedForPageId = null;
+            }
+        }
+
+        activeEditorTab = index;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (currentPage == null || activeEditorTab != 0) return;
+
+        var needsInit = _initializedForPageId != currentPage.PageId;
+        if (!needsInit)
+        {
+            try
+            {
+                needsInit = !await JS.InvokeAsync<bool>("quillEditor.isMounted", QuillEditorId);
+            }
+            catch
+            {
+                needsInit = true;
+            }
+        }
+
+        if (needsInit)
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            try
+            {
+                await JS.InvokeVoidAsync("quillEditor.init", QuillEditorId, _dotNetRef);
+                await PushEditorHtmlAsync(editorHtml);
+                _initializedForPageId = currentPage.PageId;
+            }
+            catch { /* quill script may not be loaded yet */ }
+        }
+
+        if (_initializedForPageId == currentPage.PageId)
+        {
+            try
+            {
+                if (await JS.InvokeAsync<bool>("quillEditor.isMounted", QuillEditorId))
+                {
+                    _hydration ??= new MediaHydrationCoordinator(() => HydrateEditorImagesAsync());
+                    await _hydration.RequestAsync();
+                }
+            }
+            catch { /* quill script may not be loaded yet */ }
+        }
+    }
+
+    public void Dispose()
+    {
+        _dotNetRef?.Dispose();
+        _ = JS.InvokeVoidAsync("quillEditor.destroy", QuillEditorId);
+    }
+
+    private async Task LoadNavigationPlacementOptionsAsync()
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            navPlacementOptions = await client.GetFromJsonAsync<List<IntranetNavigationItemDto>>(Constants.API.Intranet.Navigation.Get) ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load navigation options: {ex.Message}", Severity.Warning);
+            navPlacementOptions = new();
+        }
+    }
+
+    private void ResolveCurrentNavigationPlacement()
+    {
+        if (currentPage == null) return;
+
+        var allNav = FlattenNavTree(navPlacementOptions);
+
+        var existing = allNav.FirstOrDefault(n => n.PageId == currentPage.PageId);
+        if (existing != null)
+        {
+            selectedNavParentId = existing.ParentId;
+            var parent = string.IsNullOrWhiteSpace(selectedNavParentId)
+                ? null
+                : allNav.FirstOrDefault(p => p.Id == selectedNavParentId);
+            selectedNavParentTitle = parent?.Title ?? "(Top Level)";
+        }
+        else
+        {
+            selectedNavParentId = null;
+            selectedNavParentTitle = null;
+        }
+    }
+
+    private void OpenNavPlacementPicker()
+    {
+        navPlacementSearch = "";
+        showNavPlacementPicker = true;
+    }
+
+    private void CloseNavPlacementPicker() => showNavPlacementPicker = false;
+
+    private List<IntranetNavigationItemDto> FilteredNavPlacementOptions =>
+        string.IsNullOrWhiteSpace(navPlacementSearch)
+            ? FlattenNavForPicker(navPlacementOptions)
+            : FlattenNavForPicker(navPlacementOptions)
+                .Where(n => (n.Title ?? "").Contains(navPlacementSearch, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+    private static List<IntranetNavigationItemDto> FlattenNavTree(IEnumerable<IntranetNavigationItemDto> items)
+    {
+        var result = new List<IntranetNavigationItemDto>();
+        void Walk(IEnumerable<IntranetNavigationItemDto> list)
+        {
+            foreach (var i in list)
+            {
+                result.Add(i);
+                if (i.Children?.Count > 0)
+                    Walk(i.Children);
+            }
+        }
+        Walk(items);
+        return result;
+    }
+
+    private List<IntranetNavigationItemDto> FlattenNavForPicker(List<IntranetNavigationItemDto> items)
+    {
+        var result = new List<IntranetNavigationItemDto>();
+        void Walk(IEnumerable<IntranetNavigationItemDto> list, string prefix = "")
+        {
+            foreach (var i in list)
+            {
+                result.Add(new IntranetNavigationItemDto
+                {
+                    Id = i.Id,
+                    Title = string.IsNullOrEmpty(prefix) ? i.Title : $"{prefix} › {i.Title}",
+                    ParentId = i.ParentId
+                });
+                if (i.Children?.Any() == true)
+                    Walk(i.Children, string.IsNullOrEmpty(prefix) ? i.Title : $"{prefix} › {i.Title}");
+            }
+        }
+        Walk(items);
+        return result;
+    }
+
+    private void SelectNavPlacement(IntranetNavigationItemDto navItem)
+    {
+        selectedNavParentId = navItem.Id;
+        selectedNavParentTitle = navItem.Title;
+        CloseNavPlacementPicker();
+    }
+
+    private async Task EnsureNavigationPlacementAsync(HttpClient client, string pageId)
+    {
+        if (string.IsNullOrWhiteSpace(selectedNavParentId)) return;
+
+        try
+        {
+            var existingNav = FlattenNavTree(navPlacementOptions)
+                .FirstOrDefault(n => n.PageId == pageId);
+
+            var navDto = new CreateIntranetNavigationItemDto
+            {
+                Title = currentPage!.Title,
+                PageId = pageId,
+                ParentId = selectedNavParentId,
+                IsVisible = true,
+                SortOrder = currentPage!.SortOrder
+            };
+
+            var navChanged = false;
+            if (existingNav == null)
+            {
+                var createResp = await client.PostAsJsonAsync(Constants.API.Intranet.Navigation.Get, navDto);
+                if (!createResp.IsSuccessStatusCode)
+                {
+                    var err = await createResp.Content.ReadAsStringAsync();
+                    Snackbar.Add($"Page saved but failed to create navigation entry: {err}", Severity.Warning);
+                }
+                else
+                {
+                    navChanged = true;
+                }
+            }
+            else if (existingNav.ParentId != selectedNavParentId
+                     || !string.Equals(existingNav.Title, currentPage!.Title, StringComparison.Ordinal))
+            {
+                var updateResp = await client.PutAsJsonAsync($"{Constants.API.Intranet.Navigation.Get}/{existingNav.Id}", navDto);
+                if (!updateResp.IsSuccessStatusCode)
+                {
+                    var err = await updateResp.Content.ReadAsStringAsync();
+                    Snackbar.Add($"Page saved but failed to update navigation placement: {err}", Severity.Warning);
+                }
+                else
+                {
+                    navChanged = true;
+                }
+            }
+
+            if (navChanged)
+                NavEvents.NotifyChanged();
+
+            await LoadNavigationPlacementOptionsAsync();
+            ResolveCurrentNavigationPlacement();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Page saved but navigation placement update failed: {ex.Message}", Severity.Warning);
+        }
+    }
+
+    private string BuildPageUrl(string pageId) => $"{GetPagesBase()}/{pageId}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        openedFromView = string.Equals(query["fromView"], "1", StringComparison.Ordinal)
+            || string.Equals(query["fromView"], "true", StringComparison.OrdinalIgnoreCase);
+
+        var loadId = query["pageId"] ?? query["load"] ?? query["id"];
+        if (!string.IsNullOrWhiteSpace(loadId))
+        {
+            loadPageIdInput = loadId;
+            await LoadPageByIdAsync(loadId);
+        }
+    }
+
+    private async Task CreateNewPageAsync()
+    {
+        if (currentPage != null)
+        {
+            await PullEditorHtmlAsync();
+            var confirm = await DialogService.ShowMessageBoxAsync(
+                "Create new page?",
+                "This creates a separate page and switches the editor to it. Save the current page first if you have changes to keep.",
+                yesText: "New Page",
+                cancelText: "Cancel");
+            if (confirm != true)
+                return;
+        }
+
+        isBusy = true;
+        saveError = null;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var createDto = new CreateIntranetPageDto
+            {
+                Title = "New Intranet Page " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                IsPublished = true,
+                SortOrder = 0
+            };
+
+            var response = await client.PostAsJsonAsync(GetPagesBase(), createDto);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Failed to create page: {err}", Severity.Error);
+                return;
+            }
+
+            var created = await response.Content.ReadFromJsonAsync<IntranetPageDto>();
+            if (created != null)
+            {
+                currentPage = created;
+                editorHtml = "";
+                _initializedForPageId = null;
+                await Task.Yield();
+                await LoadNavigationPlacementOptionsAsync();
+                SyncAppBarTitle();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating page: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task LoadExistingPageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(loadPageIdInput)) return;
+        await LoadPageByIdAsync(loadPageIdInput.Trim());
+        loadPageIdInput = string.Empty;
+    }
+
+    private async Task LoadPageByIdAsync(string pageId)
+    {
+        isBusy = true;
+        saveError = null;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var loaded = await client.GetFromJsonAsync<IntranetPageDto>(BuildPageUrl(pageId));
+            if (loaded != null)
+            {
+                currentPage = loaded;
+                editorHtml = IntranetFileHelper.PrepareDriveImageHtmlForView(
+                    loaded.ContentMarkdown ?? "", loaded.Documents);
+                _initializedForPageId = null;
+                await Task.Yield();
+                await LoadNavigationPlacementOptionsAsync();
+                ResolveCurrentNavigationPlacement();
+                await RefreshAttachmentUsageAsync();
+                await EnsureMediaPolicyLoadedAsync(forceRefresh: true);
+                SyncAppBarTitle();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load page: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private void SyncAppBarTitle()
+    {
+        if (currentPage == null)
+            return;
+
+        SetPageTitle?.Invoke(string.IsNullOrWhiteSpace(currentPage.Title)
+            ? "Intranet Page Editor"
+            : currentPage.Title);
+    }
+
+    private async Task RefreshAttachmentUsageAsync()
+    {
+        if (currentPage == null) return;
+        if (activeEditorTab == 0)
+            await PullEditorHtmlAsync();
+
+        var html = currentPage.ContentMarkdown ?? editorHtml ?? "";
+        var client = ClientFactory.CreateClient(Constants.API.ClientName);
+        var rows = new List<PageAttachmentRow>();
+
+        foreach (var doc in (currentPage.Documents ?? new()).OrderBy(d => d.SortOrder))
+        {
+            IReadOnlyList<IntranetDocumentPageUsageDto> usedOn = new List<IntranetDocumentPageUsageDto>();
+            if (!string.IsNullOrWhiteSpace(doc.DocumentId))
+            {
+                try
+                {
+                    var detail = await client.GetFromJsonAsync<IntranetDocumentDto>(
+                        $"{Constants.API.Intranet.Documents.GetById}{doc.DocumentId}");
+                    if (detail?.UsedOnPages != null)
+                        usedOn = detail.UsedOnPages;
+                }
+                catch
+                {
+                    // usage lookup is best-effort for action buttons
+                }
+            }
+
+            rows.Add(new PageAttachmentRow
+            {
+                Doc = doc,
+                IsUsedInContent = IntranetFileHelper.IsDriveFileReferencedInHtml(html, doc.DriveFileId),
+                UsedOnPages = usedOn,
+                CanDeleteFromDrive = IntranetFileHelper.CanPurgeDocumentFromSinglePage(usedOn, currentPage.PageId)
+            });
+        }
+
+        PageAttachments = rows;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RemoveAttachmentAsync(IntranetPageDocumentDto doc)
+    {
+        if (currentPage == null || string.IsNullOrWhiteSpace(doc.DocumentId)) return;
+
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Remove attachment?",
+            $"Remove \"{doc.Name}\" from this page? The file stays in Drive.",
+            yesText: "Remove",
+            cancelText: "Cancel");
+        if (confirm != true) return;
+
+        isBusy = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.DeleteAsync($"{BuildPageUrl(currentPage.PageId)}/documents/{doc.DocumentId}");
+            if (!resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await resp.Content.ReadAsStringAsync(), Severity.Error);
+                return;
+            }
+
+            currentPage.Documents?.RemoveAll(d => d.DocumentId == doc.DocumentId);
+            await RefreshAttachmentUsageAsync();
+            Snackbar.Add($"Removed \"{doc.Name}\" from this page.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task PurgeAttachmentFromDriveAsync(IntranetPageDocumentDto doc)
+    {
+        if (currentPage == null || string.IsNullOrWhiteSpace(doc.DocumentId)) return;
+
+        var row = PageAttachments.FirstOrDefault(r => r.Doc.DocumentId == doc.DocumentId);
+        var usedOn = row?.UsedOnPages ?? Array.Empty<IntranetDocumentPageUsageDto>();
+        if (!IntranetFileHelper.CanPurgeDocumentFromSinglePage(usedOn, currentPage.PageId))
+        {
+            Snackbar.Add("This file is also used on other pages — delete it from the Documents Library instead.", Severity.Warning);
+            return;
+        }
+
+        var message = IntranetFileHelper.BuildLibraryDeleteMessage(doc.Name, usedOn);
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Delete from page and Drive?",
+            message,
+            yesText: "Delete permanently",
+            cancelText: "Cancel");
+        if (confirm != true) return;
+
+        isBusy = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Documents.GetById}{doc.DocumentId}");
+            if (!resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await resp.Content.ReadAsStringAsync(), Severity.Error);
+                return;
+            }
+
+            if (IntranetFileHelper.IsDriveFileReferencedInHtml(currentPage.ContentMarkdown ?? editorHtml, doc.DriveFileId))
+            {
+                var stripped = IntranetFileHelper.StripDriveFileReferencesFromHtml(
+                    currentPage.ContentMarkdown ?? editorHtml, doc.DriveFileId);
+                currentPage.ContentMarkdown = stripped;
+                editorHtml = stripped;
+                if (activeEditorTab == 0)
+                    await PushEditorHtmlAsync(stripped);
+            }
+
+            currentPage.Documents?.RemoveAll(d => d.DocumentId == doc.DocumentId);
+            await RefreshAttachmentUsageAsync();
+            Snackbar.Add($"\"{doc.Name}\" deleted from Drive and removed from this page.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task RemoveAllUnusedAttachmentsAsync()
+    {
+        var unused = PageAttachments.Where(a => !a.IsUsedInContent).Select(a => a.Doc).ToList();
+        if (unused.Count == 0) return;
+
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Remove unused attachments?",
+            $"Remove {unused.Count} attachment(s) that are not referenced in the page content?",
+            yesText: "Remove all",
+            cancelText: "Cancel");
+        if (confirm != true) return;
+
+        isBusy = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            foreach (var doc in unused)
+            {
+                if (string.IsNullOrWhiteSpace(doc.DocumentId)) continue;
+                var resp = await client.DeleteAsync($"{BuildPageUrl(currentPage!.PageId)}/documents/{doc.DocumentId}");
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await resp.Content.ReadAsStringAsync(), Severity.Error);
+                    return;
+                }
+            }
+
+            currentPage!.Documents?.RemoveAll(d => unused.Any(u => u.DocumentId == d.DocumentId));
+            await RefreshAttachmentUsageAsync();
+            Snackbar.Add($"Removed {unused.Count} unused attachment(s).", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task ReloadPageAsync()
+    {
+        if (currentPage == null) return;
+        await LoadPageByIdAsync(currentPage.PageId);
+    }
+
+    private void NavigateToPagesList()
+    {
+        if (currentPage == null)
+        {
+            Navigation.NavigateTo("intranet/pages");
+            return;
+        }
+
+        Navigation.NavigateTo($"intranet/pages?fromEditor={Uri.EscapeDataString(currentPage.PageId)}");
+    }
+
+    private void ViewPageWithoutSaving()
+    {
+        if (currentPage == null) return;
+        Navigation.NavigateTo(IntranetPageUrlHelper.GetViewPath(currentPage.PageId, currentPage.Slug));
+    }
+
+    private async Task SaveAndViewPageAsync()
+    {
+        if (currentPage == null) return;
+        await SavePageAsync();
+        if (!isBusy && string.IsNullOrEmpty(saveError) && currentPage != null)
+            Navigation.NavigateTo(IntranetPageUrlHelper.GetViewPath(currentPage.PageId, currentPage.Slug));
+    }
+
+    private async Task SavePageAsync()
+    {
+        if (currentPage == null) return;
+
+        isBusy = true;
+        saveError = null;
+        try
+        {
+            await PullEditorHtmlAsync();
+            currentPage.ContentMarkdown = IntranetFileHelper.NormalizeDriveImageHtmlForStorage(currentPage.ContentMarkdown);
+
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var updateDto = new UpdateIntranetPageDto
+            {
+                Title = currentPage.Title,
+                Slug = currentPage.Slug,
+                ParentPageId = currentPage.ParentPageId,
+                ContentMarkdown = currentPage.ContentMarkdown,
+                SortOrder = currentPage.SortOrder,
+                IsPublished = currentPage.IsPublished
+            };
+
+            var response = await client.PutAsJsonAsync(BuildPageUrl(currentPage.PageId), updateDto);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                saveError = $"Save failed: {err}";
+                Snackbar.Add(saveError, Severity.Error);
+                return;
+            }
+
+            var saved = await response.Content.ReadFromJsonAsync<IntranetPageDto>();
+            if (saved != null)
+            {
+                currentPage = saved;
+                editorHtml = saved.ContentMarkdown ?? editorHtml;
+                await EnsureNavigationPlacementAsync(client, saved.PageId);
+                Snackbar.Add("Page saved.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            saveError = ex.Message;
+            Snackbar.Add($"Save error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    public sealed class ImagePastePayload
+    {
+        public string Kind { get; set; } = "";
+        public string? SourceUrl { get; set; }
+        public string? FileName { get; set; }
+        public string? MimeType { get; set; }
+        public string? Base64 { get; set; }
+        public string? AltText { get; set; }
+        public bool CanUpload { get; set; }
+        public bool CanLink { get; set; }
+    }
+
+    private sealed class FetchedImagePayload
+    {
+        public string? Base64 { get; set; }
+        public string? MimeType { get; set; }
+        public string? SuggestedFileName { get; set; }
+    }
+
+    private void MergeAttachmentFromDocument(IntranetDocumentDto doc)
+    {
+        if (currentPage == null) return;
+
+        currentPage.Documents ??= new List<IntranetPageDocumentDto>();
+        var existing = currentPage.Documents.FirstOrDefault(d => d.DriveFileId == doc.DriveFileId);
+        if (existing == null)
+        {
+            currentPage.Documents.Add(new IntranetPageDocumentDto
+            {
+                DocumentId = doc.DocumentId,
+                DriveFileId = doc.DriveFileId,
+                Name = doc.Name,
+                MimeType = doc.MimeType,
+                WebViewLink = doc.WebViewLink,
+                ThumbnailLink = doc.ThumbnailLink,
+                SortOrder = currentPage.Documents.Count
+            });
+        }
+        else
+        {
+            existing.Name = doc.Name;
+            existing.MimeType = doc.MimeType;
+            existing.WebViewLink = doc.WebViewLink;
+            existing.ThumbnailLink = doc.ThumbnailLink;
+        }
+        currentPage.Documents = currentPage.Documents.OrderBy(d => d.SortOrder).ToList();
+        _ = RefreshAttachmentUsageAsync();
+    }
+}

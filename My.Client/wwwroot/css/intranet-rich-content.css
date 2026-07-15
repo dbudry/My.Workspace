@@ -1,0 +1,259 @@
+/* Shared intranet page content + Quill editor: never let pasted inline colors fight the theme. */
+.intranet-rich-content {
+    color: var(--mud-palette-text-primary);
+}
+
+.intranet-rich-content :is(p, li, span, div, h1, h2, h3, h4, h5, h6, td, th, blockquote, pre, font):not(a) {
+    color: inherit !important;
+    background-color: transparent !important;
+}
+
+.intranet-rich-content a {
+    color: var(--mud-palette-primary);
+}
+
+.intranet-rich-content a:visited {
+    color: var(--mud-palette-secondary);
+}
+
+.intranet-rich-content img {
+    max-width: 100%;
+    height: auto;
+}
+
+/*
+ * Lists — match Quill editor rendering on the read-only page view.
+ *
+ * Quill does not rely on the browser's default list markers. It sets
+ * list-style-type: none and draws 1. / a. / bullets with CSS counters on
+ * li::before (see quill.snow.css .ql-editor). Without those rules, saved
+ * HTML looks wrong: flat numbering, lost indent, and separate <ol> blocks
+ * restart at 1 while the editor continues 4, 5, 6…
+ *
+ * Scoped here so the viewer (.intranet-rich-content) matches the editor.
+ */
+.intranet-rich-content p,
+.intranet-rich-content ol,
+.intranet-rich-content ul,
+.intranet-rich-content pre,
+.intranet-rich-content blockquote,
+.intranet-rich-content h1,
+.intranet-rich-content h2,
+.intranet-rich-content h3,
+.intranet-rich-content h4,
+.intranet-rich-content h5,
+.intranet-rich-content h6 {
+    counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
+}
+
+.intranet-rich-content ol,
+.intranet-rich-content ul {
+    margin: 0.35em 0 0.75em;
+    padding-left: 1.5em;
+}
+
+.intranet-rich-content ol > li,
+.intranet-rich-content ul > li {
+    list-style-type: none;
+}
+
+.intranet-rich-content ul > li::before {
+    content: '\2022';
+}
+
+.intranet-rich-content li::before {
+    display: inline-block;
+    white-space: nowrap;
+    width: 1.2em;
+}
+
+.intranet-rich-content li:not(.ql-direction-rtl)::before {
+    margin-left: -1.5em;
+    margin-right: 0.3em;
+    text-align: right;
+}
+
+.intranet-rich-content li.ql-direction-rtl::before {
+    margin-left: 0.3em;
+    margin-right: -1.5em;
+}
+
+.intranet-rich-content ol li:not(.ql-direction-rtl),
+.intranet-rich-content ul li:not(.ql-direction-rtl) {
+    padding-left: 1.5em;
+}
+
+.intranet-rich-content ol li.ql-direction-rtl,
+.intranet-rich-content ul li.ql-direction-rtl {
+    padding-right: 1.5em;
+}
+
+/* list-0 is intentionally not reset on each <ol> — same as Quill so multi-block
+   ordered lists keep counting (1…3 then later 4…7) instead of restarting. */
+.intranet-rich-content ol li {
+    counter-reset: list-1 list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
+    counter-increment: list-0;
+}
+
+.intranet-rich-content ol li::before {
+    content: counter(list-0, decimal) '. ';
+}
+
+.intranet-rich-content ol li.ql-indent-1 {
+    counter-increment: list-1;
+    counter-reset: list-2 list-3 list-4 list-5 list-6 list-7 list-8 list-9;
+}
+
+.intranet-rich-content ol li.ql-indent-1::before {
+    content: counter(list-1, lower-alpha) '. ';
+}
+
+.intranet-rich-content ol li.ql-indent-2 {
+    counter-increment: list-2;
+    counter-reset: list-3 list-4 list-5 list-6 list-7 list-8 list-9;
+}
+
+.intranet-rich-content ol li.ql-indent-2::before {
+    content: counter(list-2, lower-roman) '. ';
+}
+
+.intranet-rich-content ol li.ql-indent-3 {
+    counter-increment: list-3;
+    counter-reset: list-4 list-5 list-6 list-7 list-8 list-9;
+}
+
+.intranet-rich-content ol li.ql-indent-3::before {
+    content: counter(list-3, decimal) '. ';
+}
+
+.intranet-rich-content ol li.ql-indent-4 {
+    counter-increment: list-4;
+    counter-reset: list-5 list-6 list-7 list-8 list-9;
+}
+
+.intranet-rich-content ol li.ql-indent-4::before {
+    content: counter(list-4, lower-alpha) '. ';
+}
+
+.intranet-rich-content ol li.ql-indent-5 {
+    counter-increment: list-5;
+    counter-reset: list-6 list-7 list-8 list-9;
+}
+
+.intranet-rich-content ol li.ql-indent-5::before {
+    content: counter(list-5, lower-roman) '. ';
+}
+
+.intranet-rich-content .ql-indent-1:not(.ql-direction-rtl) {
+    padding-left: 3em;
+}
+
+.intranet-rich-content li.ql-indent-1:not(.ql-direction-rtl) {
+    padding-left: 4.5em;
+}
+
+.intranet-rich-content .ql-indent-2:not(.ql-direction-rtl) {
+    padding-left: 6em;
+}
+
+.intranet-rich-content li.ql-indent-2:not(.ql-direction-rtl) {
+    padding-left: 7.5em;
+}
+
+.intranet-rich-content .ql-indent-3:not(.ql-direction-rtl) {
+    padding-left: 9em;
+}
+
+.intranet-rich-content li.ql-indent-3:not(.ql-direction-rtl) {
+    padding-left: 10.5em;
+}
+
+.intranet-rich-content h1,
+.intranet-rich-content h2,
+.intranet-rich-content h3,
+.intranet-rich-content h4 {
+    margin: 1em 0 0.4em;
+    line-height: 1.3;
+}
+
+.intranet-rich-content h1:first-child,
+.intranet-rich-content h2:first-child,
+.intranet-rich-content h3:first-child {
+    margin-top: 0;
+}
+
+.intranet-rich-content p {
+    margin: 0 0 0.65em;
+}
+
+.intranet-rich-content img.intranet-pending-media[data-intranet-hydrated="false"] {
+    cursor: wait;
+    display: block;
+    min-height: 120px;
+    min-width: 120px;
+    background: linear-gradient(
+        90deg,
+        var(--mud-palette-background-grey, #e8e8e8) 0%,
+        color-mix(in srgb, var(--mud-palette-background-grey, #e8e8e8) 70%, var(--mud-palette-surface, #fff)) 50%,
+        var(--mud-palette-background-grey, #e8e8e8) 100%
+    );
+    background-size: 200% 100%;
+    animation: intranet-media-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes intranet-media-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Insert-image dialog (paste / drag) — MudDialog renders in a portal, so these are global */
+.intranet-image-paste-dialog {
+    width: 100%;
+    max-width: min(480px, calc(100vw - 48px));
+    min-width: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
+}
+
+.intranet-image-paste-preview {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--mud-palette-background-grey);
+}
+
+.intranet-image-paste-preview img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    max-height: 160px;
+    object-fit: contain;
+}
+
+.intranet-image-paste-source {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+}
+
+.intranet-image-paste-options {
+    max-width: 100%;
+}
+
+.intranet-image-paste-filename {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.intranet-image-paste-filename .mud-input-control,
+.intranet-image-paste-filename .mud-input-control-input-container {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.intranet-image-paste-filename input {
+    max-width: 100%;
+    min-width: 0;
+}

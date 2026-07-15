@@ -1,0 +1,29 @@
+{
+  "name": "My Workspace",
+  "short_name": "Workspace",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2A5DB8",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "img/logo-icon-200.png",
+      "type": "image/png",
+      "sizes": "200x200"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Stopwatch",
+      "short_name": "Stopwatch",
+      "url": "./tyme/stopwatch-mini",
+      "icons": [
+        {
+          "src": "img/logo-icon-200.png",
+          "sizes": "200x200"
+        }
+      ]
+    }
+  ]
+}

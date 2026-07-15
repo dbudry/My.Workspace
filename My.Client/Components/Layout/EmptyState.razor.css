@@ -1,0 +1,20 @@
+.empty-state {
+    color: var(--mud-palette-text-secondary);
+    min-height: 220px;
+}
+
+::deep .empty-state-icon {
+    color: var(--mud-palette-text-disabled);
+    width: 56px;
+    height: 56px;
+    font-size: 56px;
+}
+
+.empty-state-title {
+    color: var(--mud-palette-text-primary);
+}
+
+.empty-state-message {
+    color: var(--mud-palette-text-secondary);
+    max-width: 480px;
+}

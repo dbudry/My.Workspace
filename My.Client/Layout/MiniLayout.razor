@@ -1,0 +1,40 @@
+@inherits LayoutComponentBase
+@using My.Client.Services
+@using My.Client.Theme
+@inject LocalStorageService LocalStorage
+
+<MudThemeProvider @ref="_themeProvider" Theme="_theme" IsDarkMode="_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="mini-layout" style="padding: 12px;">
+    @Body
+</div>
+
+@code {
+    private readonly MudTheme _theme = AppTheme.Build();
+    private MudThemeProvider? _themeProvider;
+    private ThemeMode _mode = ThemeMode.System;
+    private bool _isDarkMode;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+        _initialized = true;
+
+        var stored = await LocalStorage.GetItemAsync<string>(AppTheme.ThemeModeStorageKey);
+        if (!string.IsNullOrEmpty(stored) && Enum.TryParse<ThemeMode>(stored, ignoreCase: true, out var parsed))
+            _mode = parsed;
+
+        if (_mode == ThemeMode.Light)
+            _isDarkMode = false;
+        else if (_mode == ThemeMode.Dark)
+            _isDarkMode = true;
+        else if (_themeProvider is not null)
+            _isDarkMode = await _themeProvider.GetSystemDarkModeAsync();
+
+        StateHasChanged();
+    }
+}

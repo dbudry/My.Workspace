@@ -1,0 +1,119 @@
+@using My.Client.Services
+@using My.Shared.Constants
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                Pick the role-set you want to view the app as. Authorization on both
+                the client and the API is downgraded to exactly these roles. An empty
+                selection tests what an unauthorized user sees.
+            </MudText>
+
+            <MudTextField @bind-Value="filter" Placeholder="Filter roles…"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" />
+
+            <div class="impersonate-role-list">
+            @{
+                var visibleRoles = FilteredRoles.ToList();
+            }
+            @if (visibleRoles.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="pa-3" Style="color: var(--mud-palette-text-secondary);">
+                    No roles match "@filter".
+                </MudText>
+            }
+            else
+            {
+                @foreach (var role in visibleRoles)
+                {
+                    <div class="impersonate-role-row">
+                        <MudCheckBox T="bool" Value="@selected.Contains(role)"
+                                     ValueChanged="@((bool v) => Toggle(role, v))"
+                                     Label="@role" Color="Color.Primary" Dense="true" />
+                    </div>
+                }
+            }
+        </div>
+
+            @if (selected.Count > 0)
+            {
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    Selected: @string.Join(", ", selected)
+                </MudText>
+            }
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        @if (Impersonation.IsActive)
+        {
+            <MudButton Color="Color.Error" OnClick="StopImpersonating">Stop impersonating</MudButton>
+        }
+        <MudSpacer />
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Apply">Apply</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .impersonate-role-list {
+        max-height: 280px;
+        overflow-y: auto;
+        border: 1px solid var(--mud-palette-divider);
+        border-radius: 4px;
+        padding: 4px 0;
+    }
+
+    .impersonate-role-row {
+        padding: 2px 12px;
+    }
+
+    .impersonate-role-row:hover {
+        background-color: var(--mud-palette-action-default-hover);
+    }
+</style>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Inject]
+    private ImpersonationService Impersonation { get; set; } = null!;
+
+    private static readonly IReadOnlyList<string> AvailableRoles = Constants.Roles.Assignable();
+
+    private HashSet<string> selected = new(StringComparer.Ordinal);
+    private string filter = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        selected = new HashSet<string>(Impersonation.Roles, StringComparer.Ordinal);
+    }
+
+    private IEnumerable<string> FilteredRoles =>
+        string.IsNullOrWhiteSpace(filter)
+            ? AvailableRoles
+            : AvailableRoles.Where(r => r.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    private void Toggle(string role, bool isSelected)
+    {
+        if (isSelected) selected.Add(role);
+        else selected.Remove(role);
+    }
+
+    private async Task Apply()
+    {
+        await Impersonation.SetAsync(selected);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private async Task StopImpersonating()
+    {
+        await Impersonation.ClearAsync();
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

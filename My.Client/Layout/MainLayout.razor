@@ -1,0 +1,268 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using My.Client.Components.Search
+@using My.Client.Services
+@using My.Client.Theme
+@using My.Shared.Constants
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ThemeService Theme
+@inject ImpersonationService Impersonation
+@inject SessionExpiryService SessionExpiry
+@inject IJSRuntime JS
+@implements IDisposable
+
+<MudThemeProvider @ref="_themeProvider" Theme="_theme" IsDarkMode="_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="page">
+    <header class="app-bar">
+        <span class="nav-toggle">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
+                           OnClick="ToggleNav" />
+        </span>
+        <a href="" class="brand">
+            <img src="/img/logo-icon-100.png" alt="" class="brand-logo" />
+            <span class="brand-text"><strong>My</strong>.Workspace</span>
+        </a>
+        @if (!string.IsNullOrEmpty(pageTitle))
+        {
+            <span class="page-title">@pageTitle</span>
+        }
+        <span class="app-bar-spacer"></span>
+        @if (Impersonation.IsActive)
+        {
+            <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled"
+                     Icon="@Icons.Material.Filled.VisibilityOff"
+                     OnClose="ClearImpersonation"
+                     Class="impersonation-pill"
+                     title="Click the X to return to your real Admin role">
+                @PillLabel
+            </MudChip>
+        }
+        <span class="app-bar-actions">
+            @if (_hasIntranetAccess)
+            {
+                <HeaderSearch />
+            }
+            <LoginDisplay />
+        </span>
+    </header>
+
+    @if (SessionExpiry.IsExpired)
+    {
+        <div class="session-banner">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" />
+            <span>Your sign-in expired. Changes will be saved locally until you sign in again.</span>
+            <MudSpacer />
+            <MudButton Color="Color.Inherit" Variant="Variant.Outlined" Size="Size.Small"
+                       OnClick="HandleReSignIn">Sign in</MudButton>
+        </div>
+    }
+
+    @if (_navOpen)
+    {
+        <div class="nav-scrim" @onclick="CloseNav"></div>
+    }
+
+    <div class="page-body">
+        <aside class="sidebar @(_navOpen ? "sidebar-open" : null)">
+            <NavMenu OnNavigate="CloseNav" />
+        </aside>
+        <main>
+            <article class="content">
+                <CascadingValue Value="SetPageTitle" Name="SetPageTitle">
+                    @* ErrorBoundary keyed to the URL so a navigation away from a crashed
+                       page resets the boundary and re-renders the new page. Without this,
+                       the auth-expired AccessTokenNotAvailableException thrown from any
+                       OnInitializedAsync data fetch bubbles to the renderer and triggers
+                       the framework's red "An unhandled error has occurred" bar — visual
+                       duplicate of the orange session-expired banner that's already
+                       telling the user what to do. *@
+                    <ErrorBoundary @ref="_errorBoundary" @key="@_currentUri">
+                        <ChildContent>
+                            @Body
+                        </ChildContent>
+                        <ErrorContent Context="ex">
+                            @if (ex is Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenNotAvailableException)
+                            {
+                                @* Orange banner above already explains. Nothing to add here. *@
+                                <div></div>
+                            }
+                            else
+                            {
+                                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
+                                    Something went wrong on this page.
+                                    <MudButton Color="Color.Inherit" Size="Size.Small" OnClick="ResetErrorBoundary">Retry</MudButton>
+                                </MudAlert>
+                            }
+                        </ErrorContent>
+                    </ErrorBoundary>
+                </CascadingValue>
+            </article>
+        </main>
+    </div>
+</div>
+
+@if (_hasIntranetAccess)
+{
+    <HeaderSearchDialog />
+}
+
+@code {
+    private readonly MudTheme _theme = AppTheme.Build();
+    private MudThemeProvider? _themeProvider;
+    private bool _isDarkMode;
+    private bool _initialized;
+    private bool _navOpen;
+    private bool _hasIntranetAccess;
+
+    private string pageTitle = string.Empty;
+    private Action<string>? _setPageTitle;
+
+    // ErrorBoundary state — keyed to the URL so a navigation away from a crashed
+    // page resets the boundary automatically. Without the key, an error sticks
+    // until the user calls Recover() manually.
+    private ErrorBoundary? _errorBoundary;
+    private string _currentUri = string.Empty;
+
+    private void ResetErrorBoundary() => _errorBoundary?.Recover();
+
+    private Action<string> SetPageTitle => _setPageTitle ??= (title) =>
+    {
+        if (pageTitle != title)
+        {
+            pageTitle = title;
+            InvokeAsync(StateHasChanged);
+        }
+    };
+
+    private string PillLabel => Impersonation.Roles.Count switch
+    {
+        0 => "Viewing as: no roles",
+        1 => $"Viewing as {Impersonation.Roles[0]}",
+        _ => $"Viewing as {Impersonation.Roles.Count} roles",
+    };
+
+    protected override void OnInitialized()
+    {
+        Impersonation.Changed += OnDependencyChanged;
+        Theme.Changed += OnThemeChanged;
+        SessionExpiry.Changed += OnDependencyChanged;
+        AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+
+        // Track the URL so the ErrorBoundary's @key changes on every navigation,
+        // which resets the boundary if a previous page crashed.
+        _currentUri = Navigation.Uri;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshIntranetAccessAsync();
+    }
+
+    private void OnAuthStateChanged(Task<AuthenticationState> t) => _ = RefreshIntranetAccessAsync();
+
+    private async Task RefreshIntranetAccessAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        var hasAccess = Constants.Roles.HasScopedAccess(state.User, Constants.Scopes.Intranet);
+        if (_hasIntranetAccess == hasAccess)
+            return;
+
+        _hasIntranetAccess = hasAccess;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (_currentUri == e.Location) return;
+        _currentUri = e.Location;
+        // Drop the previous page's app-bar title immediately. The destination page
+        // will set the correct title when it loads — without this, a fast series of
+        // intranet navigations left a trail of stale titles until each load finished.
+        if (!string.IsNullOrEmpty(pageTitle))
+            pageTitle = string.Empty;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleReSignIn()
+    {
+        var options = new InteractiveRequestOptions
+        {
+            Interaction = InteractionType.SignIn,
+            ReturnUrl = Navigation.Uri
+        };
+        Navigation.NavigateToLogin("authentication/login", options);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized) return;
+        _initialized = true;
+
+        await Theme.InitAsync();
+        await ApplyModeAsync();
+        await EnsureBrowserSessionMarkedAsync();
+        StateHasChanged();
+    }
+
+    private async Task EnsureBrowserSessionMarkedAsync()
+    {
+        try
+        {
+            var sessionActive = await JS.InvokeAsync<string?>(
+                "sessionStorage.getItem", NavigationPersistenceService.SessionActiveKey);
+            if (string.IsNullOrEmpty(sessionActive))
+            {
+                await JS.InvokeVoidAsync(
+                    "sessionStorage.setItem", NavigationPersistenceService.SessionActiveKey, "1");
+            }
+        }
+        catch
+        {
+            // Non-fatal.
+        }
+    }
+
+    private async void OnThemeChanged()
+    {
+        await ApplyModeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyModeAsync()
+    {
+        if (Theme.Mode == ThemeMode.Light)
+            _isDarkMode = false;
+        else if (Theme.Mode == ThemeMode.Dark)
+            _isDarkMode = true;
+        else if (_themeProvider is not null)
+            _isDarkMode = await _themeProvider.GetSystemDarkModeAsync();
+    }
+
+    private void ToggleNav() => _navOpen = !_navOpen;
+    private void CloseNav() => _navOpen = false;
+
+    private void OnDependencyChanged() => InvokeAsync(StateHasChanged);
+
+    private Task ClearImpersonation() => Impersonation.ClearAsync();
+
+    private void DisposeLocationChanged()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    public void Dispose()
+    {
+        Impersonation.Changed -= OnDependencyChanged;
+        Theme.Changed -= OnThemeChanged;
+        SessionExpiry.Changed -= OnDependencyChanged;
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+        DisposeLocationChanged();
+    }
+}

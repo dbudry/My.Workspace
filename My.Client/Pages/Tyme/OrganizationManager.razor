@@ -1,0 +1,165 @@
+@page "/tyme/organizations"
+@* Open to any Tyme-scoped user (Tyme:User / Manager / Admin). Read-only view for regular
+   scoped users. Mutation actions (Add/Edit/Delete) are gated by canManage below.
+   A pure global Admin (no Tyme:* scope) is denied at the page level, just like Intranet. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+
+@using My.Client.Models
+@using My.Client.Components.Organizations
+
+<PageTitle>Manage Organizations</PageTitle>
+
+<PageHeader Title="Organizations" Description="Customers, departments, and the people you work with." />
+
+    <MudTable @ref="table" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+              RowClassFunc="@((OrgDisplayRow row, int _) => row.IsOrgRow ? "" : "dept-row")">
+        <ToolBarContent>
+            @if (canManage)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="AddOrganization">Add Org</MudButton>
+            }
+            @* Inactive/Archived toggles are manager tools — regular users browsing for
+               an org to associate with their task only care about the active set. *@
+            @if (canManage)
+            {
+                <MudSwitch T="bool" Class="ml-4" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
+                           ValueChanged="@OnShowInactiveChanged" />
+                <MudSwitch T="bool" Class="ml-4" Value="showArchived" Label="View Archived" Color="Color.Secondary"
+                           ValueChanged="@OnShowArchivedChanged" />
+            }
+            <MudSpacer />
+            <MudTextField Value="searchString" ValueChanged="@(async (string v) => await OnSearchChanged(v))" Placeholder="Search" Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
+                          Immediate="true" DebounceInterval="300" />
+            <MudTooltip Text="@(sortAscending ? "Sort Descending" : "Sort Ascending")">
+                <MudIconButton Icon="@(sortAscending ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward)"
+                               Size="Size.Small" OnClick="ToggleSortDirection" />
+            </MudTooltip>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Organization</MudTh>
+            <MudTh Style="width:100px;">Contacts</MudTh>
+            <MudTh Style="width:120px;">Departments</MudTh>
+            <MudTh Style="width:100px;">Status</MudTh>
+            <MudTh Style="width:200px; text-align:center;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @if (context.IsOrgRow)
+            {
+                var org = context.Organization!;
+                var orgColor = org.Color ?? "#9e9e9e";
+                <MudTd DataLabel="Organization" Style="@($"border-left: 4px solid {orgColor}; padding-left: 12px;")">
+                    <MudLink Typo="Typo.body2" Style="font-weight:600; cursor:pointer;"
+                             Color="Color.Inherit" Underline="Underline.Hover"
+                             OnClick="@(() => ViewOrganization(org))">@org.Name</MudLink>
+                </MudTd>
+                <MudTd DataLabel="Contacts">@(org.Contacts?.Count ?? org.ContactCount)</MudTd>
+                <MudTd DataLabel="Departments">@(org.Departments?.Count ?? org.DepartmentCount)</MudTd>
+                <MudTd DataLabel="Status">
+                    @if (org.IsArchived)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Dark">Archived</MudChip>
+                    }
+                    else if (!org.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Inactive</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align:center;">
+                    @if (canManage)
+                    {
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                            <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditOrganization(org))">Edit</MudMenuItem>
+                            @if (org.IsActive)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(() => AddDepartment(org))">Add department</MudMenuItem>
+                            }
+                            @if (!org.IsArchived)
+                            {
+                                <MudMenuItem Icon="@(org.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
+                                             OnClick="@(() => ToggleActive(org))">
+                                    @(org.IsActive ? "Set inactive" : "Set active")
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveOrganization(org))">Archive</MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveOrganization(org))">Unarchive</MudMenuItem>
+                            }
+                            @if (allowOrgDelete)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => DeleteOrganization(org))">Delete</MudMenuItem>
+                            }
+                        </MudMenu>
+                    }
+                </MudTd>
+            }
+            else
+            {
+                var dept = context.Department!;
+                var org = context.Organization!;
+                var orgColor = org.Color ?? "#9e9e9e";
+                <MudTd DataLabel="Department" Style="@($"border-left: 4px solid {orgColor}; padding-left: 12px;")">
+                    <div class="d-flex align-center" style="padding-left:32px;">
+                        <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" Color="Color.Success" Class="mr-2" />
+                        <MudLink Typo="Typo.body2" Style="cursor:pointer;"
+                                 Color="Color.Inherit" Underline="Underline.Hover"
+                                 OnClick="@(() => ViewDepartment(org, dept))">@dept.Name</MudLink>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Contacts">@(dept.Contacts?.Count ?? 0)</MudTd>
+                <MudTd DataLabel="Departments" />
+                <MudTd DataLabel="Status">
+                    @if (dept.IsArchived)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Dark">Archived</MudChip>
+                    }
+                    else if (!dept.IsActive)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning">Inactive</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions" Style="text-align:center;">
+                    @if (canManage)
+                    {
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                            <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditDepartment(org, dept))">Edit</MudMenuItem>
+                            @if (!dept.IsArchived)
+                            {
+                                <MudMenuItem Icon="@(dept.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
+                                             OnClick="@(() => ToggleDepartmentActive(dept))">
+                                    @(dept.IsActive ? "Set inactive" : "Set active")
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveDepartment(dept))">Archive</MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveDepartment(dept))">Unarchive</MudMenuItem>
+                            }
+                            @if (allowOrgDelete)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => DeleteDepartment(dept))">Delete</MudMenuItem>
+                            }
+                        </MudMenu>
+                    }
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent>
+            <EmptyState Icon="@Icons.Material.Outlined.Business"
+                        Title="No organizations to display"
+                        Message="@GetEmptyMessage()" />
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>

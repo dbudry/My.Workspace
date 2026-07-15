@@ -1,0 +1,157 @@
+@attribute [Authorize]
+@using My.Client.Models.Dashboard
+@using My.Shared
+
+@* The "Dashboard" page title comes from the app bar (set by Index.razor); on mobile
+   the app bar collapses and the page title still appears via PageHeader-equivalent
+   surfaces. We don't render an inline h5 here because it would duplicate. *@
+
+@if (profileLoadFailed)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4" Icon="@Icons.Material.Filled.CloudOff">
+        <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+            <span>
+                Signed in with Google, but your app profile didn't load (the server may have been starting up).
+                Dashboard data stays empty until your profile is loaded.
+            </span>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       Disabled="@isRetryingProfile"
+                       OnClick="RetryProfileLoadAsync">
+                @(isRetryingProfile ? "Retrying…" : "Retry")
+            </MudButton>
+        </div>
+    </MudAlert>
+}
+
+@if (overdueMonths.Count > 0)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4" Icon="@Icons.Material.Filled.Schedule">
+        <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+            <span>
+                You have <b>@overdueMonths.Count</b>
+                unsubmitted month@(overdueMonths.Count == 1 ? string.Empty : "s"):
+                @string.Join(", ", overdueMonths.Select(m => new DateTime(m.Year, m.Month, 1).ToString("MMM yyyy")))
+            </span>
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Send"
+                       OnClick="@(() => Navigation.NavigateTo("tyme/submit"))">
+                Submit Tasks
+            </MudButton>
+        </div>
+    </MudAlert>
+}
+
+<PageLoader IsLoading="@isLoading">
+    @if (profileLoadFailed)
+    {
+        @* Alert rendered above; keep shell empty until profile loads. *@
+    }
+    else if (loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+                <span>@loadError</span>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="ReloadAsync">Retry</MudButton>
+            </div>
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudCard Class="mb-3 d-flex flex-column" Style="height:100%;">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Project mix (last 12 months)</MudText>
+                            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                                Grouped by @AxisLabel.
+                            </MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudToggleGroup T="ChartAxis" @bind-Value="selectedAxis" Color="Color.Primary"
+                                            SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                <MudToggleItem Value="ChartAxis.Organization">Organization</MudToggleItem>
+                                <MudToggleItem Value="ChartAxis.ProjectGroup">Project Group</MudToggleItem>
+                            </MudToggleGroup>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent Class="d-flex justify-center align-center flex-grow-1">
+                        <DoughnutChart Data="@pivotedChartData" Palette="@PivotPalette" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                @* Right column stretches to match the Project Mix card's height —
+                   each top-project card grows equally to fill the column. *@
+                <div class="d-flex flex-column gap-3" style="height:100%;">
+                    <MudCard Class="d-flex flex-column" Style="flex:1;">
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Top project last month</MudText>
+                        </MudCardHeader>
+                        <MudCardContent Class="d-flex justify-center align-center flex-grow-1">
+                            <MudText Typo="Typo.h4" Align="Align.Center">@TopProjectLastMonth</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                    <MudCard Class="d-flex flex-column" Style="flex:1;">
+                        <MudCardHeader>
+                            <MudText Typo="Typo.h6">Top project this month</MudText>
+                        </MudCardHeader>
+                        <MudCardContent Class="d-flex justify-center align-center flex-grow-1">
+                            <MudText Typo="Typo.h4" Align="Align.Center">@TopProjectThisMonth</MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </div>
+            </MudItem>
+        </MudGrid>
+
+        @if (hasIntranetAccess && intranetFavoriteLinks.Any())
+        {
+            <MudCard Class="mt-4">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">Favorite pages</MudText>
+                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                            Quick links to pages you starred in the Intranet.
+                        </MudText>
+                        <MudStack Spacing="1" Class="mt-1">
+                            @foreach (var favorite in intranetFavoriteLinks)
+                            {
+                                <MudLink Href="@IntranetPageUrlHelper.GetViewPath(favorite.PageId, favorite.Slug)" Typo="Typo.body2">
+                                    @favorite.Title
+                                </MudLink>
+                            }
+                        </MudStack>
+                    </CardHeaderContent>
+                </MudCardHeader>
+            </MudCard>
+        }
+
+        @if (canManageTyme)
+        {
+            <MudGrid Class="mt-4">
+                <MudItem xs="12">
+                    <MudCard Class="mb-3">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">Employees with unsubmitted time</MudText>
+                                <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                                    Manager view — past months that have not been submitted.
+                                </MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <My.Client.Components.TimeSubmissions.TeamSubmissionsView
+                                ShowFilters="false"
+                                DefaultStatusFilter="unsubmitted"
+                                MaxRows="10"
+                                EmptyMessage="Nothing outstanding. Everyone is up to date." />
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            </MudGrid>
+        }
+    }
+</PageLoader>

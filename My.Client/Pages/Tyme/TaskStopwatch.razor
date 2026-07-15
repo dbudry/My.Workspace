@@ -1,0 +1,25 @@
+﻿@page "/tyme/taskstopwatch"
+@* Tyme module surface. Requires a Tyme-scoped role (even for global Admins).
+   Matches the Intranet scoping model: global Admin is only for cross-cutting setup. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+@using My.Client.Components.TrackedTasks
+
+<PageTitle>Task Stopwatch</PageTitle>
+
+<PageHeader Title="Stopwatch" Description="Start and stop work items against a project; time accumulates across sessions.">
+    <Actions>
+        <MudTooltip Text="Open mini stopwatch in a separate window">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.OpenInNew"
+                       OnClick="OpenMiniStopwatch">Mini Pop Out</MudButton>
+        </MudTooltip>
+    </Actions>
+</PageHeader>
+
+<div>
+    <TrackTaskTime OnWorkItemStarted="@HandleWorkItemStarted" />
+
+    <MudDivider Class="my-4" />
+
+    <StopwatchItemList @ref="stopwatchItemListComponent" />
+</div>

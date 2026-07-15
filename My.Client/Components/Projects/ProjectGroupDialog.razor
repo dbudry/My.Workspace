@@ -1,0 +1,51 @@
+@namespace My.Client.Components.Projects
+@using My.Client.Models
+@using My.Client.Components
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="form">
+            <DialogFormStack>
+                <MudTextField @bind-Value="Model.Name" Label="Group Name" Required="true"
+                              RequiredError="Group name is required" Immediate="true" AutoFocus="true" />
+
+                <ColorPickerField Label="Color" ColorHex="@colorHex" ColorHexChanged="OnColorHexChanged" />
+            </DialogFormStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">@SubmitLabel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter] public ProjectGroup Model { get; set; } = new();
+    [Parameter] public string SubmitLabel { get; set; } = "Save";
+
+    private MudForm? form;
+    private string colorHex = "#1976d2";
+
+    protected override void OnParametersSet()
+    {
+        colorHex = string.IsNullOrWhiteSpace(Model.Color) ? "#1976d2" : Model.Color;
+    }
+
+    private void OnColorHexChanged(string? value) => colorHex = value ?? "#1976d2";
+
+    private async Task Submit()
+    {
+        if (form != null)
+        {
+            await form.ValidateAsync();
+            if (!form.IsValid) return;
+        }
+
+        Model.Color = colorHex;
+        Dialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

@@ -1,0 +1,70 @@
+@namespace My.Client.Components.TimeSubmissions
+@using My.Shared.Dtos.TimeSubmission
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Unsubmit with corrections</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            @EmployeeName's @MonthLabel has manager corrections. Choose how to handle alias adjustments before unsubmitting.
+        </MudText>
+
+        @if (DirectCorrectionCount > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                @DirectCorrectionCount direct correction(s) will remain on the employee's entries. They can edit tasks after unsubmit, but manager audit history is kept.
+            </MudAlert>
+        }
+
+        <MudRadioGroup T="string" @bind-Value="reconciliation" Class="mb-3">
+            <MudRadio T="string" Value="@("ApplyToTasks")" Color="Color.Primary">
+                Apply adjustments to the employee's tasks (replace originals)
+            </MudRadio>
+            <MudRadio T="string" Value="@("KeepOriginals")" Color="Color.Primary">
+                Keep employee originals (remove alias overlays)
+            </MudRadio>
+        </MudRadioGroup>
+
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Alias corrections in this month</MudText>
+        <MudTable Items="@AliasItems" Dense="true" Hover="false" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Task</MudTh>
+                <MudTh>Original</MudTh>
+                <MudTh>Adjusted</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.OriginalName</MudTd>
+                <MudTd>@context.OriginalStartDate.ToLocalTime().ToString("MM/dd/yyyy") · @FormatDuration(context.OriginalDurationSeconds)</MudTd>
+                <MudTd>@context.AdjustedName · @context.AdjustedStartDate.ToLocalTime().ToString("MM/dd/yyyy") · @FormatDuration(context.AdjustedDurationSeconds)</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Warning" Variant="Variant.Filled" OnClick="Confirm" Disabled="@string.IsNullOrEmpty(reconciliation)">
+            Unsubmit
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public string MonthLabel { get; set; } = "";
+    [Parameter] public int DirectCorrectionCount { get; set; }
+    [Parameter] public List<TimeSubmissionCorrectionItemDto> AliasItems { get; set; } = new();
+
+    private string reconciliation = "KeepOriginals";
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(reconciliation));
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string FormatDuration(double seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return $"{(int)ts.TotalHours:00}:{ts.Minutes:00}";
+    }
+}

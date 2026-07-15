@@ -1,0 +1,56 @@
+@page "/tyme/taskcalendar"
+@* Tyme module surface. Requires a Tyme-scoped role (even for global Admins).
+   Matches the Intranet scoping model: global Admin is only for cross-cutting setup. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+
+@using My.Client.Components.TrackedTasks
+@using My.Client.Models
+@using My.Client.Services
+@using Heron.MudCalendar
+
+<PageTitle>Task Calendar</PageTitle>
+
+<PageHeader Title="Calendar" Description="Visualize and schedule your tracked time across days, weeks, and months." />
+
+<PageLoader IsLoading="@(isLoading || !_calendarReady)">
+    @if (_calendarReady)
+    {
+        <MudCalendar T="TaskCalendarItem" Items="@calendarItems"
+                     ItemClicked="OnItemClicked"
+                     CellClicked="OnCellClicked"
+                     ItemContextMenuClicked="OnItemContextMenu"
+                     ShowDay="true" ShowWeek="true" ShowMonth="true" ShowWorkWeek="true"
+                     ShowTodayButton="true" HighlightToday="true"
+                     MonthCellMinHeight="80"
+                     DayItemMinHeight="20"
+                     FirstDayOfWeek="DayOfWeek.Monday"
+                     FirstDayOfWorkWeek="DayOfWeek.Monday"
+                     Use24HourClock="@SettingsService.Use24HourTime">
+            <CellTemplate>
+                @* Inline="false" makes the tooltip wrapper block-level so the nowrap chip is
+                   constrained to the day-cell width; otherwise the shrink-to-fit inline wrapper
+                   lets the chip grow to the full text width and bleed into the next day when the
+                   window narrows. max-width/box-sizing keep the clip honest inside the cell. *@
+                <MudTooltip Text="@GetChipLabel(context)" Placement="Placement.Top" Inline="false">
+                    <div style="max-width: 100%; box-sizing: border-box; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; background-color: @GetChipColor(context); color: white; padding: 2px 4px; border-radius: 3px; margin-top: 2px;">
+                        @(context.Text)
+                    </div>
+                </MudTooltip>
+            </CellTemplate>
+        </MudCalendar>
+    }
+</PageLoader>
+
+@if (contextMenuVisible)
+{
+    <div @onclick="CloseContextMenu" @oncontextmenu="CloseContextMenu" @oncontextmenu:preventDefault="true"
+         style="position:fixed; inset:0; z-index:9998;"></div>
+    <MudPaper Class="py-1" Elevation="8"
+              Style="@($"position:fixed; top:{contextMenuY}px; left:{contextMenuX}px; z-index:9999; min-width:160px;")">
+        <MudList T="string" Dense="true">
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Edit" OnClick="ContextMenuEdit">Edit</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.ContentCopy" OnClick="ContextMenuDuplicate">Duplicate</MudListItem>
+            <MudListItem T="string" Icon="@Icons.Material.Filled.Delete" OnClick="ContextMenuDelete">Delete</MudListItem>
+        </MudList>
+    </MudPaper>
+}

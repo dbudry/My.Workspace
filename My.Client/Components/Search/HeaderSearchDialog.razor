@@ -1,0 +1,206 @@
+@inject IntranetSearchService SearchService
+@inject NavigationManager Nav
+@inject HeaderSearchUiState UiState
+@using My.Shared
+@using My.Shared.Dtos.Intranet
+@implements IDisposable
+
+@if (UiState.IsOpen)
+{
+    <div class="header-search-backdrop" @onclick="Close"></div>
+
+    <div class="header-search-panel" @onclick:stopPropagation="true" @onkeydown="HandleKeyDown">
+        <div class="header-search-input-row">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Class="header-search-input-icon" />
+            <input @ref="_inputRef"
+                   type="text"
+                   class="header-search-input"
+                   placeholder="Search intranet pages…"
+                   value="@_query"
+                   @oninput="OnInput"
+                   autocomplete="off"
+                   spellcheck="false" />
+            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                           Size="Size.Small"
+                           Color="Color.Inherit"
+                           aria-label="Close search"
+                           OnClick="Close" />
+        </div>
+
+        <div class="header-search-results">
+            @if (_isSearching)
+            {
+                <MudText Typo="Typo.body2" Class="pa-3 mud-text-secondary">Searching…</MudText>
+            }
+            else if (!string.IsNullOrWhiteSpace(_query) && _query.Trim().Length < IntranetSearchHelper.MinQueryLength)
+            {
+                <MudText Typo="Typo.body2" Class="pa-3 mud-text-secondary">
+                    Type at least @IntranetSearchHelper.MinQueryLength characters.
+                </MudText>
+            }
+            else if (_results.Count == 0 && !string.IsNullOrWhiteSpace(_query))
+            {
+                <MudText Typo="Typo.body2" Class="pa-3 mud-text-secondary">No pages match "@_query".</MudText>
+            }
+            else if (_results.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="pa-3 mud-text-secondary">
+                    Search page titles and content across the intranet.
+                </MudText>
+            }
+            else
+            {
+                <ul class="header-search-result-list">
+                    @for (var i = 0; i < _results.Count; i++)
+                    {
+                        var idx = i;
+                        var result = _results[idx];
+                        var isActive = idx == _activeIndex;
+                        <li>
+                            <button type="button"
+                                    class="header-search-result @(isActive ? "active" : "")"
+                                    @onclick="() => Select(result)"
+                                    @onmouseenter="() => _activeIndex = idx">
+                                <span class="header-search-text">
+                                    <span class="header-search-title">
+                                        @result.Title
+                                        @if (!result.IsPublished)
+                                        {
+                                            <span class="header-search-draft">Draft</span>
+                                        }
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(result.Excerpt))
+                                    {
+                                        <span class="header-search-excerpt">@result.Excerpt</span>
+                                    }
+                                </span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+
+        <div class="header-search-footer">
+            <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+            <span><kbd>Enter</kbd> open</span>
+            <span><kbd>Esc</kbd> close</span>
+            <span><kbd>/</kbd> open</span>
+        </div>
+    </div>
+}
+
+@code {
+    private string _query = "";
+    private List<IntranetPageSearchResultDto> _results = [];
+    private int _activeIndex;
+    private bool _isSearching;
+    private ElementReference _inputRef;
+    private CancellationTokenSource? _debounceCts;
+    private int _searchGeneration;
+    private bool _wasOpen;
+
+    protected override void OnInitialized()
+    {
+        UiState.StateChanged += OnUiStateChanged;
+    }
+
+    private void OnUiStateChanged()
+    {
+        if (UiState.IsOpen && !_wasOpen)
+        {
+            _query = "";
+            _results = [];
+            _activeIndex = 0;
+            _debounceCts?.Cancel();
+        }
+
+        _wasOpen = UiState.IsOpen;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (UiState.IsOpen)
+        {
+            try { await _inputRef.FocusAsync(); } catch { }
+        }
+    }
+
+    private void Close() => UiState.Close();
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        _query = e.Value?.ToString() ?? "";
+        _activeIndex = 0;
+        _debounceCts?.Cancel();
+        _debounceCts = new CancellationTokenSource();
+        var debounceToken = _debounceCts.Token;
+
+        try
+        {
+            await Task.Delay(150, debounceToken);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        var generation = ++_searchGeneration;
+        _isSearching = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var results = await SearchService.SearchAsync(_query);
+
+            if (generation != _searchGeneration)
+                return;
+
+            _results = results.ToList();
+        }
+        finally
+        {
+            if (generation == _searchGeneration)
+            {
+                _isSearching = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                Close();
+                break;
+            case "ArrowDown":
+                if (_results.Count > 0)
+                    _activeIndex = Math.Min(_activeIndex + 1, _results.Count - 1);
+                break;
+            case "ArrowUp":
+                if (_results.Count > 0)
+                    _activeIndex = Math.Max(_activeIndex - 1, 0);
+                break;
+            case "Enter":
+                if (_results.Count > 0 && _activeIndex >= 0 && _activeIndex < _results.Count)
+                    Select(_results[_activeIndex]);
+                break;
+        }
+    }
+
+    private void Select(IntranetPageSearchResultDto result)
+    {
+        Close();
+        Nav.NavigateTo(IntranetPageUrlHelper.GetViewPath(result.PageId, result.Slug));
+    }
+
+    public void Dispose()
+    {
+        UiState.StateChanged -= OnUiStateChanged;
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+}

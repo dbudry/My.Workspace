@@ -1,0 +1,305 @@
+@page "/setup"
+@layout Layout.MiniLayout
+@using System.Net.Http.Json
+@using My.Shared.Constants
+@using My.Shared.Dtos.Setup
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@attribute [AllowAnonymous]
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Setup — My Workspace</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6 mb-8">
+    <MudPaper Class="pa-6" Elevation="0" Outlined="true" Style="border-radius: 12px;">
+        <MudText Typo="Typo.h4" GutterBottom="true">Welcome to My Workspace</MudText>
+        <MudText Typo="Typo.body1" Class="mud-text-secondary mb-4">
+            This wizard walks you through first-time setup. You will need a Google Cloud project
+            for sign-in. Estimated time: 20–40 minutes the first time.
+        </MudText>
+
+        @if (_loading)
+        {
+            <div class="d-flex justify-center pa-8">
+                <MudProgressCircular Indeterminate="true" />
+            </div>
+        }
+        else if (_status?.SetupCompleted == true)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4">Setup is already complete.</MudAlert>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/">Go to app</MudButton>
+        }
+        else
+        {
+            <MudChipSet T="string" Class="mb-4" ReadOnly="true">
+                @for (var i = 0; i < _stepTitles.Length; i++)
+                {
+                    var idx = i;
+                    <MudChip T="string" Color="@(idx == _step ? Color.Primary : Color.Default)"
+                             Variant="@(idx == _step ? Variant.Filled : Variant.Outlined)"
+                             Size="Size.Small">
+                        @($"{idx + 1}. {_stepTitles[idx]}")
+                    </MudChip>
+                }
+            </MudChipSet>
+
+            @if (_step == 0)
+            {
+                <MudText Class="mb-3">
+                    My Workspace is a self-hosted Blazor + Azure Functions app for time tracking (Tyme),
+                    an internal intranet, and Google Calendar integration.
+                </MudText>
+                <MudText Class="mb-2">Before continuing, install prerequisites if needed:</MudText>
+                <MudText>• .NET 10 SDK</MudText>
+                <MudText>• Azure Functions Core Tools v4</MudText>
+                <MudText>• Docker Desktop (recommended for SQL)</MudText>
+                <MudText Class="mb-3">• A Google account for Cloud Console</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    Full guide: docs/SETUP-FROM-SCRATCH.md in the repository.
+                </MudText>
+            }
+            else if (_step == 1)
+            {
+                <MudText Class="mb-3">Checking that the API and database are reachable…</MudText>
+                @CheckRow("API reachable", _apiReachable, _apiDetail)
+                @CheckRow("Database ready", _status?.DatabaseReady == true, "SQL connection from the API")
+                @CheckRow("Google Client ID (server)", _status?.GoogleClientIdConfiguredOnServer == true, "Google__ClientId in Function settings")
+                @CheckRow("Google Client ID (browser)", _clientIdConfigured, "Authentication:Google:ClientId in appsettings")
+                <MudButton Class="mt-3" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="RefreshStatusAsync">Refresh checks</MudButton>
+                @if (!_apiReachable)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-3">
+                        Start the API (e.g. .\Scripts\Dev-StartDebugSession.ps1) and set ApiBaseUrl in
+                        appsettings.Development.json.
+                    </MudAlert>
+                }
+            }
+            else if (_step == 2)
+            {
+                <MudText Class="mb-2">Create OAuth credentials in Google Cloud Console:</MudText>
+                <MudText Class="mb-1">1. Open Google Cloud Console and create or select a project.</MudText>
+                <MudText Class="mb-1">2. APIs &amp; Services → OAuth consent screen → configure.</MudText>
+                <MudText Class="mb-1">3. Credentials → Create credentials → OAuth client ID → Web application.</MudText>
+                <MudText Class="mb-2">4. Add these Authorized redirect URIs:</MudText>
+                <MudPaper Class="pa-3 mb-3" Outlined="true">
+                    @foreach (var uri in RedirectUris)
+                    {
+                        <div class="d-flex align-center mb-1">
+                            <MudText Typo="Typo.body2" Style="font-family: monospace; word-break: break-all;">@uri</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                           OnClick="@(() => CopyAsync(uri))" />
+                        </div>
+                    }
+                </MudPaper>
+                <MudText Class="mb-1">Put the Client ID in:</MudText>
+                <MudText Typo="Typo.body2">• My.Client/wwwroot/appsettings.json → Authentication:Google:ClientId</MudText>
+                <MudText Typo="Typo.body2" Class="mb-2">• My.AzureFunction/local.settings.json → Google__ClientId</MudText>
+                <MudText Class="mb-2">Optional: enable Google Calendar API and Google Drive API in the same project.</MudText>
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    After changing appsettings, restart the Functions host and refresh this page.
+                    See docs/SETUP-GOOGLE-CLOUD.md.
+                </MudAlert>
+            }
+            else if (_step == 3)
+            {
+                <MudText Class="mb-3">
+                    Who may sign in? Later users must be invited by an admin;
+                    only the first user becomes admin automatically.
+                </MudText>
+                <MudTextField @bind-Value="_displayName" Label="Workspace display name" Variant="Variant.Outlined"
+                              Class="mb-3" />
+                <MudTextField @bind-Value="_allowedDomains" Label="Allowed email domain(s)"
+                              HelperText="e.g. example.com — or * for any verified Google account (use carefully on public URLs)"
+                              Variant="Variant.Outlined" Class="mb-3" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_saving"
+                           OnClick="SaveConfigureAsync">
+                    @(_saving ? "Saving…" : "Save access policy")
+                </MudButton>
+                @if (_status?.AllowedDomainsConfigured == true)
+                {
+                    <MudAlert Severity="Severity.Success" Class="mt-3" Dense="true">
+                        Saved: @(_status.AllowedEmailDomains)
+                    </MudAlert>
+                }
+            }
+            else if (_step == 4)
+            {
+                @if (_status?.AllowedDomainsConfigured != true)
+                {
+                    <MudAlert Severity="Severity.Warning">Save an access policy on the previous step first.</MudAlert>
+                }
+                else if (!_clientIdConfigured || _status?.GoogleClientIdConfiguredOnServer != true)
+                {
+                    <MudAlert Severity="Severity.Warning">
+                        Configure Google Client ID on both the client and the API, then refresh.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudText Class="mb-3">
+                        Sign in with a Google account on an allowed domain. The first successful sign-in
+                        becomes global Admin (plus Tyme and Intranet admin).
+                    </MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                               StartIcon="@Icons.Material.Filled.Login"
+                               OnClick="SignInAsAdmin">
+                        Sign in with Google
+                    </MudButton>
+                }
+            }
+
+            <div class="d-flex justify-space-between mt-6">
+                <MudButton Variant="Variant.Text" Disabled="@(_step <= 0)" OnClick="() => _step--">Back</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           Disabled="@(_step == 1 && !_apiReachable)"
+                           OnClick="NextAsync">
+                    @(_step >= 4 ? "Refresh status" : "Next")
+                </MudButton>
+            </div>
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private static readonly string[] _stepTitles = ["Welcome", "Environment", "Google", "Access", "Admin"];
+
+    private bool _loading = true;
+    private bool _apiReachable;
+    private string _apiDetail = "";
+    private bool _clientIdConfigured;
+    private bool _saving;
+    private int _step;
+    private SetupStatusDto? _status;
+    private string _displayName = "My Workspace";
+    private string _allowedDomains = "";
+
+    private IEnumerable<string> RedirectUris
+    {
+        get
+        {
+            var origin = Navigation.BaseUri.TrimEnd('/');
+            return new[]
+            {
+                $"{origin}/authentication/login-callback",
+                $"{origin}/settings"
+            };
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var cid = Configuration["Authentication:Google:ClientId"] ?? "";
+        _clientIdConfigured = !string.IsNullOrWhiteSpace(cid)
+            && !cid.Contains("YOUR_", StringComparison.OrdinalIgnoreCase)
+            && !cid.Contains("placeholder", StringComparison.OrdinalIgnoreCase);
+        await RefreshStatusAsync();
+        _loading = false;
+    }
+
+    private async Task RefreshStatusAsync()
+    {
+        try
+        {
+            var apiBase = Configuration["ApiBaseUrl"] ?? "api/";
+            var url = new Uri(new Uri(Navigation.BaseUri), apiBase + Constants.API.Setup.Status).ToString();
+            _status = await Http.GetFromJsonAsync<SetupStatusDto>(url);
+            _apiReachable = true;
+            _apiDetail = "OK";
+            if (_status != null)
+            {
+                if (!string.IsNullOrWhiteSpace(_status.DisplayName))
+                    _displayName = _status.DisplayName;
+                if (!string.IsNullOrWhiteSpace(_status.AllowedEmailDomains))
+                    _allowedDomains = _status.AllowedEmailDomains;
+                if (_status.SetupCompleted)
+                    Navigation.NavigateTo("/", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _apiReachable = false;
+            _apiDetail = ex.Message;
+            _status = null;
+        }
+    }
+
+    private async Task NextAsync()
+    {
+        if (_step >= 4)
+        {
+            await RefreshStatusAsync();
+            return;
+        }
+        if (_step == 1)
+            await RefreshStatusAsync();
+        _step++;
+    }
+
+    private async Task SaveConfigureAsync()
+    {
+        _saving = true;
+        try
+        {
+            var apiBase = Configuration["ApiBaseUrl"] ?? "api/";
+            var url = new Uri(new Uri(Navigation.BaseUri), apiBase + Constants.API.Setup.Configure).ToString();
+            var body = new SetupConfigureRequest
+            {
+                DisplayName = _displayName,
+                AllowedEmailDomains = _allowedDomains
+            };
+            var resp = await Http.PostAsJsonAsync(url, body);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                Snackbar.Add($"Could not save: {err}", Severity.Error);
+                return;
+            }
+            Snackbar.Add("Access policy saved.", Severity.Success);
+            await RefreshStatusAsync();
+            _step = 4;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void SignInAsAdmin() => Navigation.NavigateToLogin("authentication/login");
+
+    private async Task CopyAsync(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Snackbar.Add("Copied.", Severity.Info);
+        }
+        catch
+        {
+            Snackbar.Add(text, Severity.Normal);
+        }
+    }
+
+    private RenderFragment CheckRow(string label, bool ok, string? detail) => __builder =>
+    {
+        <div class="d-flex align-center gap-2 mb-2">
+            <MudIcon Icon="@(ok ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                     Color="@(ok ? Color.Success : Color.Error)" Size="Size.Small" />
+            <div>
+                <MudText Typo="Typo.subtitle2">@label</MudText>
+                @if (!string.IsNullOrEmpty(detail))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@detail</MudText>
+                }
+            </div>
+        </div>
+    };
+}

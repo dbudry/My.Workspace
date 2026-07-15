@@ -1,0 +1,138 @@
+@page "/tyme/dataextraction"
+@attribute [Authorize(Policy = "Tyme:Admin:Scoped")]
+
+<PageTitle>Data Extraction</PageTitle>
+
+<PageHeader Title="Data Extraction"
+            Description="Export raw Tyme table data for selected datasets. Reference tables can be exported without a date range; time-based tables require from and to dates." />
+
+@if (!isAuthorized && !isLoading)
+{
+    <MudAlert Severity="Severity.Warning">You must be a Tyme Admin to use data extraction.</MudAlert>
+}
+else if (isAuthorized || isLoading)
+{
+    <PageLoader IsLoading="@isLoading">
+        <MudPaper Class="pa-4 mb-3 dataextraction-panel" Elevation="0" Outlined="true">
+            <MudGrid Spacing="4">
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Datasets</MudText>
+                    <MudGrid Spacing="2">
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.caption" Class="mb-1 mud-text-secondary">Reference data</MudText>
+                            @foreach (var entity in referenceEntities)
+                            {
+                                <MudCheckBox T="bool" Value="@selectedEntities.Contains(entity.Key)" Label="@entity.Label" Dense="true"
+                                             ValueChanged="@((bool v) => ToggleEntity(entity.Key, v))" />
+                            }
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.caption" Class="mb-1 mud-text-secondary">Time-based data</MudText>
+                            @foreach (var entity in transactionalEntities)
+                            {
+                                <MudCheckBox T="bool" Value="@selectedEntities.Contains(entity.Key)" Label="@entity.Label" Dense="true"
+                                             ValueChanged="@((bool v) => ToggleEntity(entity.Key, v))" />
+                            }
+                        </MudItem>
+                    </MudGrid>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Filters</MudText>
+                    <MudGrid Spacing="2" Class="dataextraction-filters">
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="2">
+                                <div class="dataextraction-date-field">
+                                    <MudDatePicker @bind-Date="dateFrom" Label="Date From" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                   DateFormat="MM/dd/yyyy" Editable="true"
+                                                   Disabled="@(!dateRangeFilterEnabled)"
+                                                   Required="@requiresDateRange" />
+                                </div>
+                                <div class="dataextraction-date-field">
+                                    <MudDatePicker @bind-Date="dateTo" Label="Date To" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                   DateFormat="MM/dd/yyyy" Editable="true"
+                                                   Disabled="@(!dateRangeFilterEnabled)"
+                                                   Required="@requiresDateRange" />
+                                </div>
+                                @if (requiresDateRange)
+                                {
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Required for time-based datasets.</MudText>
+                                }
+                                <div class="dataextraction-employees-field">
+                                    <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" FullWidth="true"
+                                             Disabled="@(!employeesFilterEnabled || userOptions.Count == 0)" MaxHeight="300">
+                                        <ActivatorContent>
+                                            <div @onclick="context.ToggleAsync" class="dataextraction-employees-activator">
+                                                <MudTextField T="string" Value="@EmployeeSelectionLabel" Label="Employees"
+                                                              Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true" FullWidth="true"
+                                                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ArrowDropDown"
+                                                              Disabled="@(!employeesFilterEnabled || userOptions.Count == 0)" />
+                                            </div>
+                                        </ActivatorContent>
+                                    <ChildContent>
+                                        <div class="px-2 py-1 dataextraction-employees-menu" @onclick:stopPropagation="true">
+                                            <MudTextField T="string" @bind-Value="employeeSearchText" Placeholder="Search employees"
+                                                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                                          Immediate="true" Class="mb-1" />
+                                            <MudCheckBox T="bool" Value="selectAllEmployeesChecked" Label="Select All" Dense="true"
+                                                         ValueChanged="OnSelectAllEmployeesChanged" />
+                                            <MudCheckBox T="bool" Value="selectNoneEmployeesChecked" Label="Select None" Dense="true"
+                                                         ValueChanged="OnSelectNoneEmployeesChanged" />
+                                            <MudDivider Class="my-1" />
+                                            @foreach (var u in FilteredEmployeeOptions)
+                                            {
+                                                <MudCheckBox T="bool" Value="@selectedUserIds.Contains(u.UserId)" Label="@u.UserName" Dense="true"
+                                                             ValueChanged="@((bool v) => OnEmployeeCheckboxChanged(u.UserId, v))" />
+                                            }
+                                        </div>
+                                    </ChildContent>
+                                    </MudMenu>
+                                </div>
+                                <MudSwitch T="bool" @bind-Value="includeArchived" Label="Include Archive" Color="Color.Primary"
+                                           Disabled="@(!includeArchivedFilterEnabled)" />
+                            </MudStack>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudStack Spacing="2">
+                                <MudAutocomplete T="FilterOption" Value="selectedOrganizationOption" ValueChanged="OnSelectedOrganizationChanged" Label="Organizations"
+                                                 Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                                 Clearable="true" OpenOnFocus="true" CoerceText="false" FullWidth="true"
+                                                 Disabled="@(!organizationFilterEnabled)"
+                                                 SearchFunc="@SearchOrganizationOptions"
+                                                 ToStringFunc="@(o => o?.Name ?? string.Empty)" />
+                                <MudAutocomplete T="FilterOption" Value="selectedProjectOption" ValueChanged="OnSelectedProjectChanged" Label="Project"
+                                                 Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                                 Clearable="true" OpenOnFocus="true" CoerceText="false" FullWidth="true"
+                                                 Disabled="@(!projectFilterEnabled)"
+                                                 SearchFunc="@SearchProjectOptions"
+                                                 ToStringFunc="@(p => p?.Name ?? string.Empty)" />
+                                <MudAutocomplete T="FilterOption" Value="selectedProjectGroupOption" ValueChanged="OnSelectedProjectGroupChanged" Label="Project Group"
+                                                 Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                                 Clearable="true" OpenOnFocus="true" CoerceText="false" FullWidth="true"
+                                                 Disabled="@(!projectGroupFilterEnabled)"
+                                                 SearchFunc="@SearchProjectGroupOptions"
+                                                 ToStringFunc="@(g => g?.Name ?? string.Empty)" />
+                            </MudStack>
+                        </MudItem>
+                    </MudGrid>
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="dataextraction-export-row">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.TableView"
+                                   Disabled="@isExporting"
+                                   OnClick="ExportExcelAsync">
+                            Export Excel
+                        </MudButton>
+                        @if (!string.IsNullOrEmpty(validationMessage))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">@validationMessage</MudText>
+                        }
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        </MudPaper>
+    </PageLoader>
+}

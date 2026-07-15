@@ -1,0 +1,223 @@
+@page "/authentication/{action}"
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using My.Client.Services
+@using My.Shared.Constants
+@inject IHttpClientFactory ClientFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<Authentication> Logger
+@inject SessionExpiryService SessionExpiry
+
+@if (_silentFailureDetected)
+{
+    @BusyView("Signing you in…")
+}
+else
+{
+    <RemoteAuthenticatorView Action="@Action"
+                             OnLogInSucceeded="OnLoginSucceeded"
+                             OnLogOutSucceeded="OnLogoutSucceeded">
+        <LoggingIn>
+            @BusyView("Redirecting to Google…")
+        </LoggingIn>
+        <CompletingLoggingIn>
+            @BusyView("Completing sign-in…")
+        </CompletingLoggingIn>
+        <LogInFailed>
+            @{ HandleLoginFailed(); }
+            @BusyView("Retrying sign-in…")
+        </LogInFailed>
+        <LogOut>
+            @BusyView("Signing you out…")
+        </LogOut>
+        <CompletingLogOut>
+            @BusyView("Finishing sign-out…")
+        </CompletingLogOut>
+    </RemoteAuthenticatorView>
+}
+
+@* Inline busy view so every auth phase shows a spinner + descriptive text instead of
+   the OIDC library's static default. After 15s a soft hint appears suggesting a refresh —
+   intentionally NOT a watchdog: no navigation, no storage clearing, just text. *@
+@code {
+    private RenderFragment BusyView(string message) => __builder =>
+    {
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; gap: 16px;">
+            <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1">@message</MudText>
+            @if (_showSlowHint)
+            {
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary); max-width: 400px; text-align: center;">
+                    Taking longer than usual. If this stays for more than another minute,
+                    try refreshing the page.
+                </MudText>
+            }
+        </div>
+    };
+}
+
+@code {
+    [Parameter] public string? Action { get; set; }
+
+    private static bool _silentLoginAttempted;
+    private bool _redirecting;
+    private bool _silentFailureDetected;
+    private bool _loggedOutHandled;
+    private bool _showSlowHint;
+    private CancellationTokenSource? _slowHintCts;
+
+    protected override void OnParametersSet()
+    {
+        // The OIDC library doesn't surface Google's prompt=none failures through <LogInFailed>,
+        // so the callback page hangs on "Completing login…". Detect the error fragment
+        // ourselves and fall back to interactive login immediately.
+        //
+        // Must run in OnParametersSet (not OnInitialized) because Blazor reuses this component
+        // across action changes (login-callback → login), and we need the flag to clear when
+        // the URL no longer has the error so RemoteAuthenticatorView can mount and drive the
+        // interactive redirect.
+        _silentFailureDetected =
+            string.Equals(Action, "login-callback", StringComparison.OrdinalIgnoreCase) &&
+            Navigation.Uri.Contains("error=interaction_required", StringComparison.OrdinalIgnoreCase);
+
+        if (_silentFailureDetected)
+        {
+            HandleLoginFailed();
+        }
+
+        // (Re)start the slow-hint timer for any auth action. Reset on action change
+        // because each action is its own busy phase and the user shouldn't see "taking
+        // longer" text immediately after switching from login to login-callback.
+        _slowHintCts?.Cancel();
+        _showSlowHint = false;
+        if (!string.IsNullOrEmpty(Action))
+        {
+            _slowHintCts = new CancellationTokenSource();
+            _ = ShowSlowHintAfterDelayAsync(_slowHintCts.Token);
+        }
+    }
+
+    private async Task ShowSlowHintAfterDelayAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(15), ct);
+            _showSlowHint = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { /* component disposed or action changed */ }
+    }
+
+    public void Dispose()
+    {
+        _slowHintCts?.Cancel();
+        _slowHintCts?.Dispose();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Edge case: user refreshes /authentication/logged-out, or lands on it via a
+        // bookmark / direct URL. Without this, OIDC tokens still in sessionStorage would
+        // re-restore the user as authenticated on the next render — nav menu reappears,
+        // profile avatar reappears, but the page text still says "you are logged out".
+        // Clear OIDC's sessionStorage state and bounce home where the LandingPart shows.
+        //
+        // Safe (unlike a watchdog on login-callback): logged-out is a real top-window
+        // navigation, not the silent-renewal iframe. Clearing sessionStorage here can't
+        // disrupt any concurrent silent-renewal because that uses login-callback, not
+        // logged-out.
+        if (!_loggedOutHandled
+            && string.Equals(Action, "logged-out", StringComparison.OrdinalIgnoreCase))
+        {
+            _loggedOutHandled = true;
+            try { await JS.InvokeVoidAsync("sessionStorage.clear"); } catch { }
+            Navigation.NavigateTo("/", forceLoad: false);
+        }
+    }
+
+    private async Task OnLogoutSucceeded()
+    {
+        // Primary path: fires once the OIDC library completes its logout dance.
+        // Clear the sessionStorage OIDC tokens so a subsequent refresh on a logged-out
+        // URL can't re-restore the user, then bounce home so the LandingPart drives the
+        // re-login.
+        try { await JS.InvokeVoidAsync("sessionStorage.clear"); } catch { }
+        Navigation.NavigateTo("/", forceLoad: false);
+    }
+
+    private async Task OnLoginSucceeded()
+    {
+        _silentLoginAttempted = false;
+
+        // Clear the logout flag so future visits attempt silent login. Provisioning
+        // (and role fetch) happens in CustomAccountFactory when the auth state is
+        // evaluated — duplicating it here would block the post-login auto-navigate
+        // on an extra cold-start roundtrip.
+        await JS.InvokeVoidAsync("localStorage.removeItem", "userLoggedOut");
+
+        // Clear the orange "session expired" banner immediately. Without this, the
+        // banner persists until the next API call succeeds and trips
+        // TokenExpiryDelegatingHandler.Reset() — leaving a confusing "logged in but
+        // still nagging me to log in" window. Login just succeeded; tokens are fresh.
+        SessionExpiry.Reset();
+
+        // Watchdog: the OIDC library is supposed to navigate away from
+        // /authentication/login-callback after a successful sign-in (back to the
+        // saved ReturnUrl). In practice it reliably fails after an idle re-auth —
+        // user lands here, sees "Completing sign-in…", spinner spins forever, and
+        // they have to manually click a nav link to unstick the app. Mirror what
+        // OnLogoutSucceeded already does: force-navigate to root once login is
+        // confirmed. The dashboard's auth-aware components take it from there.
+        //
+        // Skip when we're inside the silent-renewal iframe (it's hidden — navigation
+        // there is wasted work and could re-run the dashboard in an invisible frame).
+        try
+        {
+            var inIframe = await JS.InvokeAsync<bool>("eval", "window.top !== window");
+            if (!inIframe &&
+                Navigation.Uri.Contains("/authentication/login-callback", StringComparison.OrdinalIgnoreCase))
+            {
+                Navigation.NavigateTo("/", forceLoad: false);
+            }
+        }
+        catch
+        {
+            // Bare minimum: if the iframe check fails for any reason, still rescue the
+            // top-frame case. The cost of a redundant navigate in the silent-renewal
+            // iframe is at worst a wasted render in a hidden frame.
+            if (Navigation.Uri.Contains("/authentication/login-callback", StringComparison.OrdinalIgnoreCase))
+                Navigation.NavigateTo("/", forceLoad: false);
+        }
+    }
+
+    private void HandleLoginFailed()
+    {
+        if (_redirecting)
+            return;
+
+        if (_silentLoginAttempted)
+        {
+            // Interactive login also failed — stop retrying
+            Logger.LogWarning("Interactive login also failed. User must sign in manually.");
+            return;
+        }
+
+        _redirecting = true;
+        _silentLoginAttempted = true;
+        Logger.LogInformation("Silent sign-in failed, falling back to interactive login.");
+
+        // Queue the redirect so it happens after this render cycle completes
+        _ = InvokeAsync(() =>
+        {
+            var requestOptions = new InteractiveRequestOptions
+            {
+                Interaction = InteractionType.SignIn,
+                ReturnUrl = Navigation.BaseUri
+            };
+            Navigation.NavigateToLogin("authentication/login", requestOptions);
+        });
+    }
+}

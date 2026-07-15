@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <script>
+        // Dev-only: discourage browser from caching index.html itself. Without this,
+        // an old index (or service worker) can keep serving stale _framework integrity hashes.
+        (function () {
+            var local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            if (!local) return;
+            var meta = document.createElement('meta');
+            meta.httpEquiv = 'Cache-Control';
+            meta.content = 'no-store, no-cache, must-revalidate';
+            document.head.appendChild(meta);
+            document.querySelector('link[rel="manifest"]')?.remove();
+        })();
+    </script>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>My Workspace</title>
+    <base href="/" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="css/intranet-rich-content.css" rel="stylesheet" />
+    <link href="My.Client.styles.css" rel="stylesheet" />
+    <link href="manifest.json" rel="manifest" />
+    <link rel="apple-touch-icon" sizes="200x200" href="icon-logo-200.png" />
+
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+</head>
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <a class="dismiss">&#x1F5D9;</a>
+    </div>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="_content/Microsoft.AspNetCore.Components.WebAssembly.Authentication/AuthenticationService.js"></script>
+    <script src="js/browser-timezone.js"></script>
+    <script src="js/header-search.js"></script>
+    <script src="js/intranet-media.js"></script>
+    <script src="js/quill-editor.js"></script>
+    <script src="js/file-drop.js"></script>
+    <script>
+        // On localhost, tear down any PWA service worker + caches BEFORE loading Blazor.
+        // A stale SW or cached boot manifest can still cause SRI / 404 failures after rebuilds.
+        // NOTE: the old "?cb= reload loop" symptom-fighter is gone — Debug builds disable WASM
+        // asset fingerprinting (see My.Client.csproj), so filenames are stable and a stale boot
+        // manifest resolves to a real file instead of 404'ing into an empty-body integrity error.
+        (async function () {
+            var isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+            function showBootHelp(message) {
+                var ui = document.getElementById('blazor-error-ui');
+                if (!ui) return;
+                ui.style.display = 'block';
+                var extra = ui.querySelector('.boot-help');
+                if (!extra) {
+                    extra = document.createElement('div');
+                    extra.className = 'boot-help';
+                    extra.style.marginTop = '0.5rem';
+                    extra.style.fontSize = '0.9rem';
+                    ui.insertBefore(extra, ui.querySelector('.reload'));
+                }
+                extra.textContent = message;
+            }
+
+            if (isLocal) {
+                if ('serviceWorker' in navigator) {
+                    var regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map(function (r) { return r.unregister(); }));
+                }
+                if ('caches' in window) {
+                    var keys = await caches.keys();
+                    await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                }
+            } else if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('service-worker.js');
+            }
+
+            var blazor = document.createElement('script');
+            blazor.src = '_framework/blazor.webassembly.js';
+            blazor.onerror = function () {
+                showBootHelp('Could not load blazor.webassembly.js. Restart the client with Scripts\\Dev-StartClient.ps1 -Clean.');
+            };
+            document.body.appendChild(blazor);
+        })();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,141 @@
+.nav-scrollable {
+    padding: 0.75rem 0;
+}
+
+.nav-loading {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    gap: 12px;
+}
+
+::deep .mud-nav-link {
+    color: var(--mud-palette-drawer-text);
+    border-radius: 6px;
+    margin: 0.125rem 0.5rem;
+}
+
+::deep .mud-nav-link .mud-nav-link-icon {
+    color: var(--mud-palette-drawer-icon);
+}
+
+::deep .mud-nav-link:hover,
+::deep .mud-nav-group > .mud-nav-link:hover {
+    background-color: color-mix(in srgb, var(--mud-palette-text-primary) 14%, var(--mud-palette-drawer-background));
+    color: var(--mud-palette-text-primary);
+}
+
+::deep .mud-nav-link:hover .mud-nav-link-icon,
+::deep .mud-nav-group > .mud-nav-link:hover .mud-nav-link-icon {
+    color: var(--mud-palette-text-primary);
+}
+
+/* Top-level built-in groups/links align with Dashboard (not only direct mud-navmenu children). */
+.nav-scrollable ::deep .mud-nav-item.nav-top-level > .mud-nav-link,
+.nav-scrollable ::deep .mud-nav-group.nav-top-level > .mud-nav-link,
+.nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level .mud-nav-item > .mud-nav-link {
+    margin-left: 0.5rem !important;
+    margin-right: 0.5rem !important;
+    margin-top: 0.125rem !important;
+    margin-bottom: 0.125rem !important;
+    padding-inline-start: 16px !important;
+    padding-left: 16px !important;
+}
+
+/* Knowledge Base header must not pick up nested-menu padding from MudBlazor. */
+.nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level {
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level .mud-nav-item {
+    margin: 0;
+    width: 100%;
+}
+
+/* Curated nav icons use MudIcon font syntax (material-icons/name) — same 1.5rem Medium size as Tyme/Admin. */
+::deep .curated-nav-group .mud-icon-root.material-icons,
+::deep .curated-nav-group-with-page .mud-icon-root.material-icons,
+::deep .mud-nav-item.curated-nav-link .mud-icon-root.material-icons {
+    color: var(--mud-palette-drawer-icon);
+}
+
+/* MudNavMenu Color="Inherit" uses mud-navmenu-default which highlights active items gray.
+   Force drawer links to use the same solid primary fill as Dashboard. */
+.nav-scrollable ::deep .mud-navmenu.mud-navmenu-default .mud-nav-link.active:not(.mud-nav-link-disabled),
+.nav-scrollable ::deep .mud-navmenu.mud-navmenu-default .mud-nav-link.active:not(.mud-nav-link-disabled):hover,
+.nav-scrollable ::deep .mud-nav-link.active {
+    background-color: var(--mud-palette-primary) !important;
+    color: var(--mud-palette-primary-text) !important;
+}
+
+.nav-scrollable ::deep .mud-navmenu.mud-navmenu-default .mud-nav-link.active:not(.mud-nav-link-disabled) .mud-nav-link-icon,
+.nav-scrollable ::deep .mud-navmenu.mud-navmenu-default .mud-nav-link.active:not(.mud-nav-link-disabled) .mud-nav-link-text,
+.nav-scrollable ::deep .mud-nav-link.active .mud-nav-link-icon,
+.nav-scrollable ::deep .mud-nav-link.active .mud-nav-link-text {
+    color: var(--mud-palette-primary-text) !important;
+}
+
+::deep .mud-nav-group > .mud-nav-link {
+    font-weight: 600;
+    position: relative;
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: flex-start;
+    padding-inline-end: 2.5rem !important;
+    box-sizing: border-box;
+}
+
+/* MudBlazor sets width:100% on .mud-nav-link-text, which pins the caret beside the label. */
+::deep .mud-nav-group > .mud-nav-link .mud-nav-link-text {
+    flex: 1 1 auto;
+    width: auto !important;
+    min-width: 0;
+    text-align: start;
+}
+
+::deep .mud-nav-group > .mud-nav-link .mud-nav-link-expand-icon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0 !important;
+    flex-shrink: 0;
+}
+
+::deep .mud-nav-group > .mud-nav-link .mud-nav-link-expand-icon.mud-transform {
+    transform: translateY(-50%) rotate(-180deg);
+}
+
+/* Nested curated intranet pages under an expanded parent group. */
+::deep .curated-nav-group .mud-navgroup-collapse .mud-nav-link,
+::deep .curated-nav-group-with-page .curated-nav-group-collapse .mud-nav-link {
+    font-weight: 400;
+}
+
+/* Built-in top-level groups after curated KB must not inherit nested padding. */
+.nav-scrollable ::deep .mud-nav-group.nav-top-level > .mud-nav-link {
+    padding-inline-start: 16px !important;
+    padding-left: 16px !important;
+}
+
+/* Overdue-month count next to "Submit" in the Tyme menu. Sized to fit any reasonable
+   digit count without clipping (replaces the prior MudBadge which was clipped at 2+
+   digits because it sat on top of the nav icon). */
+::deep .overdue-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.5rem;
+    padding: 0 0.5rem;
+    min-width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.625rem;
+    background-color: var(--mud-palette-warning);
+    color: var(--mud-palette-warning-text);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+}

@@ -1,0 +1,36 @@
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+    <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        // If the user explicitly logged out, go straight to interactive login
+        var loggedOut = await JS.InvokeAsync<string?>("localStorage.getItem", "userLoggedOut");
+        if (loggedOut == "true")
+        {
+            Navigation.NavigateToLogin("authentication/login");
+            return;
+        }
+
+        // Try silent sign-in with prompt=none first.
+        // If the user's Google session cookie is still valid, Google returns tokens
+        // without showing any login UI. If it fails (no session), the Authentication.razor
+        // page catches the error and falls back to a full interactive login.
+        var requestOptions = new InteractiveRequestOptions
+        {
+            Interaction = InteractionType.SignIn,
+            ReturnUrl = Navigation.Uri
+        };
+        requestOptions.TryAddAdditionalParameter("prompt", "none");
+
+        Navigation.NavigateToLogin("authentication/login", requestOptions);
+    }
+}

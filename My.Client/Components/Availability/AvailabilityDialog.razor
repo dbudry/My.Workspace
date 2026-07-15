@@ -1,0 +1,154 @@
+@namespace My.Client.Components.Availability
+@using My.Client.Models
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="form" Model="@Model">
+            <DialogFormStack>
+                <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                    These projects are the categories employees pick when logging Vacation, OOO,
+                    Sick, or any other availability entry. Time logged against them dual-publishes
+                    to the workspace Team Availability calendar.
+                </MudText>
+
+                <MudTextField @bind-Value="Model.Name" For="@(() => Model.Name)"
+                              Label="Internal name" Required="true"
+                              RequiredError="Internal name is required"
+                              HelperText="What employees see in their project picker (e.g. Vacation, OOO, Sick)."
+                              Immediate="true" AutoFocus="true" />
+
+                @* Placeholder echoes the current internal name so the user can see exactly
+                   what will appear on the team calendar if they leave this blank — no
+                   guessing whether the fallback is the project name, a slug, or something
+                   else. *@
+                <MudTextField @bind-Value="Model.TeamDisplayName" For="@(() => Model.TeamDisplayName)"
+                              Label="Team calendar display name (optional)"
+                              Placeholder="@(string.IsNullOrWhiteSpace(Model.Name) ? "e.g. Out of Office" : Model.Name)"
+                              HelperText="Leave blank to use the internal name shown above on the Team Availability calendar."
+                              MaxLength="100" Immediate="true" />
+
+                <MudTextField @bind-Value="Model.Slug" For="@(() => Model.Slug)"
+                              Label="Slug (optional)"
+                              HelperText="2–5 chars, lowercase letters and digits — used as [slug] in Google Calendar event titles."
+                              MaxLength="5" Immediate="true" />
+
+                <MudSelect T="string" Value="Model.ProjectGroupId" Label="Project group"
+                           ValueChanged="@(v => Model.ProjectGroupId = v)"
+                           HelperText="Group these categories together for reporting. We default to 'Time Off' so PTO totals show up as a single segment.">
+                    <MudSelectItem T="string" Value="@((string?)null)">No group</MudSelectItem>
+                    @foreach (var group in Groups)
+                    {
+                        <MudSelectItem T="string" Value="@group.ProjectGroupId">@group.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="string" Value="Model.OrganizationId" Label="Bill to organization (optional)"
+                           ValueChanged="@(v => { Model.OrganizationId = v; Model.DepartmentId = null; })"
+                           HelperText="When set, time logged against this category is attributed to that org on reports.">
+                    <MudSelectItem T="string" Value="@((string?)null)">None</MudSelectItem>
+                    @foreach (var org in OrganizationPickerOptions)
+                    {
+                        <MudSelectItem T="string" Value="@org.OrganizationId">@org.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                @{
+                    var selectedOrg = ResolveSelectedOrganization();
+                    var depts = selectedOrg?.Departments;
+                }
+                @if (depts != null && depts.Any())
+                {
+                    <MudSelect T="string" @bind-Value="Model.DepartmentId" Label="Department (optional)">
+                        <MudSelectItem T="string" Value="@((string?)null)">None</MudSelectItem>
+                        @foreach (var dept in depts)
+                        {
+                            <MudSelectItem T="string" Value="@dept.DepartmentId">@dept.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                }
+            </DialogFormStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">@SubmitLabel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter] public Project Model { get; set; } = new();
+    [Parameter] public List<ProjectGroup> Groups { get; set; } = new();
+    [Parameter] public List<Organization> Organizations { get; set; } = new();
+    [Parameter] public string SubmitLabel { get; set; } = "Save";
+
+    private MudForm? form;
+
+    private IEnumerable<Organization> OrganizationPickerOptions
+    {
+        get
+        {
+            var options = Organizations
+                .Where(o => o.IsActive && !o.IsArchived)
+                .ToList();
+
+            if (string.IsNullOrEmpty(Model.OrganizationId))
+                return options;
+
+            if (options.Any(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId)))
+                return options;
+
+            var linked = Organizations.FirstOrDefault(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId));
+            var label = linked?.Name
+                ?? Model.OrganizationName
+                ?? "Unknown organization";
+
+            if (linked is { IsArchived: true } or { IsActive: false })
+                label += " (inactive)";
+
+            options.Insert(0, new Organization
+            {
+                OrganizationId = Model.OrganizationId,
+                Name = label,
+                IsActive = linked?.IsActive ?? true,
+                IsArchived = linked?.IsArchived ?? false,
+                Departments = linked?.Departments
+            });
+
+            return options;
+        }
+    }
+
+    private Organization? ResolveSelectedOrganization()
+    {
+        if (string.IsNullOrEmpty(Model.OrganizationId))
+            return null;
+
+        return Organizations.FirstOrDefault(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId))
+            ?? new Organization
+            {
+                OrganizationId = Model.OrganizationId,
+                Name = Model.OrganizationName ?? "Unknown organization"
+            };
+    }
+
+    private static bool OrgIdEquals(string? left, string? right)
+        => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    private async Task Submit()
+    {
+        if (form != null)
+        {
+            await form.ValidateAsync();
+            if (!form.IsValid) return;
+        }
+
+        Model.Slug = string.IsNullOrWhiteSpace(Model.Slug) ? null : Model.Slug.Trim().ToLowerInvariant();
+        Model.TeamDisplayName = string.IsNullOrWhiteSpace(Model.TeamDisplayName) ? null : Model.TeamDisplayName.Trim();
+        Model.IsSharedAvailability = true;
+        Dialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

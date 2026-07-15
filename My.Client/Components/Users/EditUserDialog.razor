@@ -1,0 +1,138 @@
+@namespace My.Client.Components.Users
+@using My.Client.Extensions
+@using My.Client.Models
+@using My.Shared.Constants
+@using My.Shared.Dtos.User
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="@model" OnValidSubmit="@Save">
+            <DataAnnotationsValidator />
+            <DialogFormStack>
+                @if (legacyRoles.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        Legacy roles not assignable (will be removed on save):
+                        @string.Join(", ", legacyRoles)
+                    </MudAlert>
+                }
+                <MudTextField @bind-Value="model.FirstName" Label="First Name" Variant="Variant.Outlined"
+                              Required="true" RequiredError="First name is required" />
+                <MudTextField @bind-Value="model.LastName" Label="Last Name" Variant="Variant.Outlined"
+                              Required="true" RequiredError="Last name is required" />
+                <MudTextField @bind-Value="model.Email" Label="Email" Variant="Variant.Outlined"
+                              Required="true" RequiredError="Email is required" />
+                <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="selectedRoles"
+                           Label="Roles" Variant="Variant.Outlined" Dense="true">
+                    @foreach (var role in AvailableRoles)
+                    {
+                        <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+                    }
+                </MudSelect>
+                <ValidationSummary />
+                @* Hidden submit so EditForm validation drives the Save button via OnValidSubmit. *@
+                <button type="submit" style="display:none;"></button>
+            </DialogFormStack>
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="@isSaving">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="@TrySave" Disabled="@isSaving"
+                   StartIcon="@Icons.Material.Filled.Save">
+            @(isSaving ? "Saving…" : "Save")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public UserModel User { get; set; } = null!;
+
+    [Parameter, EditorRequired] public IReadOnlyList<string> AvailableRoles { get; set; } = Array.Empty<string>();
+
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
+    private UserModel model = null!;
+    private IReadOnlyCollection<string> selectedRoles = Array.Empty<string>();
+    private List<string> legacyRoles = new();
+    private bool isSaving;
+    private EditContext? _editContext;
+
+    protected override void OnInitialized()
+    {
+        // Edit a copy so Cancel doesn't mutate the row in the grid behind the dialog —
+        // the original UserModel reference is held by UserManager's items list.
+        model = new UserModel
+        {
+            Id = User.Id,
+            Email = User.Email,
+            FirstName = User.FirstName,
+            LastName = User.LastName,
+            Roles = new List<string>(User.Roles),
+            LastLoginDate = User.LastLoginDate,
+            IsActive = User.IsActive,
+            IsArchived = User.IsArchived
+        };
+        var assignable = AvailableRoles.ToHashSet(StringComparer.Ordinal);
+        legacyRoles = model.Roles.Where(r => !assignable.Contains(r)).ToList();
+        selectedRoles = model.Roles.Where(r => assignable.Contains(r)).ToList();
+        _editContext = new EditContext(model);
+    }
+
+    private async Task TrySave()
+    {
+        if (_editContext is null || !_editContext.Validate())
+        {
+            foreach (var msg in _editContext?.GetValidationMessages() ?? Array.Empty<string>())
+                Snackbar.Add(msg, Severity.Error);
+            return;
+        }
+        await Save();
+    }
+
+    private async Task Save()
+    {
+        if (selectedRoles.Count == 0)
+        {
+            Snackbar.Add("At least one role must be selected.", Severity.Warning);
+            return;
+        }
+
+        var dto = new UpdateUserDto
+        {
+            Id = model.Id,
+            Email = model.Email,
+            FirstName = model.FirstName,
+            LastName = model.LastName,
+            Roles = selectedRoles.ToList()
+        };
+
+        isSaving = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.PutAsJsonAsync(Constants.API.User.Update, dto);
+            if (resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("User updated.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(true));
+                return;
+            }
+            var body = await resp.Content.ReadAsStringAsync();
+            Snackbar.Add(string.IsNullOrWhiteSpace(body) ? "Couldn't update user." : body, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't update user.");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

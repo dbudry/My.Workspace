@@ -1,0 +1,238 @@
+/* Depth indent lives on the link (full-width hover/active). Row wrappers host --curated-nav-link-padding via inline style. */
+.curated-nav-leaf-row.curated-nav-row,
+.curated-nav-folder-row.curated-nav-row,
+.curated-nav-group-header.curated-nav-row:not(.nav-top-level),
+.curated-nav-group-with-page:not(.nav-top-level) {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.curated-nav-group-header.curated-nav-row:not(.nav-top-level) {
+    margin: 0;
+}
+
+.curated-nav-group-with-page {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Top-level page+children groups participate in the root menu row flow (same as MudNavGroup). */
+.curated-nav-group-with-page.nav-top-level {
+    display: contents;
+}
+
+.curated-nav-group-header {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    border-radius: 6px;
+    min-height: 2.5rem;
+}
+
+.curated-nav-group-header > .mud-nav-item {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
+
+.curated-nav-group-header.nav-top-level {
+    margin: 0;
+    --curated-nav-link-padding: 16px;
+    --curated-nav-depth: 0;
+}
+
+.curated-nav-group-with-page .curated-nav-group-header ::deep .mud-nav-item {
+    margin: 0;
+    width: 100%;
+}
+
+.curated-nav-group-with-page .curated-nav-group-header:not(.nav-top-level) ::deep .mud-nav-link {
+    flex: 1;
+    min-width: 0;
+    width: calc(100% - 1rem);
+    font-weight: 600;
+    padding-inline-end: 2.5rem !important;
+    box-sizing: border-box;
+    border-radius: 6px;
+    background-color: transparent;
+}
+
+.curated-nav-group-with-page .curated-nav-group-header.nav-top-level ::deep .mud-nav-link {
+    flex: 1;
+    margin: 0.125rem 0.5rem !important;
+    min-width: 0;
+    width: calc(100% - 1rem);
+    font-weight: 600;
+    padding-inline-start: 16px !important;
+    padding-left: 16px !important;
+    padding-inline-end: 2.5rem !important;
+    box-sizing: border-box;
+    border-radius: 6px;
+    background-color: transparent;
+}
+
+.curated-nav-group-header:hover:not(.curated-nav-header-active) ::deep .mud-nav-link {
+    background-color: color-mix(in srgb, var(--mud-palette-text-primary) 14%, var(--mud-palette-drawer-background));
+    color: var(--mud-palette-text-primary);
+}
+
+.curated-nav-group-header:hover:not(.curated-nav-header-active) ::deep .mud-nav-link .mud-nav-link-icon,
+.curated-nav-group-header:hover:not(.curated-nav-header-active) ::deep .mud-nav-link .mud-icon-root.material-icons,
+.curated-nav-group-header:hover:not(.curated-nav-header-active) ::deep .mud-nav-link .mud-nav-link-text {
+    color: var(--mud-palette-text-primary);
+}
+
+.curated-nav-group-header.curated-nav-header-active {
+    background-color: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+}
+
+.curated-nav-group-header.curated-nav-header-active ::deep .mud-nav-link,
+.curated-nav-group-header.curated-nav-header-active ::deep .mud-nav-link:hover {
+    background-color: transparent !important;
+    color: var(--mud-palette-primary-text);
+}
+
+.curated-nav-group-header.curated-nav-header-active ::deep .mud-nav-link .mud-nav-link-icon,
+.curated-nav-group-header.curated-nav-header-active ::deep .mud-nav-link .mud-icon-root.material-icons,
+.curated-nav-group-header.curated-nav-header-active ::deep .mud-nav-link .mud-nav-link-text,
+.curated-nav-group-header.curated-nav-header-active .curated-nav-expand-btn .mud-nav-link-expand-icon {
+    color: var(--mud-palette-primary-text);
+}
+
+.curated-nav-expand-btn {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--mud-palette-drawer-icon);
+    z-index: 1;
+}
+
+.curated-nav-group-header:hover:not(.curated-nav-header-active) .curated-nav-expand-btn,
+.curated-nav-expand-btn:hover {
+    color: var(--mud-palette-text-primary);
+}
+
+.curated-nav-group-header.curated-nav-header-active .curated-nav-expand-btn:hover .mud-nav-link-expand-icon {
+    color: var(--mud-palette-primary-text);
+}
+
+.curated-nav-expand-btn .mud-nav-link-expand-icon {
+    color: var(--mud-palette-drawer-icon);
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.5, 1);
+}
+
+.curated-nav-expand-btn:hover .mud-nav-link-expand-icon {
+    color: var(--mud-palette-text-primary);
+}
+
+.curated-nav-expand-btn .mud-nav-link-expand-icon.mud-transform {
+    transform: rotate(-180deg);
+}
+
+/* Neutralize MudBlazor nested padding inside curated trees (36px / 48px / 60px cascade). */
+::deep .curated-nav-group .mud-navgroup-collapse .mud-navmenu,
+.curated-nav-group-with-page ::deep .curated-nav-group-collapse .mud-navmenu {
+    padding-left: 0;
+    padding-inline-start: 0;
+}
+
+/* Leaf + folder links: full-width bar with depth padding on the link itself. */
+.curated-nav-leaf-row ::deep .mud-nav-item,
+.curated-nav-folder-row ::deep .mud-nav-group {
+    width: 100%;
+    display: block;
+}
+
+.curated-nav-row ::deep .mud-nav-item > .mud-nav-link,
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link {
+    display: flex;
+    width: calc(100% - 1rem);
+    margin: 0.125rem 0.5rem !important;
+    padding-inline-start: var(--curated-nav-link-padding, 16px) !important;
+    padding-left: var(--curated-nav-link-padding, 16px) !important;
+    padding-inline-end: 2.5rem !important;
+    box-sizing: border-box;
+}
+
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link {
+    position: relative;
+    align-items: center;
+    font-weight: 600;
+}
+
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link .mud-nav-link-text {
+    flex: 1 1 auto;
+    width: auto !important;
+    min-width: 0;
+    text-align: start;
+}
+
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link .mud-nav-link-expand-icon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0 !important;
+    flex-shrink: 0;
+}
+
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link .mud-nav-link-expand-icon.mud-transform {
+    transform: translateY(-50%) rotate(-180deg);
+}
+
+.curated-nav-leaf-row ::deep .mud-nav-item > .mud-nav-link {
+    font-weight: 400;
+    padding-inline-end: 16px !important;
+}
+
+/* Folder headers are not pages — don't mimic route-active primary fill when expanded. */
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link.mud-expanded {
+    background-color: transparent;
+    color: var(--mud-palette-drawer-text);
+}
+
+.curated-nav-row ::deep .mud-nav-group > button.mud-nav-link.mud-expanded .mud-nav-link-icon {
+    color: var(--mud-palette-drawer-icon);
+}
+
+/* Page+children headers delegate active fill to the row wrapper. */
+.curated-nav-group-header ::deep .mud-nav-link.active {
+    background-color: transparent !important;
+}
+
+.curated-nav-group-header ::deep .mud-nav-link.active:hover {
+    background-color: transparent !important;
+}
+
+/* Leaf + folder link active — beat mud-navmenu-default gray active state. */
+.curated-nav-leaf-row ::deep .mud-nav-link.active:not(.mud-nav-link-disabled),
+.curated-nav-leaf-row ::deep .mud-nav-link.active:not(.mud-nav-link-disabled):hover,
+.curated-nav-folder-row ::deep .mud-nav-group > button.mud-nav-link.active:not(.mud-nav-link-disabled),
+.curated-nav-group-with-page ::deep .curated-nav-group-collapse .mud-nav-link.active:not(.mud-nav-link-disabled),
+.curated-nav-group-with-page ::deep .curated-nav-group-collapse .mud-nav-link.active:not(.mud-nav-link-disabled):hover {
+    background-color: var(--mud-palette-primary) !important;
+    color: var(--mud-palette-primary-text) !important;
+}
+
+.curated-nav-leaf-row ::deep .mud-nav-link.active .mud-nav-link-text,
+.curated-nav-leaf-row ::deep .mud-nav-link.active .mud-nav-link-icon,
+.curated-nav-leaf-row ::deep .mud-nav-link.active .mud-icon-root.material-icons,
+.curated-nav-group-with-page ::deep .curated-nav-group-collapse .mud-nav-link.active .mud-nav-link-text,
+.curated-nav-group-with-page ::deep .curated-nav-group-collapse .mud-nav-link.active .mud-nav-link-icon,
+.curated-nav-group-with-page ::deep .curated-nav-group-collapse .mud-nav-link.active .mud-icon-root.material-icons {
+    color: var(--mud-palette-primary-text) !important;
+}

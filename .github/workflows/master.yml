@@ -1,0 +1,250 @@
+# Push to master — production path only.
+#
+#   Detect app changes
+#     → Build & Test (if app/workflow paths changed)
+#     → Publish Azure
+#     → Create Release
+
+name: Master
+
+on:
+  push:
+    branches: [ master ]
+
+run-name: Master — publish Azure + release
+
+concurrency:
+  group: master
+  cancel-in-progress: true
+
+env:
+  CSPROJ_PATH: My.Client/My.Client.csproj
+
+jobs:
+  detect-changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      app_changed: ${{ steps.changes.outputs.app_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE='${{ github.event.before }}'
+          if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            BEFORE=$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)
+          fi
+          CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" || true)
+          echo "Changed files:"; echo "$CHANGED"
+
+          APP_CHANGED=false
+          if grep -E '^(My\.Client/|My\.AzureFunction/|My\.DAL/|My\.Shared/|\.github/workflows/)' <<<"$CHANGED" >/dev/null; then
+            APP_CHANGED=true
+          fi
+          echo "app_changed=$APP_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "app_changed=$APP_CHANGED"
+
+  build:
+    name: Build & Test
+    needs: [ detect-changes ]
+    if: needs.detect-changes.outputs.app_changed == 'true'
+    uses: ./.github/workflows/_build-and-test.yml
+
+  # always() required when depending on a reusable-workflow job (build).
+  publish:
+    name: Publish → Azure
+    needs: [ detect-changes, build ]
+    if: >-
+      always()
+      && needs.detect-changes.outputs.app_changed == 'true'
+      && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      packages: read
+
+    env:
+      SWA_NAME: ${{ vars.AZURE_SWA_NAME }}
+      SWA_RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+      FUNC_NAME: ${{ vars.AZURE_FUNCTION_APP_NAME }}
+      APP_ENVIRONMENT: Production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.PRODUCTION_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.PRODUCTION_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.PRODUCTION_AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscriptions: true
+
+      - name: Validate Azure Access & Get SWA Token (Fast-Fail)
+        run: |
+          echo "=== Checking subscription context ==="
+          az account show --query "{Name:name, Id:id}" -o table
+
+          echo "=== Looking up Static Web App ==="
+          az staticwebapp show \
+            --name "$SWA_NAME" \
+            --resource-group "$SWA_RG" \
+            --query "{Name:name, RG:resourceGroup, Location:location}" -o table || {
+              echo "ERROR: Static Web App '$SWA_NAME' not found in resource group '$SWA_RG'"
+              echo "Double-check the SWA name and resource group name spelling."
+              exit 1
+            }
+
+          echo "=== Looking up Function App ==="
+          az functionapp show \
+            --name "$FUNC_NAME" \
+            --resource-group "$SWA_RG" \
+            --query "{Name:name, RG:resourceGroup, State:state}" -o table || {
+              echo "ERROR: Function App '$FUNC_NAME' not found in resource group '$SWA_RG'"
+              exit 1
+            }
+
+          echo "=== Fetching SWA deployment token ==="
+          TOKEN=$(az staticwebapp secrets list \
+            --name "$SWA_NAME" \
+            --resource-group "$SWA_RG" \
+            --query "properties.apiKey" -o tsv)
+
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "ERROR: Failed to get API key. Confirm your GitHub Actions app has Contributor on the SWA itself."
+            exit 1
+          fi
+
+          echo "SWA_TOKEN=$TOKEN" >> $GITHUB_ENV
+          echo "::add-mask::$TOKEN"
+          echo "Azure login & access validated successfully!"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore NuGet Packages
+        run: dotnet restore My.Workspace.sln
+
+      - name: Build Application
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Publish Client
+        run: dotnet publish My.Client/My.Client.csproj --configuration Release --output ./published-app
+
+      - name: Publish Azure Functions
+        run: dotnet publish My.AzureFunction/My.AzureFunction.csproj --configuration Release --output ./published-api
+
+      - name: List Published Outputs
+        run: |
+          echo "=== Client (published-app/wwwroot) ==="
+          ls -la ./published-app/wwwroot/
+          echo ""
+          echo "=== Azure Functions (published-api) ==="
+          ls -la ./published-api/
+
+      - name: Run Database Migrations
+        env:
+          DefaultConnection: "Server=your-sql.database.windows.net;Database=MyWorkspace;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.1
+          dotnet ef database update \
+            --project My.DAL/My.DAL.csproj \
+            --startup-project My.AzureFunction/My.AzureFunction.csproj \
+            --configuration Release \
+            --verbose
+
+      - name: Deploy Azure Functions
+        uses: azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNC_NAME }}
+          package: ./published-api
+
+      - name: Setup Node (for SWA CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install SWA CLI
+        run: npm install -g @azure/static-web-apps-cli
+
+      - name: Deploy Client to Azure Static Web Apps
+        timeout-minutes: 30
+        run: |
+          swa deploy ./published-app/wwwroot \
+            --deployment-token "$SWA_TOKEN" \
+            --env production \
+            --no-use-keychain \
+            --verbose silly
+
+      - name: Ensure Function App is Started
+        run: az functionapp start --name "$FUNC_NAME" --resource-group "$SWA_RG"
+
+      - name: Smoke Test Function App
+        run: |
+          FUNC_URL="https://${FUNC_NAME}.azurewebsites.net/api/users/provision"
+          echo "Probing $FUNC_URL"
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$FUNC_URL" --max-time 30 || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "401" ]; then
+              echo "Function App healthy (401 for unauthenticated POST — auth middleware constructed and request reached function)."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "ERROR: Function App did not return 401 after 5 attempts (last: $STATUS)."
+          echo "  400 = auth middleware failed to construct (check app settings)"
+          echo "  5xx = function app did not start cleanly"
+          echo "  200 = auth bypassed (should not happen)"
+          exit 1
+
+  create-release:
+    name: Create release
+    needs: [ publish ]
+    if: always() && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          V=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ_PATH" | head -n1)
+          if [[ -z "$V" ]]; then
+            echo "::error::Could not parse <Version> from $CSPROJ_PATH"; exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Release version: $V"
+
+      - name: Create GitHub Release (idempotent)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping creation"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --notes "Automated release from master. Production deploy completed." \
+            --target "${{ github.sha }}"

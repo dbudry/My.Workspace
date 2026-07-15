@@ -1,0 +1,48 @@
+@using MudBlazor.Utilities
+
+<div class="color-picker-field @Class">
+    @if (!string.IsNullOrWhiteSpace(Label))
+    {
+        <MudText Typo="Typo.subtitle2" Class="mb-1">@Label</MudText>
+    }
+    @if (!string.IsNullOrWhiteSpace(HelperText))
+    {
+        <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+            @HelperText
+        </MudText>
+    }
+
+    <MudColorPicker Value="pickerColor"
+                    ValueChanged="OnColorChanged"
+                    ShowAlpha="false"
+                    ShowModeSwitch="false"
+                    ColorPickerMode="ColorPickerMode.HEX"
+                    PickerVariant="PickerVariant.Static" />
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter]
+    public string? ColorHex { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ColorHexChanged { get; set; }
+
+    private MudColor pickerColor = new("#1976d2");
+
+    protected override void OnParametersSet()
+    {
+        var next = string.IsNullOrWhiteSpace(ColorHex) ? "#1976d2" : ColorHex;
+        if (!string.Equals(pickerColor.ToString(MudColorOutputFormats.Hex), next, StringComparison.OrdinalIgnoreCase))
+            pickerColor = new MudColor(next);
+    }
+
+    private async Task OnColorChanged(MudColor value)
+    {
+        pickerColor = value;
+        await ColorHexChanged.InvokeAsync(value.ToString(MudColorOutputFormats.Hex));
+    }
+}

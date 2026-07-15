@@ -1,0 +1,169 @@
+@page "/admin/users"
+@attribute [Authorize]
+
+@using My.Client.Components.Users
+@using My.Shared.Dtos
+@using My.Shared.Dtos.User
+
+<PageTitle>Manage Users</PageTitle>
+
+<PageHeader Title="Users" Description="Manage workspace members, roles, and access." />
+
+<div>
+
+    <div class="d-flex justify-start align-center mb-3 gap-4 flex-wrap">
+        <AddUser OnUserAdded="@HandleUserAdded" />
+        <MudSwitch T="bool" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
+                   ValueChanged="@OnShowInactiveChanged" />
+        <MudSwitch T="bool" Value="showArchived" Label="View Archived" Color="Color.Secondary"
+                   ValueChanged="@OnShowArchivedChanged" />
+        <MudSpacer />
+        <MudTextField @bind-Value="searchString" Placeholder="Search users" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium"
+                      Margin="Margin.Dense" Immediate="true" Style="min-width: 220px;" />
+    </div>
+
+    @if (ShowDeleteControls)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+            User deletion is enabled. The delete action appears for each user who has no tracked tasks, or whose most
+            recent tracked task is older than <strong>@dataRetentionDays</strong> days. Users with newer time entries
+            show a disabled delete icon with the reason on hover.
+        </MudAlert>
+    }
+    else if (allowUserDelete && !isGlobalAdmin)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+            User deletion is enabled in App Settings, but only global <strong>Admin</strong> users see the delete action.
+        </MudAlert>
+    }
+    else if (showArchived && isGlobalAdmin)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+            Archived users are hidden from the workspace but their time entries and settings are unchanged.
+            Use <strong>Restore</strong> to unarchive and let them sign in again.
+        </MudAlert>
+    }
+
+    <MudTable Items="@FilteredUsers" Loading="@isLoading" Hover="true" Breakpoint="Breakpoint.Sm"
+              AllowUnsorted="false" Dense="true"
+              RowClassFunc="@((UserModel u, int _) => u.IsArchived ? "archived-row" : !u.IsActive ? "inactive-row" : "")">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.FirstName)">First Name</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.LastName)">Last Name</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.Email)">Email</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(GetRolesSortKey)">Roles</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(GetStatusSortKey)">Status</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.LastLoginDate ?? DateTimeOffset.MinValue)">Last Login</MudTableSortLabel></MudTh>
+            <MudTh Style="width:88px; text-align:center;">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="First Name">@context.FirstName</MudTd>
+            <MudTd DataLabel="Last Name">@context.LastName</MudTd>
+            <MudTd DataLabel="Email">@context.Email</MudTd>
+            <MudTd DataLabel="Roles">
+                @foreach (var role in context.Roles)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)">@role</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.IsArchived)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Dark">Archived</MudChip>
+                }
+                else if (!context.IsActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">Inactive</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Last Login">@(context.LastLoginDate.HasValue ? SettingsService.FormatDateTime(context.LastLoginDate.Value.LocalDateTime) : "")</MudTd>
+            <MudTd DataLabel="Actions" Style="text-align:center; white-space:nowrap;">
+                @{
+                    var showDelete = ShowDeleteControls && !IsCurrentUser(context);
+                    var deleteBlockReason = showDelete ? GetDeleteBlockReason(context) : null;
+                    // Edit is always a standalone icon; everything else goes in the overflow menu.
+                    var showMoreMenu = (!context.IsArchived)
+                        || (context.IsArchived && isGlobalAdmin)
+                        || showDelete;
+                }
+                <MudTooltip Text="Edit roles and profile">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => OpenEditDialog(context))" />
+                </MudTooltip>
+                @if (showMoreMenu)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true"
+                             AriaLabel="More user actions">
+                        @if (context.IsArchived && isGlobalAdmin)
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Unarchive"
+                                         OnClick="@(() => RestoreUser(context))">
+                                Restore
+                            </MudMenuItem>
+                        }
+                        @if (!context.IsArchived)
+                        {
+                            <MudMenuItem Icon="@(context.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
+                                         OnClick="@(() => ToggleActive(context))">
+                                @(context.IsActive ? "Set inactive" : "Set active")
+                            </MudMenuItem>
+                            @if (isGlobalAdmin)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Archive"
+                                             OnClick="@(() => ArchiveUser(context))">
+                                    Archive
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.CloudSync"
+                                             OnClick="@(() => PullEventsFromGoogle(context))">
+                                    Pull missed events from Google
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.RestartAlt"
+                                             OnClick="@(() => PurgeToken(context))">
+                                    Force re-sign-in
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.NoAccounts"
+                                             OnClick="@(() => PurgePermissions(context))">
+                                    Revoke Google permissions
+                                </MudMenuItem>
+                            }
+                        }
+                        @if (showDelete)
+                        {
+                            if (deleteBlockReason is null)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete"
+                                             OnClick="@(() => DeleteUser(context))">
+                                    Delete user
+                                </MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudTooltip Text="@deleteBlockReason">
+                                    <div>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" Disabled="true">
+                                            Delete user
+                                        </MudMenuItem>
+                                    </div>
+                                </MudTooltip>
+                            }
+                        }
+                    </MudMenu>
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <EmptyState Icon="@Icons.Material.Outlined.PersonOff"
+                        Title="No users to display"
+                        Message="@GetEmptyUsersMessage()" />
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+
+</div>

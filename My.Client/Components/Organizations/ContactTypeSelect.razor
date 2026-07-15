@@ -1,0 +1,23 @@
+<MudSelect T="string" Value="Value" ValueChanged="ValueChanged"
+           Label="Contact type" Variant="Variant.Outlined" Margin="Margin.Dense"
+           Dense="@Dense" Required="true" RequiredError="Contact type is required">
+    @if (ShowsOrphanValue)
+    {
+        <MudSelectItem T="string" Value="@Value" Disabled="true">@Value (no longer allowed)</MudSelectItem>
+    }
+    @foreach (var type in Types)
+    {
+        <MudSelectItem T="string" Value="@type">@type</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<string> Types { get; set; } = Array.Empty<string>();
+    [Parameter] public bool Dense { get; set; } = true;
+
+    private bool ShowsOrphanValue =>
+        !string.IsNullOrWhiteSpace(Value)
+        && !Types.Any(t => string.Equals(t, Value, StringComparison.OrdinalIgnoreCase));
+}

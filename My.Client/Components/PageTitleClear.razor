@@ -1,0 +1,9 @@
+@code {
+    [CascadingParameter(Name = "SetPageTitle")]
+    private Action<string>? SetPageTitle { get; set; }
+
+    protected override void OnInitialized()
+    {
+        SetPageTitle?.Invoke(string.Empty);
+    }
+}

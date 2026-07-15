@@ -1,0 +1,36 @@
+@using My.Client.Models.Dashboard
+
+@if (Data.Any())
+{
+    <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@Series" ChartLabels="@Labels"
+              ChartOptions="@Options" Width="300px" Height="300px" />
+}
+else
+{
+    <MudText Typo="Typo.body1" Color="Color.Default">No data available</MudText>
+}
+
+@code {
+    private List<ChartSeries<double>> Series => new()
+    {
+        new ChartSeries<double> { Name = "Project Time", Data = Data.Select(p => p.TimeInt).ToArray() }
+    };
+
+    // Show "<name> (NN%)" so the legend isn't just a list of names — a donut with no
+    // numbers is mostly decorative. Falls back to bare names when the total rounds to
+    // zero so we don't print "NaN%".
+    private string[] Labels
+    {
+        get
+        {
+            var total = Data.Sum(p => p.TimeInt);
+            if (total <= 0)
+                return Data.Select(p => p.ProjectName).ToArray();
+            return Data.Select(p => $"{p.ProjectName} ({p.TimeInt / total:P0})").ToArray();
+        }
+    }
+
+    private ChartOptions Options => Palette is { Length: > 0 }
+        ? new ChartOptions { ChartPalette = Palette }
+        : new ChartOptions();
+}

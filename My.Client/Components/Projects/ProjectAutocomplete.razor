@@ -1,0 +1,71 @@
+@namespace My.Client.Components.Projects
+@using My.Client.Models
+
+@*
+    Shared project picker. Renders the project's name on the left and its combined slug
+    (if any) as a small chip on the right, so users see the calendar tag without it
+    crowding the primary label.
+
+    OpenOnFocus + CoerceText="false" sidestep a MudAutocomplete quirk where the first
+    arrow-key press after clicking a pre-selected value doesn't navigate the list.
+*@
+
+<div @onfocusin="HandleFocus">
+<MudAutocomplete @ref="_input" T="Project" Value="Value" ValueChanged="OnValueChanged"
+                 Label="@Label" Variant="@Variant" Margin="@Margin" Dense="@Dense"
+                 Clearable="true" OpenOnFocus="true" CoerceText="false"
+                 ResetValueOnEmptyText="true"
+                 Placeholder="@Placeholder"
+                 AdornmentIcon="@Icons.Material.Filled.Search"
+                 AdornmentColor="Color.Default"
+                 SearchFunc="SearchFunc" ToStringFunc="@(p => p?.DisplayName ?? string.Empty)"
+                 Style="@Style" Class="@Class">
+    <ItemTemplate Context="project">
+        <div class="d-flex align-center justify-space-between" style="width: 100%;">
+            <span>@project.DisplayName</span>
+            @if (!string.IsNullOrEmpty(project.FullSlug))
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2">
+                    [@project.FullSlug]
+                </MudChip>
+            }
+        </div>
+    </ItemTemplate>
+    <NoItemsTemplate>
+        <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
+            No matching projects. Try a different name or slug.
+        </MudText>
+    </NoItemsTemplate>
+</MudAutocomplete>
+</div>
+
+@code {
+    [Parameter] public Project? Value { get; set; }
+    [Parameter] public EventCallback<Project?> ValueChanged { get; set; }
+    [Parameter] public Func<string?, CancellationToken, Task<IEnumerable<Project>>> SearchFunc { get; set; } = null!;
+    [Parameter] public string Label { get; set; } = "Project";
+    [Parameter] public string Placeholder { get; set; } = "Type to search projects…";
+    [Parameter] public Variant Variant { get; set; } = Variant.Text;
+    [Parameter] public Margin Margin { get; set; } = Margin.Dense;
+    // Compact list rendering. Defaults to true (the inline table/toolbar pickers want it);
+    // dialogs pass Dense="false" for a roomier field. Must exist as a real parameter —
+    // an undeclared Dense throws "does not have a property matching the name 'Dense'".
+    [Parameter] public bool Dense { get; set; } = true;
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private MudAutocomplete<Project>? _input;
+
+    private Task OnValueChanged(Project? value) => ValueChanged.InvokeAsync(value);
+
+    // Standard browser-input behavior: focus selects the existing text so the user's
+    // first keystroke replaces it. Removes the "click X first, then type" friction
+    // when switching projects on an existing task. MudAutocomplete doesn't expose an
+    // OnFocus event of its own, so we catch the bubbled `focusin` on a wrapper div
+    // and call SelectAsync() on the inner input via the ref.
+    private async Task HandleFocus()
+    {
+        if (_input != null)
+            await _input.SelectAsync();
+    }
+}

@@ -1,0 +1,111 @@
+@using MudBlazor
+@using My.Client.Models
+@namespace My.Client.Components.TrackedTasks
+
+<MudDialog @onkeydown="HandleKeyDown">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@DialogTitle</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (Mode == TrackedTaskDialogMode.ReadOnly)
+        {
+            <MudSimpleTable Dense="true" Hover="true" Bordered="false" Style="overflow: hidden;">
+                <tbody>
+                    @if (!string.IsNullOrEmpty(ProjectName))
+                    {
+                        <tr>
+                            <td><strong>Project</strong></td>
+                            <td>@ProjectName</td>
+                        </tr>
+                    }
+                    <tr>
+                        <td><strong>Start</strong></td>
+                        <td>@FormatDateTime(StartDate)</td>
+                    </tr>
+                    @if (EndDate.HasValue)
+                    {
+                        <tr>
+                            <td><strong>End</strong></td>
+                            <td>@FormatDateTime(EndDate.Value)</td>
+                        </tr>
+                    }
+                    <tr>
+                        <td><strong>Duration</strong></td>
+                        <td>@($"{(int)Duration.TotalHours:00}:{Duration.Minutes:00}")</td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">This task is locked and cannot be edited.</MudAlert>
+        }
+        else
+        {
+            <DialogFormStack>
+                <MudTextField @bind-Value="editName" Label="Task Name" Margin="Margin.Dense"
+                              Immediate="true" AutoFocus="true" />
+
+                <ProjectAutocomplete Value="selectedProject" ValueChanged="OnProjectChanged"
+                                     Label="Project" SearchFunc="SearchProjects" />
+
+                <MudSwitch T="bool" Value="editIsAllDay" Label="All Day" Color="Color.Primary"
+                           ValueChanged="OnAllDayChanged" />
+
+                <MudDatePicker @bind-Date="editStartDateOnly" Label="Start Date" Margin="Margin.Dense" />
+
+                @if (editIsAllDay)
+                {
+                    <DialogFormGroup>
+                        <MudDatePicker @bind-Date="editEndDateOnly" Label="End Date (inclusive)" Margin="Margin.Dense" />
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            All-day entries default to @WorkdayHoursLabel per day. Span: @SpanDaysLabel.
+                        </MudText>
+                    </DialogFormGroup>
+                }
+                else
+                {
+                    @* Pure text input. MudTimePicker's clock-wheel is unloved and the AM/PM
+                       toggle has been flaky; users just want to type "9:30 AM" or "14:30"
+                       and move on. ParseTimeText accepts both 12-hour and 24-hour formats
+                       plus shorthand like "9", "9p", "9pm". *@
+                    <MudTextField @bind-Value="EditStartTimeText" Label="Start Time" Margin="Margin.Dense"
+                                  HelperText="@StartTimeHelper" Placeholder="@StartTimePlaceholder"
+                                  Error="@(!string.IsNullOrEmpty(timeParseError))" ErrorText="@timeParseError"
+                                  Immediate="false" />
+                    <div class="d-flex gap-2">
+                        <MudNumericField T="int" @bind-Value="editDurationHours" Label="Hours" Margin="Margin.Dense" Min="0" Max="99" Style="width: 100px;" />
+                        <MudNumericField T="int" @bind-Value="editDurationMinutes" Label="Minutes" Margin="Margin.Dense" Min="0" Max="59" Style="width: 100px;" />
+                    </div>
+                }
+
+                @if (saveError != null)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@saveError</MudAlert>
+                }
+            </DialogFormStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (Mode == TrackedTaskDialogMode.Edit)
+        {
+            <MudTooltip Text="Delete (Ctrl+Delete)">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               OnClick="DeleteAsync" Disabled="@isBusy" />
+            </MudTooltip>
+            <MudTooltip Text="Duplicate (Ctrl+D)">
+                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Color="Color.Default"
+                               OnClick="DuplicateAsync" Disabled="@isBusy" />
+            </MudTooltip>
+            <MudSpacer />
+        }
+        <MudButton OnClick="Close">@(Mode == TrackedTaskDialogMode.ReadOnly ? "Close" : "Cancel")</MudButton>
+        @if (Mode != TrackedTaskDialogMode.ReadOnly)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@isBusy">
+                @if (isBusy)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                }
+                @(Mode == TrackedTaskDialogMode.Create ? "Create" : "Save")
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>

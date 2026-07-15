@@ -1,0 +1,21 @@
+@*
+    Consistent filter row: outlined paper containing filter controls
+    (search, dropdowns, date pickers). Right-aligns optional actions.
+*@
+
+<MudPaper Class="@($"filter-bar pa-3 mb-3 {Class}")" Elevation="0" Outlined="true">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap">
+        @ChildContent
+        @if (Actions is not null)
+        {
+            <MudSpacer />
+            @Actions
+        }
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

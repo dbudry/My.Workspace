@@ -1,0 +1,53 @@
+@namespace My.Client.Pages.Settings
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudText>
+                Your <strong>Tyme</strong> calendar was just created and is empty. Push your existing
+                tracked tasks from a date range so the calendar shows your recent work.
+            </MudText>
+
+            <div class="d-flex gap-3">
+                <MudDatePicker @bind-Date="fromDate" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                <MudDatePicker @bind-Date="toDate" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+            </div>
+
+            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                Tasks already on a calendar are skipped automatically. You can change Publish/Import
+                toggles in Settings afterwards.
+            </MudText>
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Skip">Skip backfill</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm">Sync to calendar</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    /// <summary>Default lookback in days from the workspace AppSetting.</summary>
+    [Parameter] public int DefaultDays { get; set; } = 30;
+
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    protected override void OnInitialized()
+    {
+        var today = DateTime.Today;
+        fromDate = today.AddDays(-DefaultDays);
+        toDate = today;
+    }
+
+    private void Confirm()
+    {
+        if (fromDate is null || toDate is null) return;
+        Dialog.Close(DialogResult.Ok(new BackfillRange(fromDate.Value, toDate.Value)));
+    }
+
+    private void Skip() => Dialog.Close(DialogResult.Ok<BackfillRange?>(null));
+
+    public record BackfillRange(DateTime From, DateTime To);
+}

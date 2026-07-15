@@ -1,0 +1,434 @@
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using My.Shared.Constants
+@using My.Shared.Navigation
+@using My.Shared.Dtos.TimeSubmission
+@using My.Shared.Dtos.Intranet
+@using My.Client.Services
+@using System.Net.Http.Json
+@using System.Security.Claims
+
+<nav class="nav-scrollable" @onclick="HandleNavClick">
+    <MudNavMenu Color="Color.Inherit">
+        <AuthorizeView>
+            <Authorizing>
+                <div class="nav-loading">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Inherit" />
+                </div>
+            </Authorizing>
+
+            <Authorized>
+                <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+
+                @* Entire Tyme group (and all its pages) is gated on a *scoped* Tyme role
+                   (Tyme:User / Manager / Admin). Users with only global Admin (or no Tyme
+                   scope at all) do not see the Tyme menu or have permission to the pages,
+                   even though they are global Admin. This is exactly the same model as
+                   Intranet. Global Admin is reserved for Users / AppSettings / Logs / etc. *@
+                <ScopedAuthorizeView Scope="Tyme" ScopedOnly="true">
+                    <Authorized>
+                        <MudNavGroup Title="Tyme" Icon="@Icons.Material.Filled.AccessTime" Class="nav-top-level"
+                                     Expanded="@navAccordion.IsBuiltInExpanded(SidebarNavAccordionState.BuiltInTymeKey)"
+                                     ExpandedChanged="@(e => OnNavGroupExpanded(SidebarNavAccordionState.BuiltInTymeKey, e))">
+                            <MudNavLink Href="tyme/taskstopwatch" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Timer">Stopwatch</MudNavLink>
+                            <MudNavLink Href="tyme/tasks" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Checklist">Tasks</MudNavLink>
+                            <MudNavLink Href="tyme/taskcalendar" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CalendarMonth">Calendar</MudNavLink>
+                            <MudNavLink Href="tyme/reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Assessment">Reports</MudNavLink>
+                            <MudNavLink Href="tyme/submit" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Send"
+                                        IconColor="@(overdueCount > 0 ? Color.Warning : Color.Inherit)"
+                                        Style="@(overdueCount > 0 ? "color: var(--mud-palette-warning);" : null)">
+                                <span class="d-inline-flex align-center">
+                                    <span>Submit</span>
+                                    @if (overdueCount > 0)
+                                    {
+                                        <span class="overdue-pill">@overdueCount</span>
+                                    }
+                                </span>
+                            </MudNavLink>
+
+                            @* Projects and Organizations are visible to any Tyme user — they need
+                               to know what projects/orgs exist when picking one on the Stopwatch
+                               or Tasks page. The page itself shows actions only to managers.
+                               Management stays manager-only since it surfaces other users' time. *@
+                            <MudNavLink Href="tyme/organizations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business">Organizations</MudNavLink>
+                            <MudNavLink Href="tyme/projects" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Folder">Projects</MudNavLink>
+                            <ScopedAuthorizeView Scope="Tyme" MinimumRole="Manager" ScopedOnly="true">
+                                <Authorized>
+                                    <MudNavLink Href="tyme/availability" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BeachAccess">Availability</MudNavLink>
+                                    <MudNavLink Href="tyme/management" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.SupervisorAccount">Management</MudNavLink>
+                                </Authorized>
+                            </ScopedAuthorizeView>
+                            <ScopedAuthorizeView Scope="Tyme" MinimumRole="Admin" ScopedOnly="true">
+                                <Authorized>
+                                    <MudNavLink Href="tyme/dataextraction" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Storage">Data Extraction</MudNavLink>
+                                </Authorized>
+                            </ScopedAuthorizeView>
+                        </MudNavGroup>
+                    </Authorized>
+                </ScopedAuthorizeView>
+
+                @if (hasIntranetReader)
+                {
+                    @* Curated company links — top-level main nav (same level as Tyme / Admin). *@
+                    @foreach (var item in intranetNavItems)
+                    {
+                        <CuratedNavItem @key="item.Id"
+                                        Item="item"
+                                        IsTopLevel="true"
+                                        ExpandedCuratedNavGroupKey="@navAccordion.ExpandedCuratedTopLevelKey"
+                                        ExpandedChildNavGroupKeyByParent="@navAccordion.ExpandedNestedChildByParent"
+                                        ActiveCuratedNavItemId="@activeCuratedNavItemId"
+                                        OnCuratedNavItemActivated="OnCuratedNavItemActivated"
+                                        OnNavGroupExpanded="HandleCuratedNavGroupExpanded" />
+                    }
+
+                    @* Maintenance tools under Intranet (editors/admins only — not shown to regular readers). *@
+                    @if (hasIntranetMaintenance)
+                    {
+                        <MudNavGroup Title="Intranet" Icon="@Icons.Material.Filled.EditNote" Class="nav-top-level"
+                                     Expanded="@navAccordion.IsBuiltInExpanded(SidebarNavAccordionState.BuiltInIntranetMaintenanceKey)"
+                                     ExpandedChanged="@(e => OnNavGroupExpanded(SidebarNavAccordionState.BuiltInIntranetMaintenanceKey, e))">
+                            <MudNavLink Href="intranet/pages" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.List">Manage Pages</MudNavLink>
+                            @if (hasIntranetAdmin)
+                            {
+                                <MudNavLink Href="intranet/navigation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree">Navigation</MudNavLink>
+                            }
+                            <MudNavLink Href="intranet/documents" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AttachFile">Documents Library</MudNavLink>
+                        </MudNavGroup>
+                    }
+                }
+
+                @if (isAnyAdmin)
+                {
+                    <MudNavGroup Title="Admin" Icon="@Icons.Material.Filled.AdminPanelSettings" Class="nav-top-level"
+                                 Expanded="@navAccordion.IsBuiltInExpanded(SidebarNavAccordionState.BuiltInAdminKey)"
+                                 ExpandedChanged="@(e => OnNavGroupExpanded(SidebarNavAccordionState.BuiltInAdminKey, e))">
+                        <MudNavLink Href="admin/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">Users</MudNavLink>
+                        @if (isGlobalAdmin)
+                        {
+                            <MudNavLink Href="admin/appsettings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">App Settings</MudNavLink>
+                            <MudNavLink Href="admin/logs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Article">Logs</MudNavLink>
+                        }
+                    </MudNavGroup>
+                }
+            </Authorized>
+        </AuthorizeView>
+    </MudNavMenu>
+</nav>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback OnNavigate { get; set; }
+
+    [Inject]
+    private IHttpClientFactory ClientFactory { get; set; } = null!;
+
+    [Inject]
+    private ILogger<NavMenu> Logger { get; set; } = null!;
+
+    [Inject]
+    private My.Client.Services.TimeSubmissionEvents SubmissionEvents { get; set; } = null!;
+
+    [Inject]
+    private My.Client.Services.IntranetNavigationEvents IntranetNavEvents { get; set; } = null!;
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = null!;
+
+    [Inject]
+    private AuthenticationStateProvider AuthStateProvider { get; set; } = null!;
+
+    [Inject]
+    private NavigationPersistenceService NavPersistence { get; set; } = null!;
+
+    private bool isAnyAdmin;
+    private bool isGlobalAdmin;
+    private bool hasIntranetReader;
+    private bool hasIntranetMaintenance;
+    private bool hasIntranetAdmin;
+    private int overdueCount;
+    private bool overdueLoaded;
+    private bool _eventsHooked;
+    private bool _intranetNavEventsHooked;
+    private bool _persistenceReady;
+
+    private List<IntranetNavigationItemDto> intranetNavItems = new();
+    private bool _canViewDraftNavItems;
+
+    /// <summary>
+    /// Sidebar accordion state — all expand/collapse must go through this object.
+    /// Behavior is locked by <c>SidebarNavAccordionStateTests</c>; do not reintroduce HashSets or auto-expand-all helpers.
+    /// </summary>
+    private readonly SidebarNavAccordionState navAccordion = new();
+
+    /// <summary>Highlights external curated links (no in-app route to match).</summary>
+    private string? activeCuratedNavItemId;
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateTask;
+        await ApplyAuthStateAsync(authState.User);
+        if (authState.User.Identity?.IsAuthenticated == true && (_persistenceReady || !IsDashboardRoute()))
+            SyncNavExpansionToRouteAndRefresh();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _persistenceReady)
+            return;
+
+        await NavPersistence.InitAsync();
+        _persistenceReady = true;
+        SyncNavExpansionToRouteAndRefresh();
+        await PersistNavStateAsync();
+        StateHasChanged();
+    }
+
+    private void OnAuthStateChanged(Task<AuthenticationState> t) => _ = RefreshForAuthChangeAsync();
+
+    private async Task RefreshForAuthChangeAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var hadIntranetReader = hasIntranetReader;
+        var hadDraftNav = _canViewDraftNavItems;
+        await ApplyAuthStateAsync(authState.User);
+
+        if (!hasIntranetReader)
+            intranetNavItems.Clear();
+        else if (!hadIntranetReader || hadDraftNav != _canViewDraftNavItems || intranetNavItems.Count == 0)
+            await LoadIntranetNavigationAsync();
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApplyAuthStateAsync(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            isAnyAdmin = Constants.Roles.IsAnyAdmin(user);
+            isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
+            hasIntranetReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
+            hasIntranetMaintenance = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Editor);
+            hasIntranetAdmin = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Admin);
+            _canViewDraftNavItems = hasIntranetMaintenance;
+
+            if (!overdueLoaded && Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme))
+            {
+                overdueLoaded = true;
+                _ = LoadOverdueAsync();
+            }
+
+            if (hasIntranetReader && intranetNavItems.Count == 0)
+                await LoadIntranetNavigationAsync();
+            // Subscribe once. Submit/Unsubmit anywhere in the app raises this event,
+            // and we re-fetch the badge count so users see immediate feedback.
+            if (!_eventsHooked)
+            {
+                _eventsHooked = true;
+                SubmissionEvents.Changed += OnSubmissionChanged;
+            }
+
+            // Subscribe once for live updates to curated intranet nav items.
+            // After an admin creates/edits/deletes a nav item in /intranet/navigation,
+            // the sidebar updates without requiring a browser refresh.
+            if (!_intranetNavEventsHooked)
+            {
+                _intranetNavEventsHooked = true;
+                IntranetNavEvents.Changed += OnIntranetNavChanged;
+            }
+        }
+        else
+        {
+            isAnyAdmin = false;
+            isGlobalAdmin = false;
+            hasIntranetReader = false;
+            hasIntranetMaintenance = false;
+            hasIntranetAdmin = false;
+            _canViewDraftNavItems = false;
+            overdueCount = 0;
+            overdueLoaded = false;
+            intranetNavItems.Clear();
+        }
+    }
+
+    private void OnSubmissionChanged() => _ = LoadOverdueAsync();
+
+    private void OnIntranetNavChanged() => _ = LoadIntranetNavigationAsync();
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+
+        if (_eventsHooked)
+            SubmissionEvents.Changed -= OnSubmissionChanged;
+
+        if (_intranetNavEventsHooked)
+            IntranetNavEvents.Changed -= OnIntranetNavChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            SyncNavExpansionToRouteAndRefresh();
+            await PersistNavStateAsync();
+        });
+
+    private async Task LoadOverdueAsync()
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var list = await client.GetFromJsonAsync<List<OverdueMonthDto>>(Constants.API.TimeSubmission.GetOverdue);
+            overdueCount = list?.Count ?? 0;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort — never break the nav menu over this.
+            Logger.LogWarning(ex, "Failed to load overdue count for nav badge.");
+        }
+    }
+
+    private async Task LoadIntranetNavigationAsync()
+    {
+        if (!hasIntranetReader) return;
+
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var list = await client.GetFromJsonAsync<List<IntranetNavigationItemDto>>(Constants.API.Intranet.Navigation.Get);
+            intranetNavItems = list?
+                .Where(i => i.IsVisible)
+                .OrderBy(i => i.SortOrder)
+                .ThenBy(i => i.Title)
+                .ToList() ?? new();
+            SyncNavExpansionToRouteAndRefresh();
+        }
+        catch (Exception ex)
+        {
+            // Best-effort for nav menu; don't break the whole sidebar.
+            Logger.LogWarning(ex, "Failed to load curated intranet navigation.");
+        }
+    }
+
+    private void HandleCuratedNavGroupExpanded((string? ParentNavGroupKey, string GroupKey, bool Expanded) args)
+    {
+        if (args.ParentNavGroupKey == null)
+            OnCuratedTopLevelNavGroupExpanded(args.GroupKey, args.Expanded);
+        else
+            OnNestedNavGroupExpanded(args.ParentNavGroupKey, args.GroupKey, args.Expanded);
+    }
+
+    private void OnCuratedTopLevelNavGroupExpanded(string key, bool expanded)
+    {
+        navAccordion.ToggleCuratedTopLevel(key, expanded);
+        _ = PersistAndRefreshAsync();
+    }
+
+    private void OnCuratedNavItemActivated(string itemId)
+    {
+        activeCuratedNavItemId = itemId;
+        StateHasChanged();
+    }
+
+    private void OnNavGroupExpanded(string key, bool expanded)
+    {
+        navAccordion.ToggleBuiltInGroup(key, expanded);
+        _ = PersistAndRefreshAsync();
+    }
+
+    private void OnNestedNavGroupExpanded(string parentKey, string key, bool expanded)
+    {
+        navAccordion.ToggleNestedChild(parentKey, key, expanded);
+        _ = PersistAndRefreshAsync();
+    }
+
+    private void SyncNavExpansionToRouteAndRefresh()
+    {
+        SyncNavExpansionToRoute();
+        StateHasChanged();
+    }
+
+    private async Task PersistAndRefreshAsync()
+    {
+        await PersistNavStateAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PersistNavStateAsync()
+    {
+        if (!_persistenceReady)
+            return;
+
+        try
+        {
+            await NavPersistence.SaveAccordionAsync(navAccordion);
+            var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).TrimEnd('/');
+            await NavPersistence.SaveLastPathAsync(relativePath);
+        }
+        catch
+        {
+            // Non-fatal — never break the nav over persistence.
+        }
+    }
+
+    private void SyncNavExpansionToRoute()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).TrimEnd('/');
+        activeCuratedNavItemId = null;
+
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            var snapshot = _persistenceReady ? NavPersistence.GetAccordionSnapshot() : null;
+            if (snapshot is not null)
+                navAccordion.ApplySnapshot(snapshot);
+            else
+                navAccordion.ClearAll();
+        }
+        else if (SidebarNavExpansionRules.IsTymeRoute(relativePath))
+        {
+            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInTymeKey, null, null);
+        }
+        else if (SidebarNavExpansionRules.IsAdminRoute(relativePath))
+        {
+            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInAdminKey, null, null);
+        }
+        else if (SidebarNavExpansionRules.IsIntranetMaintenanceRoute(relativePath))
+        {
+            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInIntranetMaintenanceKey, null, null);
+        }
+        else if (SidebarNavExpansionRules.TryGetCuratedExpansion(intranetNavItems, relativePath, out var topKey, out var nestedKeys)
+                 && !string.IsNullOrEmpty(topKey))
+        {
+            navAccordion.ApplyRouteExpansion(null, topKey, nestedKeys);
+        }
+        else
+        {
+            // Any other route (help, settings, etc.) — collapse curated groups only.
+            navAccordion.ApplyRouteExpansion(navAccordion.ExpandedBuiltInGroupKey, null, null);
+        }
+    }
+
+    private bool IsDashboardRoute()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri).TrimEnd('/');
+        return string.IsNullOrEmpty(relativePath);
+    }
+
+    private async Task HandleNavClick(MouseEventArgs e)
+    {
+        if (OnNavigate.HasDelegate)
+            await OnNavigate.InvokeAsync();
+    }
+}

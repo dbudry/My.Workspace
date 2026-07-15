@@ -1,0 +1,258 @@
+@using My.Client.Extensions
+@using My.Client.Models
+@using My.Client.Services
+@using My.Shared.Rules
+@using My.Shared.Dtos.Contact
+@using My.Shared.Constants
+@using System.Net.Http.Json
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudTextField @bind-Value="Model.Name" Label="Department Name" Required="true"
+                          RequiredError="Department name is required" Variant="Variant.Outlined" />
+        </DialogFormStack>
+
+        @if (IsEdit)
+        {
+            <MudDivider Class="my-3" />
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudText Typo="Typo.subtitle1" Style="font-weight:600;">Contacts</MudText>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="AddContact">Add Contact</MudButton>
+            </div>
+
+            @if (contacts.Any())
+            {
+                <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Title</th>
+                            <th>Phone</th>
+                            <th>Email</th>
+                            <th style="width:80px; text-align:center;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in contacts)
+                        {
+                            <tr>
+                                @if (editingContactId == c.ContactId)
+                                {
+                                    <td><MudTextField @bind-Value="editName" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                    <td><ContactTypeSelect @bind-Value="editContactType" Types="contactTypes" /></td>
+                                    <td><MudTextField @bind-Value="editTitle" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                    <td><MudTextField @bind-Value="editPhone" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                    <td><MudTextField @bind-Value="editEmail" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                    <td style="text-align:center; white-space:nowrap;">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small"
+                                                       OnClick="SaveEditContact" Disabled="@string.IsNullOrWhiteSpace(editName)" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Default" Size="Size.Small"
+                                                       OnClick="CancelEdit" />
+                                    </td>
+                                }
+                                else
+                                {
+                                    <td>@c.Name</td>
+                                    <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                    <td>@c.Title</td>
+                                    <td>@c.PhoneNumber</td>
+                                    <td>@c.Email</td>
+                                    <td style="text-align:center; white-space:nowrap;">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                       OnClick="@(() => StartEditContact(c))" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => DeleteContact(c))" />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No contacts</MudText>
+            }
+
+            @if (isAdding)
+            {
+                <div class="mt-2 pa-3" style="border: 1px solid var(--mud-palette-lines-default); border-radius: 4px;">
+                    <MudGrid Spacing="2">
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="newName" Label="Name" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="newTitle" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudTextField @bind-Value="newPhone" Label="Phone" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="newEmail" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudItem>
+                    </MudGrid>
+                    <div class="d-flex justify-end gap-2 mt-2">
+                        <MudButton Size="Size.Small" OnClick="CancelAdd">Cancel</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="@(string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newContactType))" OnClick="SaveNewContact">Save Contact</MudButton>
+                    </div>
+                </div>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                   Disabled="@string.IsNullOrWhiteSpace(Model.Name)">@SubmitLabel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public DepartmentModel Model { get; set; } = new();
+
+    [Parameter]
+    public string SubmitLabel { get; set; } = "Save";
+
+    [Inject]
+    private IHttpClientFactory ClientFactory { get; set; } = null!;
+
+    [Inject]
+    private ISnackbar Snackbar { get; set; } = null!;
+
+    [Inject]
+    private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
+    private bool IsEdit => !string.IsNullOrEmpty(Model.DepartmentId);
+    private HttpClient client = null!;
+    private List<ContactModel> contacts = new();
+    private IReadOnlyList<string> contactTypes = ContactTypeRules.DefaultTypes;
+
+    // Add contact state
+    private bool isAdding;
+    private string newName = "", newTitle = "", newPhone = "", newEmail = "", newContactType = "";
+
+    // Edit contact state
+    private string? editingContactId;
+    private string editName = "", editTitle = "", editPhone = "", editEmail = "", editContactType = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        client = ClientFactory.CreateClient(Constants.API.ClientName);
+        contacts = Model.Contacts?.ToList() ?? new();
+        contactTypes = await ContactTypeOptions.GetAsync(AppSettingsCache);
+        newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+    }
+
+    private void AddContact()
+    {
+        CancelEdit();
+        isAdding = true;
+        newName = ""; newTitle = ""; newPhone = ""; newEmail = "";
+        newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+    }
+
+    private void CancelAdd() => isAdding = false;
+
+    private async Task SaveNewContact()
+    {
+        try
+        {
+            var dto = new CreateContactDto
+            {
+                Name = newName,
+                Title = string.IsNullOrWhiteSpace(newTitle) ? null : newTitle,
+                PhoneNumber = string.IsNullOrWhiteSpace(newPhone) ? null : newPhone,
+                Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
+                ContactType = newContactType,
+                OrganizationId = Model.OrganizationId,
+                DepartmentId = Model.DepartmentId
+            };
+            var response = await client.PostAsJsonAsync(Constants.API.Contact.Create, dto);
+            response.EnsureSuccessStatusCode();
+            var created = await response.Content.ReadFromJsonAsync<ContactDto>();
+            if (created != null)
+                contacts.Add(new ContactModel(created));
+            isAdding = false;
+            Snackbar.Add("Contact added.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't add contact.");
+        }
+    }
+
+    private void StartEditContact(ContactModel c)
+    {
+        isAdding = false;
+        editingContactId = c.ContactId;
+        editName = c.Name;
+        editContactType = string.IsNullOrWhiteSpace(c.ContactType)
+            ? ContactTypeOptions.DefaultForNew(contactTypes)
+            : c.ContactType;
+        editTitle = c.Title ?? "";
+        editPhone = c.PhoneNumber ?? "";
+        editEmail = c.Email ?? "";
+    }
+
+    private void CancelEdit() => editingContactId = null;
+
+    private async Task SaveEditContact()
+    {
+        var c = contacts.FirstOrDefault(x => x.ContactId == editingContactId);
+        if (c == null) return;
+
+        try
+        {
+            var dto = new UpdateContactDto
+            {
+                ContactId = c.ContactId,
+                Name = editName,
+                ContactType = editContactType,
+                Title = string.IsNullOrWhiteSpace(editTitle) ? null : editTitle,
+                PhoneNumber = string.IsNullOrWhiteSpace(editPhone) ? null : editPhone,
+                Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail
+            };
+            var response = await client.PutAsJsonAsync(Constants.API.Contact.Update, dto);
+            response.EnsureSuccessStatusCode();
+            c.Name = editName;
+            c.ContactType = editContactType;
+            c.Title = string.IsNullOrWhiteSpace(editTitle) ? null : editTitle;
+            c.PhoneNumber = string.IsNullOrWhiteSpace(editPhone) ? null : editPhone;
+            c.Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail;
+            editingContactId = null;
+            Snackbar.Add("Contact updated.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't update contact.");
+        }
+    }
+
+    private async Task DeleteContact(ContactModel c)
+    {
+        try
+        {
+            var response = await client.DeleteAsync($"{Constants.API.Contact.Delete}/{c.ContactId}");
+            response.EnsureSuccessStatusCode();
+            contacts.Remove(c);
+            Snackbar.Add("Contact deleted.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't delete contact.");
+        }
+    }
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(Model));
+    private void Cancel() => MudDialog.Cancel();
+}

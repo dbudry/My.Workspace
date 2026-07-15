@@ -1,0 +1,34 @@
+{
+  "globalHeaders": {
+    "X-Robots-Tag": "noindex, nofollow"
+  },
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/_framework/*",
+      "/css/*",
+      "/js/*",
+      "/lib/*",
+      "/img/*",
+      "/images/*",
+      "/favicon.*",
+      "/api/*"
+    ]
+  },
+  "responseOverrides": {
+    "404": {
+      "rewrite": "/index.html",
+      "statusCode": 200
+    }
+  },
+  "routes": [
+    {
+      "route": "/authentication/*",
+      "allowedRoles": [ "anonymous" ]
+    },
+    {
+      "route": "/*",
+      "allowedRoles": [ "anonymous" ]
+    }
+  ]
+}

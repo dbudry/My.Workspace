@@ -1,0 +1,188 @@
+﻿@page "/"
+@using My.Client.Components.Dashboard
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using My.Client.Services
+
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject UserSettingsService UserSettings
+@inject NavigationPersistenceService NavPersistence
+@inject HttpClient Http
+@inject IConfiguration Configuration
+@using System.Net.Http.Json
+@using My.Shared.Constants
+@using My.Shared.Dtos.Setup
+
+@if (_checkingSetup)
+{
+    <div style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+    </div>
+}
+else if (User?.Identity?.IsAuthenticated == true)
+{
+    if (!_sessionRestoreChecked)
+    {
+        <div style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+            <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+        </div>
+    }
+    else
+    {
+        <Dashboard />
+    }
+}
+else if (_silentLoginDone)
+{
+    <PageTitle>@pageTitle</PageTitle>
+    <LandingPart/>
+}
+else
+{
+    <div style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+    </div>
+}
+
+@code
+{
+    [CascadingParameter]
+    private Task<AuthenticationState> authenticationStateTask { get; set; } = null!;
+
+    [CascadingParameter(Name = "SetPageTitle")]
+    private Action<string>? SetPageTitle { get; set; }
+
+    private string? pageTitle { get; set; }
+    private bool _silentLoginDone;
+    private bool _sessionRestoreChecked;
+    private bool _checkingSetup = true;
+
+    public System.Security.Claims.ClaimsPrincipal? User { get; set; }
+
+    protected async override Task OnInitializedAsync()
+    {
+        var authState = await authenticationStateTask;
+        User = authState.User;
+
+        if (User?.Identity?.IsAuthenticated != true)
+        {
+            try
+            {
+                var apiBase = Configuration["ApiBaseUrl"] ?? "api/";
+                var url = new Uri(new Uri(Navigation.BaseUri), apiBase + Constants.API.Setup.Status).ToString();
+                var status = await Http.GetFromJsonAsync<SetupStatusDto>(url);
+                if (status is { SetupCompleted: false })
+                {
+                    Navigation.NavigateTo("/setup", replace: true);
+                    return;
+                }
+            }
+            catch
+            {
+                // API down — still offer setup so the wizard can show environment checks.
+                Navigation.NavigateTo("/setup", replace: true);
+                return;
+            }
+        }
+
+        _checkingSetup = false;
+
+        if (User?.Identity?.IsAuthenticated == true)
+        {
+            pageTitle = "Dashboard";
+            SetPageTitle?.Invoke(pageTitle);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        if (User?.Identity?.IsAuthenticated == true)
+        {
+            try
+            {
+                await NavPersistence.InitAsync();
+
+                var sessionActive = await JS.InvokeAsync<string?>(
+                    "sessionStorage.getItem", NavigationPersistenceService.SessionActiveKey);
+                if (string.IsNullOrEmpty(sessionActive))
+                {
+                    await JS.InvokeVoidAsync(
+                        "sessionStorage.setItem", NavigationPersistenceService.SessionActiveKey, "1");
+
+                    var lastPath = NavPersistence.GetLastPath();
+                    if (!string.IsNullOrEmpty(lastPath))
+                    {
+                        Navigation.NavigateTo(lastPath, replace: true);
+                        return;
+                    }
+                }
+
+                _sessionRestoreChecked = true;
+                StateHasChanged();
+            }
+            catch
+            {
+                _sessionRestoreChecked = true;
+                StateHasChanged();
+            }
+
+            try
+            {
+                // Load (or use cached) settings so we can decide whether to auto-include Google Calendar/Drive.
+                await UserSettings.GetSettingsAsync();
+
+                if (UserSettings.IsGoogleCalendarConnected)
+                {
+                    // Connection is stored server-side; mirror that in localStorage so clearing
+                    // browser cache does not re-trigger OAuth when the DB already has a token.
+                    await JS.InvokeVoidAsync("localStorage.setItem", "googleAutoConnectAttempted", "connected");
+                }
+                else
+                {
+                    var attempted = await JS.InvokeAsync<string?>("localStorage.getItem", "googleAutoConnectAttempted");
+                    if (string.IsNullOrWhiteSpace(attempted))
+                    {
+                        // Mark that we attempted in this browser context so we don't immediately re-prompt
+                        // if the user cancels the Google consent screen.
+                        await JS.InvokeVoidAsync("localStorage.setItem", "googleAutoConnectAttempted", DateTime.UtcNow.ToString("o"));
+
+                        // Trigger the (existing) Google OAuth consent flow. This is what makes
+                        // Calendar + Drive "automatic" as part of signing in (route 2).
+                        // Pass current URL so we can return here after the /settings callback processes the grant + backfill.
+                        await UserSettings.InitiateGoogleConnectAsync(Navigation.Uri);
+                        return; // navigation is in progress
+                    }
+                }
+            }
+            catch
+            {
+                // Non-fatal. The user can still use manual time entry, projects, etc.
+                // They can connect later from Settings or the editor will surface a helpful message.
+            }
+        }
+        else
+        {
+            // If the user explicitly logged out, show the landing page instead of auto-login
+            var loggedOut = await JS.InvokeAsync<string?>("localStorage.getItem", "userLoggedOut");
+            if (loggedOut == "true")
+            {
+                _silentLoginDone = true;
+                StateHasChanged();
+                return;
+            }
+
+            // Try silent sign-in: if the user has an active Google session,
+            // they'll be logged in automatically without seeing the landing page.
+            var requestOptions = new InteractiveRequestOptions
+            {
+                Interaction = InteractionType.SignIn,
+                ReturnUrl = Navigation.Uri
+            };
+            requestOptions.TryAddAdditionalParameter("prompt", "none");
+
+            Navigation.NavigateToLogin("authentication/login", requestOptions);
+        }
+    }
+}

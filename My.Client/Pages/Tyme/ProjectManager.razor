@@ -1,0 +1,195 @@
+@page "/tyme/projects"
+@* Open to any Tyme-scoped user (Tyme:User / Manager / Admin). Read-only view for regular
+   scoped users. Add/Edit/Delete actions are gated below by the canManage flag.
+   A pure global Admin (no Tyme:* scope) is denied at the page level, just like Intranet. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+
+@using My.Client.Models
+@using My.Shared.Rules
+
+<PageTitle>Manage Projects</PageTitle>
+
+<PageHeader Title="Projects" Description="Project groups and projects available for time tracking." />
+
+@* Action buttons live above the table so they don't compete with the filter row for
+   horizontal space. The MudTable's own ToolBarContent keeps the filters and search —
+   what a manager toggles while reading the list. *@
+@if (canManage)
+{
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NoteAdd"
+                   OnClick="AddProject">Add Project</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="AddProjectGroup">Add Group</MudButton>
+    </MudStack>
+}
+
+<MudTable @ref="table" @key="groupBy" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+          RowClassFunc="@((ProjectDisplayRow row, int _) => row.IsGroupRow ? "" : "project-child-row")">
+    <ToolBarContent>
+        <MudToggleGroup T="GroupByMode" Value="groupBy" ValueChanged="OnGroupByChanged" Color="Color.Primary"
+                        SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+            <MudToggleItem Value="GroupByMode.Organization">By Organization</MudToggleItem>
+            <MudToggleItem Value="GroupByMode.ProjectGroup">By Project Group</MudToggleItem>
+        </MudToggleGroup>
+        @* Inactive/Archived toggles are manager tools — regular users only care about the
+           active set they can pick projects from on Stopwatch. Hiding these for non-managers
+           also means the cache-side filter stays at "active only" for them. *@
+        @if (canManage)
+        {
+            <MudSwitch T="bool" Class="ml-4" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
+                       ValueChanged="@OnShowInactiveChanged" />
+            <MudSwitch T="bool" Class="ml-4" Value="showArchived" Label="View Archived" Color="Color.Secondary"
+                       ValueChanged="@OnShowArchivedChanged" />
+        }
+        <MudSpacer />
+        <MudTextField Value="searchString" ValueChanged="@(async (string v) => await OnSearchChanged(v))" Placeholder="Search" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
+                      Immediate="true" DebounceInterval="300" Style="max-width: 280px;" />
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh Style="width:150px;">
+            <MudTooltip Text="Slug used in calendar event titles to route events to this project: [slug]">
+                <span>Slug</span>
+            </MudTooltip>
+        </MudTh>
+        <MudTh Style="width:160px;">Organization</MudTh>
+        <MudTh Style="width:140px;">Department</MudTh>
+        <MudTh Style="width:100px;">Status</MudTh>
+        <MudTh Style="width:200px; text-align:center;">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        @if (context.IsGroupRow)
+        {
+            var group = context.Group!;
+            var groupColor = group.Color ?? "#9e9e9e";
+            <MudTd DataLabel="Name" Style="@($"border-left: 4px solid {groupColor}; padding-left: 12px;")">
+                <MudText Typo="Typo.body2" Style="font-weight:600;">@FormatHeaderLabel(group.Name, context)</MudText>
+            </MudTd>
+            <MudTd DataLabel="Slug"></MudTd>
+            <MudTd DataLabel="Organization"></MudTd>
+            <MudTd DataLabel="Department"></MudTd>
+            <MudTd DataLabel="Status"></MudTd>
+            <MudTd DataLabel="Actions" Style="text-align:center;">
+                @if (canManage)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditProjectGroup(group))">Edit group</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.NoteAdd" OnClick="@(() => AddProject(group))">Add project to group</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveProjectGroup(group))">Delete group</MudMenuItem>
+                    </MudMenu>
+                }
+            </MudTd>
+        }
+        else if (context.IsOrganizationRow)
+        {
+            var org = context.Organization!;
+            var orgColor = org.Color ?? "#9e9e9e";
+            <MudTd DataLabel="Name" Style="@($"border-left: 4px solid {orgColor}; padding-left: 12px;")">
+                <MudText Typo="Typo.body2" Style="font-weight:600;">@FormatHeaderLabel(org.Name, context)</MudText>
+            </MudTd>
+            <MudTd DataLabel="Slug"></MudTd>
+            <MudTd DataLabel="Organization"></MudTd>
+            <MudTd DataLabel="Department"></MudTd>
+            <MudTd DataLabel="Status"></MudTd>
+            <MudTd DataLabel="Actions"></MudTd>
+        }
+        else if (context.IsNoGroupHeaderRow)
+        {
+            <MudTd DataLabel="Name" Style="border-left: 4px solid #9e9e9e; padding-left: 12px;">
+                <MudText Typo="Typo.body2" Style="font-weight:600; color: var(--mud-palette-text-secondary);">@FormatHeaderLabel(context.NoGroupHeaderLabel ?? "Unassigned", context)</MudText>
+            </MudTd>
+            <MudTd DataLabel="Slug"></MudTd>
+            <MudTd DataLabel="Organization"></MudTd>
+            <MudTd DataLabel="Department"></MudTd>
+            <MudTd DataLabel="Status"></MudTd>
+            <MudTd DataLabel="Actions"></MudTd>
+        }
+        else
+        {
+            var project = context.Project!;
+            // Color indicator: resolved per the user's ProjectColorSource preference
+            // so the marker matches what Settings shows — group→org, org-only, group-only,
+            // or none. Empty string when source = None so the bar collapses to invisible.
+            var resolved = ProjectColorRules.Resolve(
+                project.OrganizationColor, project.ProjectGroupColor, SettingsService.ProjectColorSource);
+            var indicator = resolved ?? "transparent";
+            // Tooltip label names the entity (Org/Group) whose color is shown so users
+            // can tell *what* the color represents — "Ball" vs. "Profit Network" — without
+            // memorizing a palette. Empty string when no label, so MudTooltip stays silent.
+            var indicatorLabel = ProjectColorRules.ResolveLabel(
+                project.OrganizationName, project.ProjectGroupName,
+                project.OrganizationColor, project.ProjectGroupColor,
+                SettingsService.ProjectColorSource) ?? string.Empty;
+            // Child rows: indent the color bar so it sits *under* the parent's column
+            // 0 bar, like a tree branch. Absolutely-positioned div inside a relative
+            // cell — keeps the bar visible regardless of row hover state and lets
+            // hover backgrounds come through cleanly.
+            <MudTd DataLabel="Name" Style="position: relative; padding-left: 44px;">
+                <MudTooltip Text="@indicatorLabel" Placement="Placement.Top">
+                    <div style="@($"position: absolute; left: 28px; top: 0; bottom: 0; width: 4px; background-color: {indicator};")"></div>
+                </MudTooltip>
+                <MudText Typo="Typo.body2">@project.Name</MudText>
+            </MudTd>
+            <MudTd DataLabel="Slug">
+                @if (!string.IsNullOrEmpty(project.FullSlug))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">[@project.FullSlug]</MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-disabled);">—</MudText>
+                }
+            </MudTd>
+            <MudTd DataLabel="Organization">@project.OrganizationName</MudTd>
+            <MudTd DataLabel="Department">@project.DepartmentName</MudTd>
+            <MudTd DataLabel="Status">
+                @if (project.IsArchived)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Dark">Archived</MudChip>
+                }
+                else if (!project.IsActive)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">Inactive</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Active</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Actions" Style="text-align:center;">
+                @if (canManage)
+                {
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditProject(project))">Edit</MudMenuItem>
+                        @if (!project.IsArchived)
+                        {
+                            <MudMenuItem Icon="@(project.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
+                                         OnClick="@(() => ToggleActiveProject(project))">
+                                @(project.IsActive ? "Set inactive" : "Set active")
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveProject(project))">Archive</MudMenuItem>
+                        }
+                        else
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveProject(project))">Unarchive</MudMenuItem>
+                        }
+                        @if (allowProjectDelete)
+                        {
+                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveProject(project))">Delete</MudMenuItem>
+                        }
+                    </MudMenu>
+                }
+            </MudTd>
+        }
+    </RowTemplate>
+    <NoRecordsContent>
+        <EmptyState Icon="@Icons.Material.Outlined.Folder"
+                    Title="No projects or groups to display"
+                    Message="@GetEmptyMessage()" />
+    </NoRecordsContent>
+    <PagerContent>
+        <MudTablePager />
+    </PagerContent>
+</MudTable>

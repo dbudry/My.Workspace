@@ -1,0 +1,126 @@
+@page "/admin/logs"
+@attribute [Authorize]
+
+@using My.Shared.Dtos.Logs
+
+<PageTitle>Logs</PageTitle>
+
+<PageHeader Description="Live trace + exception output from the Function App. Global Admin only." />
+
+<PageLoader IsLoading="@(isLoading && response == null)">
+    @if (!isGlobalAdmin)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
+            This page is restricted to the global Admin role.
+        </MudAlert>
+    }
+    else
+    {
+        @if (response?.LogLevel != null)
+        {
+            <MudAlert Severity="@(response.LogLevel.IsSetByEnvVar ? Severity.Info : Severity.Normal)"
+                      Variant="Variant.Outlined" Class="mb-3">
+                <MudText Typo="Typo.body2">
+                    <strong>Function host write level:</strong> @response.LogLevel.EffectiveLevel
+                    @if (response.LogLevel.IsSetByEnvVar)
+                    {
+                        <span> — env var <code>@response.LogLevel.EnvVarName</code></span>
+                    }
+                    else
+                    {
+                        <span> (default — no env var configured)</span>
+                    }
+                </MudText>
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    This controls what the Function App <em>writes</em> into Application Insights (Azure Portal →
+                    Function App → Environment variables). This table lists whatever is already stored;
+                    use the Severity column to spot Info vs Error. To change writes: set
+                    <code>@response.LogLevel.EnvVarName</code> to
+                    <code>Verbose</code>, <code>Information</code>, <code>Warning</code>, <code>Error</code>, or
+                    <code>Critical</code>. Saving restarts the app.
+                </MudText>
+            </MudAlert>
+        }
+
+        @if (response?.Success == false)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3">
+                @response.Error
+            </MudAlert>
+        }
+
+        <FilterBar>
+            <ChildContent>
+                <MudSelect T="int" @bind-Value="selectedHours" Label="Time range" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Dense="true" Style="min-width: 140px;">
+                    <MudSelectItem T="int" Value="1">Last 1 hour</MudSelectItem>
+                    <MudSelectItem T="int" Value="6">Last 6 hours</MudSelectItem>
+                    <MudSelectItem T="int" Value="24">Last 24 hours</MudSelectItem>
+                    <MudSelectItem T="int" Value="72">Last 3 days</MudSelectItem>
+                    <MudSelectItem T="int" Value="168">Last 7 days</MudSelectItem>
+                </MudSelect>
+                <MudNumericField T="int" @bind-Value="selectedTop" Label="Max rows" Variant="Variant.Outlined"
+                                 Margin="Margin.Dense" Min="10" Max="1000" Style="min-width: 110px;" />
+            </ChildContent>
+            <Actions>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.ContentCopy"
+                           OnClick="CopyAllAsync"
+                           Disabled="@(isLoading || response?.Entries.Count is null or 0)">Copy</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="LoadLogs" Disabled="@isLoading">Refresh</MudButton>
+            </Actions>
+        </FilterBar>
+
+        <MudTable Items="@(response?.Entries ?? new())" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
+                  Loading="@isLoading" Striped="true">
+            <HeaderContent>
+                <MudTh Style="width:170px;">Timestamp</MudTh>
+                <MudTh Style="width:90px;">Severity</MudTh>
+                <MudTh>Message</MudTh>
+                <MudTh Style="width:140px;">Operation</MudTh>
+                <MudTh Style="width:50px;"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Timestamp">
+                    <code style="font-size: 0.8rem;">@FormatTimestamp(context.Timestamp)</code>
+                </MudTd>
+                <MudTd DataLabel="Severity">
+                    <MudChip T="string" Size="Size.Small" Color="@SeverityColor(context.SeverityLevel)"
+                             Variant="@(context.Kind == "exception" ? Variant.Filled : Variant.Outlined)">
+                        @SeverityName(context.SeverityLevel)
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Message">
+                    <span style="white-space: pre-wrap; word-break: break-word;">@context.Message</span>
+                </MudTd>
+                <MudTd DataLabel="Operation">
+                    @if (!string.IsNullOrEmpty(context.OperationId))
+                    {
+                        <code style="font-size: 0.75rem; color: var(--mud-palette-text-secondary);">
+                            @context.OperationId.Substring(0, Math.Min(8, context.OperationId.Length))
+                        </code>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                   OnClick="@(() => CopyEntryAsync(context))" title="Copy this entry" />
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
+                         Style="color: var(--mud-palette-text-secondary);">
+                    No log entries match the filter.
+                </MudText>
+            </NoRecordsContent>
+        </MudTable>
+
+        @if (response != null && response.Success)
+        {
+            <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
+                Showing @response.Entries.Count rows. Sampling may apply if the workspace has it enabled.
+            </MudText>
+        }
+    }
+</PageLoader>

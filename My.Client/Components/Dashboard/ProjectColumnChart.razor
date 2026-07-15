@@ -1,0 +1,19 @@
+@using My.Client.Models.Dashboard
+
+@if (Data.Any())
+{
+    <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@Series" ChartLabels="@Labels" Width="100%" Height="350px" />
+}
+else
+{
+    <MudText Typo="Typo.body1" Color="Color.Default">No data available</MudText>
+}
+
+@code {
+    private List<ChartSeries<double>> Series => new()
+    {
+        new ChartSeries<double> { Name = "Work Time (hours)", Data = Data.Select(w => w.WorkTimeInSeconds / 3600.0).ToArray() }
+    };
+
+    private string[] Labels => Data.Select(w => w.Time).ToArray();
+}

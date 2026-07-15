@@ -1,0 +1,54 @@
+.report-tabs-shell {
+    position: relative;
+}
+
+.report-tabs-shell ::deep(.mud-tabs-toolbar) {
+    min-height: 48px;
+}
+
+.report-tabs-shell--actions ::deep(.mud-tabs-toolbar) {
+    padding-right: 320px;
+}
+
+.report-tabs-actions {
+    position: absolute;
+    top: 0;
+    right: 8px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 48px;
+}
+
+.management-date-field {
+    width: 12.5rem;
+    min-width: 12.5rem;
+    flex: 0 0 auto;
+}
+
+.management-date-field ::deep(.mud-input-control) {
+    width: 100%;
+}
+
+.management-submission-field {
+    flex: 0 0 auto;
+    transform: translateY(-3px);
+}
+
+.management-employees-menu {
+    min-width: 220px;
+}
+
+.management-submission-field ::deep(.mud-toggle-group),
+.management-submission-field ::deep(.mud-button-group) {
+    width: auto;
+    display: inline-flex;
+}
+
+.management-submission-field ::deep(.mud-button-root) {
+    min-height: 40px;
+    padding-left: 16px;
+    padding-right: 16px;
+    white-space: nowrap;
+}

@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>1.2.10</Version>
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+    <UserSecretsId>74dbbe6f-c9dc-4ad6-b313-b89a8cf50896</UserSecretsId>
+  </PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+		<WasmEnableHotReload>false</WasmEnableHotReload>
+		<!-- Skip PWA asset manifest in Debug — prevents accidental offline-cache fingerprints during local rebuilds. -->
+		<ServiceWorkerAssetsManifest />
+		<!--
+			Disable WASM asset fingerprinting in Debug. With fingerprinting on (the .NET 9/10 default),
+			every `dotnet watch` rebuild changes the hashed filenames (e.g. My.Client.<hash>.wasm). A browser
+			holding an older boot manifest then requests a fingerprint that no longer exists → 404 → the
+			response body is empty → Blazor computes the SRI of that empty body (47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=)
+			→ integrity mismatch → boot hangs at 99% with "Stale Blazor files detected".
+			Stable filenames in Debug make a stale manifest still resolve to a real file, killing that whole class of error.
+			Release keeps fingerprinting for production cache-busting.
+		-->
+		<WasmFingerprintAssets>false</WasmFingerprintAssets>
+		<!-- Don't serve stale precompressed (.gz/.br) variants of assets during local rebuilds. -->
+		<CompressionEnabled>false</CompressionEnabled>
+	</PropertyGroup>
+
+
+  <ItemGroup>
+    <PackageReference Include="Blazored.SessionStorage" Version="2.4.0" />
+    <PackageReference Include="Heron.MudCalendar" Version="4.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.1" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.1" />
+    <PackageReference Include="MiniExcel" Version="1.41.3" />
+    <PackageReference Include="MudBlazor" Version="9.2.0" />
+    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.7.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\My.Shared\My.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="My.Tests" />
+  </ItemGroup>
+
+</Project>

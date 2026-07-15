@@ -1,0 +1,142 @@
+@using My.Client.Models
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12">
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary">Address</MudText>
+                @if (!string.IsNullOrWhiteSpace(Model.Address) || !string.IsNullOrWhiteSpace(Model.City))
+                {
+                    @if (!string.IsNullOrWhiteSpace(Model.Address))
+                    {
+                        <MudText Typo="Typo.body2">@Model.Address</MudText>
+                    }
+                    <MudText Typo="Typo.body2">
+                        @(string.Join(", ", new[] { Model.City, Model.State, Model.PostalCode }.Where(s => !string.IsNullOrWhiteSpace(s))))
+                    </MudText>
+                    @if (!string.IsNullOrWhiteSpace(Model.Country))
+                    {
+                        <MudText Typo="Typo.body2">@Model.Country</MudText>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No address on file</MudText>
+                }
+            </MudItem>
+
+            @if (!string.IsNullOrWhiteSpace(Model.Note))
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">Notes</MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@Model.Note</MudText>
+                </MudItem>
+            }
+
+            <MudItem xs="12">
+                <MudDivider Class="my-1" />
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">
+                    Contacts (@(Model.Contacts?.Count ?? 0))
+                </MudText>
+                @if (Model.Contacts != null && Model.Contacts.Any())
+                {
+                    <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th>Title</th>
+                                <th>Phone</th>
+                                <th>Email</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in Model.Contacts)
+                            {
+                                <tr>
+                                    <td>@c.Name</td>
+                                    <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                    <td>@c.Title</td>
+                                    <td>@c.PhoneNumber</td>
+                                    <td>@c.Email</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No contacts</MudText>
+                }
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudDivider Class="my-1" />
+                <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">
+                    Departments (@(Model.Departments?.Count ?? 0))
+                </MudText>
+                @if (Model.Departments != null && Model.Departments.Any())
+                {
+                    @foreach (var dept in Model.Departments)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-center gap-1 mb-1">
+                                <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" />
+                                <MudText Typo="Typo.body1" Style="font-weight:600;">@dept.Name</MudText>
+                            </div>
+                            @if (dept.Contacts != null && dept.Contacts.Any())
+                            {
+                                <div style="padding-left: 28px;">
+                                    <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Type</th>
+                                                <th>Title</th>
+                                                <th>Phone</th>
+                                                <th>Email</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var c in dept.Contacts)
+                                            {
+                                                <tr>
+                                                    <td>@c.Name</td>
+                                                    <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                                    <td>@c.Title</td>
+                                                    <td>@c.PhoneNumber</td>
+                                                    <td>@c.Email</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </MudSimpleTable>
+                                </div>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic; padding-left: 28px;">No contacts</MudText>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No departments</MudText>
+                }
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Variant="Variant.Filled" Color="Color.Default">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Organization Model { get; set; } = new();
+
+    private void Close() => MudDialog.Close();
+}

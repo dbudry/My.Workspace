@@ -1,0 +1,151 @@
+@page "/tyme/reports"
+@* Tyme module surface. Requires a Tyme-scoped role (even for global Admins).
+   Matches the Intranet scoping model: global Admin is only for cross-cutting setup. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+
+@using My.Client.Models
+@using My.Client.Models.Dashboard
+
+<PageTitle>Reports</PageTitle>
+
+<PageHeader Title="Reports" Description="Time spent across projects, with totals and trends." />
+
+<div>
+
+    <FilterBar>
+        <MudDatePicker @bind-Date="dateFrom" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;" />
+        <MudDatePicker @bind-Date="dateTo" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;" />
+        <ProjectAutocomplete @bind-Value="selectedProject" Label="Project" Variant="Variant.Outlined"
+                             Style="min-width: 200px;" SearchFunc="SearchProjects" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="ApplyFilters">Apply</MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small" OnClick="ClearFilters">Clear</MudButton>
+    </FilterBar>
+
+    <PageLoader IsLoading="@isLoading">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Color="Color.Default">Total Time</MudText>
+                        <MudText Typo="Typo.h5">@totalTimeFormatted</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Color="Color.Default">Total Tasks</MudText>
+                        <MudText Typo="Typo.h5">@filteredTasks.Count</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Color="Color.Default">Top Project</MudText>
+                        <MudText Typo="Typo.h5">@topProjectName</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Color="Color.Default">Avg Per Day</MudText>
+                        <MudText Typo="Typo.h5">@avgPerDayFormatted</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-4">
+            <MudItem xs="12" md="6">
+                <MudCard>
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Time by Project</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (projectChartData.Any())
+                        {
+                            <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@ProjectSeries"
+                                      ChartLabels="@ProjectLabels" ChartOptions="@ProjectChartOptions"
+                                      Width="300px" Height="300px" />
+                        }
+                        else
+                        {
+                            <MudText>No data available</MudText>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudCard>
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Daily Hours</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        @if (dailyChartData.Any())
+                        {
+                            <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@DailySeries"
+                                      ChartLabels="@DailyLabels" Width="100%" Height="300px" />
+                        }
+                        else
+                        {
+                            <MudText>No data available</MudText>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">Task Details</MudText>
+
+        <MudTable Items="@taskDetailRows" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent>
+                <MudTh>Date</MudTh>
+                <MudTh>Task</MudTh>
+                <MudTh>Project</MudTh>
+                <MudTh>Duration</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Date">@context.StartDate.ToLocalTime().ToString("MM/dd/yyyy")</MudTd>
+                <MudTd DataLabel="Task">
+                    <div class="d-flex align-center" style="gap: 8px;">
+                        @if (context.AdjustmentKind == "AliasOverlay")
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Adjustment</MudChip>
+                        }
+                        @if (context.AdjustmentKind == "DirectOverlay")
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
+                        }
+                        <span>@context.Name</span>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Project">
+                    <div class="d-flex align-center" style="gap: 8px;">
+                        @{
+                            var rowColor = GetRowColor(context);
+                        }
+                        @if (rowColor != null)
+                        {
+                            <MudTooltip Text="@GetRowLabel(context)" Placement="Placement.Top">
+                                <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px;")"></div>
+                            </MudTooltip>
+                        }
+                        <span>@context.Project?.DisplayName</span>
+                    </div>
+                </MudTd>
+                <MudTd DataLabel="Duration">@($"{(int)context.Duration.TotalHours:00}:{context.Duration.Minutes:00}")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <EmptyState Icon="@Icons.Material.Outlined.SearchOff"
+                            Title="No tasks match the selected filters"
+                            Message="Adjust the date range or project filter and try again." />
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+        </MudTable>
+    </PageLoader>
+
+</div>

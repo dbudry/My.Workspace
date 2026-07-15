@@ -1,0 +1,99 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@ItemName</MudText>
+        @if (!string.IsNullOrEmpty(ItemProjectName))
+        {
+            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">@ItemProjectName</MudText>
+        }
+    </TitleContent>
+    <DialogContent>
+        <PageLoader IsLoading="@isLoading">
+            @if (sessionsByDay.Count == 0)
+            {
+                <MudText Align="Align.Center" Class="my-4">No sessions logged yet.</MudText>
+            }
+            else
+            {
+                @foreach (var dayGroup in sessionsByDay)
+                {
+                    var dayTotal = dayGroup.Value.Aggregate(TimeSpan.Zero, (sum, s) => sum + GetSessionDuration(s));
+
+                    <MudCard Class="mb-3" Outlined="true">
+                        <MudCardHeader>
+                            <MudText Typo="Typo.subtitle1">@dayGroup.Key</MudText>
+                        </MudCardHeader>
+                        <MudCardContent Class="pa-0">
+                            <MudTable Items="@dayGroup.Value" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                                <HeaderContent>
+                                    <MudTh>Project</MudTh>
+                                    <MudTh>Start</MudTh>
+                                    <MudTh>Stop</MudTh>
+                                    <MudTh Style="width: 70px;">Duration</MudTh>
+                                    <MudTh Style="width: 88px; text-align: center;">Actions</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    @{
+                                        var captured = context;
+                                        var canEdit = !captured.IsLocked && !captured.IsRunning;
+                                    }
+                                    <MudTd DataLabel="Project">
+                                        <span>@GetSessionProjectName(captured)</span>
+                                    </MudTd>
+                                    <MudTd DataLabel="Start">@SettingsService.FormatDateTime(captured.StartDate)</MudTd>
+                                    <MudTd DataLabel="Stop">
+                                        @if (captured.IsRunning)
+                                        {
+                                            <MudText Color="Color.Success" Typo="Typo.body2">Running</MudText>
+                                        }
+                                        else if (captured.EndDate.HasValue)
+                                        {
+                                            @SettingsService.FormatDateTime(GetSessionDisplayEnd(captured))
+                                        }
+                                    </MudTd>
+                                    <MudTd DataLabel="Duration">
+                                        <div class="d-flex align-center">
+                                            <span>@FormatDuration(GetSessionDuration(captured))</span>
+                                            @if (captured.IsLocked)
+                                            {
+                                                <MudTooltip Text="@($"Time for {captured.StartDate:MMM yyyy} has been submitted")">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" Class="ml-1" />
+                                                </MudTooltip>
+                                            }
+                                        </div>
+                                    </MudTd>
+                                    <MudTd Style="text-align: center;">
+                                        <div class="d-flex justify-center gap-1">
+                                            @if (canEdit)
+                                            {
+                                                <MudTooltip Text="Edit session">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                                   OnClick="@(() => OpenSessionEditAsync(captured))" />
+                                                </MudTooltip>
+                                                <MudTooltip Text="Delete session">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                                   OnClick="@(() => DeleteSessionAsync(captured))" />
+                                                </MudTooltip>
+                                            }
+                                            else if (captured.IsRunning)
+                                            {
+                                                <MudTooltip Text="Stop the timer before editing or deleting">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Color="Color.Success" />
+                                                </MudTooltip>
+                                            }
+                                        </div>
+                                    </MudTd>
+                                </RowTemplate>
+                            </MudTable>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudText Typo="Typo.body2" Class="ml-2">Day total: @FormatDuration(dayTotal)</MudText>
+                        </MudCardActions>
+                    </MudCard>
+                }
+            }
+        </PageLoader>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>

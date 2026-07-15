@@ -1,0 +1,164 @@
+# Pull requests only — graph shows only PR jobs (no publish/create-PR noise).
+#
+#   PR → development : Build & Test → auto-merge
+#   PR → master      : Version bump → Build & Test → "Ready to merge" summary
+#   PR → staging     : Build & Test
+
+name: PR
+
+on:
+  pull_request:
+    branches: [ development, staging, master ]
+    types: [ opened, synchronize, reopened, ready_for_review ]
+
+run-name: >-
+  ${{
+    github.base_ref == 'master' && format('PR {0} → master (validate before merge)', github.head_ref) ||
+    github.base_ref == 'development' && format('PR → development (validate + auto-merge)') ||
+    format('PR → {0}', github.base_ref)
+  }}
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  CSPROJ_PATH: My.Client/My.Client.csproj
+
+jobs:
+  # ---------- master only: must bump client version ----------
+  validate-version:
+    name: Version bump (required for master)
+    if: github.base_ref == 'master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      head_version: ${{ steps.compare.outputs.head_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare HEAD version to master
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          extract() { grep -oP '(?<=<Version>)[^<]+' "$1" 2>/dev/null | head -n1 || true; }
+
+          HEAD_V=$(extract "$CSPROJ_PATH")
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          git show "origin/${{ github.base_ref }}:$CSPROJ_PATH" > /tmp/base.csproj 2>/dev/null || echo "" > /tmp/base.csproj
+          BASE_V=$(extract /tmp/base.csproj)
+
+          echo "head_version=${HEAD_V}" >> "$GITHUB_OUTPUT"
+          echo "HEAD version: ${HEAD_V:-<none>}"
+          echo "BASE version: ${BASE_V:-<none>}"
+
+          if [[ -z "$HEAD_V" ]]; then
+            echo "::error::HEAD csproj has no <Version> tag"; exit 1
+          fi
+          if [[ -z "$BASE_V" ]]; then
+            echo "Base has no <Version> yet — first bootstrap OK (v$HEAD_V)"
+            exit 0
+          fi
+          if [[ "$HEAD_V" == "$BASE_V" ]]; then
+            echo "::error::Version must be bumped (both are $HEAD_V). Edit My.Client/My.Client.csproj <Version>."; exit 1
+          fi
+
+          SMALLER=$(printf '%s\n%s\n' "$BASE_V" "$HEAD_V" | sort -V | head -n1)
+          if [[ "$SMALLER" != "$BASE_V" ]]; then
+            echo "::error::HEAD version $HEAD_V is not greater than base $BASE_V"; exit 1
+          fi
+
+          echo "Version bump valid: $BASE_V → $HEAD_V"
+
+  # ---------- all PRs ----------
+  build:
+    name: Build & Test
+    needs: [ validate-version ]
+    if: >-
+      always()
+      && (needs.validate-version.result == 'success' || needs.validate-version.result == 'skipped')
+    uses: ./.github/workflows/_build-and-test.yml
+
+  # ---------- development only: auto-merge when green ----------
+  # always() required: build is a reusable-workflow job; without always(), GHA skips
+  # dependents even when the called Build & Test succeeded.
+  auto-merge-development:
+    name: Auto-merge → development
+    if: >-
+      always()
+      && github.base_ref == 'development'
+      && github.event.pull_request.draft == false
+      && needs.build.result == 'success'
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge pull request
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR="${{ github.event.pull_request.number }}"
+          REPO="${{ github.repository }}"
+
+          STATE=$(gh pr view "$PR" --repo "$REPO" --json state -q .state)
+          if [[ "$STATE" == "MERGED" ]]; then
+            echo "PR #$PR already merged"
+            exit 0
+          fi
+
+          MERGEABLE=$(gh pr view "$PR" --repo "$REPO" --json mergeable -q .mergeable)
+          if [[ "$MERGEABLE" != "MERGEABLE" ]]; then
+            echo "PR #$PR is not mergeable ($MERGEABLE); skipping auto-merge"
+            exit 0
+          fi
+
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/pulls/${PR}/merge" \
+            -f merge_method='merge'
+
+          HEAD=$(gh pr view "$PR" --repo "$REPO" --json headRefName -q .headRefName)
+          if [[ -n "$HEAD" && "$HEAD" != "development" && "$HEAD" != "master" ]]; then
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${HEAD}" 2>/dev/null \
+              && echo "Deleted head branch ${HEAD}" \
+              || echo "Head branch ${HEAD} not deleted (may already be gone)"
+          fi
+
+          echo "Merged PR #$PR into development"
+
+  # ---------- master only: explain what green means ----------
+  ready-to-merge:
+    name: Ready to merge → production
+    if: >-
+      always()
+      && github.base_ref == 'master'
+      && needs.validate-version.result == 'success'
+      && needs.build.result == 'success'
+    needs: [ validate-version, build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain next step
+        env:
+          VERSION: ${{ needs.validate-version.outputs.head_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${VERSION:-?}"
+          {
+            echo "## Ready to ship v${V}"
+            echo ""
+            echo "All PR checks passed. **This graph stops here on purpose.**"
+            echo ""
+            echo "### Your next step"
+            echo "1. **Merge this PR** into \`master\` (GitHub Merge button)."
+            echo "2. That push runs the **Master** workflow: Build → Publish Azure → Create Release."
+            echo ""
+            echo "There is no further job on this PR graph. Merge = go to production."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PR checks green for v${V}. Merge to deploy production."

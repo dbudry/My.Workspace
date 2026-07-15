@@ -1,0 +1,340 @@
+@page "/tyme/management"
+@attribute [Authorize(Policy = "Tyme:Manager:Scoped")]
+
+<PageTitle>Management</PageTitle>
+
+<PageHeader Title="Management" Description="Review team time, apply corrections, and filter across employees, projects, and organizations." />
+
+<div>
+
+    @if (!isAuthorized && !isLoading)
+    {
+        <MudAlert Severity="Severity.Warning">You must be a Manager or Admin to view this page.</MudAlert>
+    }
+    else if (isAuthorized || isLoading)
+    {
+        <MudPaper Class="pa-3 mb-3" Elevation="0" Outlined="true">
+            <MudStack Spacing="2">
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.End">
+                    <div class="management-date-field">
+                        <MudDatePicker @bind-Date="dateFrom" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                       DateFormat="MM/dd/yyyy" Editable="true" />
+                    </div>
+                    <div class="management-date-field">
+                        <MudDatePicker @bind-Date="dateTo" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                       DateFormat="MM/dd/yyyy" Editable="true" />
+                    </div>
+                    <div style="min-width: 220px;">
+                        <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" FullWidth="true"
+                                 Disabled="@(userOptions.Count == 0)" MaxHeight="300">
+                            <ActivatorContent>
+                                <div @onclick="context.ToggleAsync" style="cursor: pointer;">
+                                    <MudTextField T="string" Value="@EmployeeSelectionLabel" Label="Employees"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true"
+                                                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ArrowDropDown"
+                                                  Disabled="@(userOptions.Count == 0)" />
+                                </div>
+                            </ActivatorContent>
+                            <ChildContent>
+                                <div class="px-2 py-1 management-employees-menu" @onclick:stopPropagation="true">
+                                    <MudTextField T="string" @bind-Value="employeeSearchText" Placeholder="Search employees"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                                  Immediate="true" Class="mb-1" />
+                                    <MudCheckBox T="bool" Value="selectAllEmployeesChecked" Label="Select All" Dense="true"
+                                                 ValueChanged="OnSelectAllEmployeesChanged" />
+                                    <MudCheckBox T="bool" Value="selectNoneEmployeesChecked" Label="Select None" Dense="true"
+                                                 ValueChanged="OnSelectNoneEmployeesChanged" />
+                                    <MudDivider Class="my-1" />
+                                    @foreach (var u in FilteredEmployeeOptions)
+                                    {
+                                        <MudCheckBox T="bool" Value="@selectedUserIds.Contains(u.UserId)" Label="@u.UserName" Dense="true"
+                                                     ValueChanged="@((bool v) => OnEmployeeCheckboxChanged(u.UserId, v))" />
+                                    }
+                                </div>
+                            </ChildContent>
+                        </MudMenu>
+                    </div>
+                    <div class="management-submission-field">
+                        <MudToggleGroup T="SubmissionFilter" Value="selectedSubmissionFilter" ValueChanged="OnSubmissionFilterChanged"
+                                        SelectionMode="SelectionMode.SingleSelection" Color="Color.Primary">
+                            <MudToggleItem Value="SubmissionFilter.All">All</MudToggleItem>
+                            <MudToggleItem Value="SubmissionFilter.Submitted">Submitted</MudToggleItem>
+                            <MudToggleItem Value="SubmissionFilter.Unsubmitted">Unsubmitted</MudToggleItem>
+                        </MudToggleGroup>
+                    </div>
+                    <div class="management-submission-field">
+                        <MudToggleGroup T="BillableFilter" Value="selectedBillableFilter" ValueChanged="OnBillableFilterChanged"
+                                        SelectionMode="SelectionMode.SingleSelection" Color="Color.Primary">
+                            <MudToggleItem Value="BillableFilter.All">All time</MudToggleItem>
+                            <MudToggleItem Value="BillableFilter.Billable">Billable</MudToggleItem>
+                            <MudToggleItem Value="BillableFilter.NonBillable">Non-billable</MudToggleItem>
+                        </MudToggleGroup>
+                    </div>
+                </MudStack>
+                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.End">
+                    <MudAutocomplete T="FilterOption" Value="@selectedOrganizationOption" ValueChanged="OnSelectedOrganizationChanged"
+                                     Label="Organization" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                     Clearable="true" OpenOnFocus="true" CoerceText="false"
+                                     SearchFunc="@SearchOrganizationOptions"
+                                     ToStringFunc="@(o => o?.Name ?? string.Empty)"
+                                     Style="min-width: 170px;" />
+                    <MudAutocomplete T="FilterOption" Value="@selectedProjectGroupOption" ValueChanged="OnSelectedProjectGroupChanged"
+                                     Label="Project Group" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                     Clearable="true" OpenOnFocus="true" CoerceText="false"
+                                     SearchFunc="@SearchProjectGroupOptions"
+                                     ToStringFunc="@(g => g?.Name ?? string.Empty)"
+                                     Style="min-width: 170px;" />
+                    <MudAutocomplete T="FilterOption" Value="@selectedProjectOption" ValueChanged="OnSelectedProjectChanged"
+                                     Label="Project" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                     Clearable="true" OpenOnFocus="true" CoerceText="false"
+                                     SearchFunc="@SearchProjectOptions"
+                                     ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                                     Style="min-width: 170px;">
+                        <ItemTemplate Context="project">
+                            <div class="d-flex align-center justify-space-between" style="width: 100%;">
+                                <span>@project.Name</span>
+                                @if (!string.IsNullOrEmpty(project.Slug))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2">
+                                        [@project.Slug]
+                                    </MudChip>
+                                }
+                            </div>
+                        </ItemTemplate>
+                    </MudAutocomplete>
+                    <MudSpacer />
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Class="mb-1">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="ApplyFilters">Apply</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small" OnClick="ClearFiltersAsync">Clear</MudButton>
+                    </MudStack>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    }
+
+    @if (isAuthorized || isLoading)
+    {
+        <PageLoader IsLoading="@isLoading">
+        @if (isAuthorized)
+        {
+        <div class="report-tabs-shell report-tabs-shell--actions">
+            <div class="report-tabs-actions">
+                @if (activeReportTab == TaskDetailsTabIndex)
+                {
+                    <MudMenu StartIcon="@Icons.Material.Filled.ViewColumn" Label="Columns"
+                             Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                             ActivationEvent="@MouseEvent.LeftClick">
+                        @foreach (var col in availableColumns)
+                        {
+                            <div class="px-3 py-1" @onclick:stopPropagation="true">
+                                <MudCheckBox T="bool" Value="@IsColumnVisible(col.Key)" Label="@col.Label" Dense="true"
+                                             ValueChanged="@((bool v) => ToggleColumn(col.Key, v))" />
+                            </div>
+                        }
+                    </MudMenu>
+                }
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadCsvAsync">
+                    Download
+                </MudButton>
+            </div>
+            <MudTabs @bind-ActivePanelIndex="activeReportTab" Outlined="true" Rounded="true" Border="true"
+                     ApplyEffectsToContainer="true" KeepPanelsAlive="true" Class="mb-2">
+            <MudTabPanel Text="Summary" Icon="@Icons.Material.Outlined.BarChart">
+        <MudTable Items="@userSummaries" Loading="@isRefreshing" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" AllowUnsorted="false">
+            <HeaderContent>
+                <MudTh><MudTableSortLabel SortBy="new Func<UserSummaryItem, object>(x => x.UserName)">Employee</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel SortBy="new Func<UserSummaryItem, object>(x => x.TaskCount)">Tasks</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel InitialDirection="SortDirection.Descending" SortBy="new Func<UserSummaryItem, object>(x => x.TotalTimeSeconds)">Total Time</MudTableSortLabel></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Employee">@context.UserName</MudTd>
+                <MudTd DataLabel="Tasks">@context.TaskCount</MudTd>
+                <MudTd DataLabel="Total Time">@context.TotalTimeFormatted</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                @if (userSummaries.Count > 1)
+                {
+                    <MudTFootRow>
+                        <MudTd Style="font-weight:600;">Total (@userSummaries.Count employees)</MudTd>
+                        <MudTd Style="font-weight:600;">@userSummaries.Sum(u => u.TaskCount)</MudTd>
+                        <MudTd Style="font-weight:600;">@FormatDuration(userSummaries.Sum(u => u.TotalTimeSeconds))</MudTd>
+                    </MudTFootRow>
+                }
+            </FooterContent>
+            <NoRecordsContent>
+                <EmptyState Icon="@Icons.Material.Outlined.BarChart"
+                            Title="No data available"
+                            Message="No employee summary data for the selected filters." />
+            </NoRecordsContent>
+        </MudTable>
+            </MudTabPanel>
+            <MudTabPanel Text="Task Details" Icon="@Icons.Material.Outlined.ListAlt">
+        <MudTable Items="@filteredTasks" Loading="@isRefreshing" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" AllowUnsorted="false">
+            <HeaderContent>
+                @if (IsColumnVisible("date"))         { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.StartDate)">Date</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("employee"))     { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.UserName)">Employee</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("task"))         { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.Name)">Task</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("project"))      { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.ProjectName)">Project</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("organization")) { <MudTh><MudTableSortLabel SortBy="@(new Func<AdminTaskItem, object>(x => x.OrganizationName ?? string.Empty))">Organization</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("group"))        { <MudTh><MudTableSortLabel SortBy="@(new Func<AdminTaskItem, object>(x => x.ProjectGroupName ?? string.Empty))">Group</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("duration"))     { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.DurationSeconds)">Duration</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("billable"))     { <MudTh Style="width:100px; text-align:center;">Billable</MudTh> }
+                @if (IsColumnVisible("status"))       { <MudTh Style="width:160px; text-align:center;">Status</MudTh> }
+                <MudTh Style="width:48px;" />
+            </HeaderContent>
+            <RowTemplate>
+                @{
+                    var showOriginal = showingOriginalForTask.GetValueOrDefault(context.TaskId, false);
+                    var displayDate = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalStartDate.HasValue)
+                        ? context.OriginalStartDate.Value
+                        : context.StartDate;
+                    var displayProject = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalProjectName != null)
+                        ? context.OriginalProjectName
+                        : context.ProjectName;
+                    var displayDuration = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalDurationSeconds.HasValue)
+                        ? context.OriginalDurationSeconds.Value
+                        : context.DurationSeconds;
+                    var displayName = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalName != null)
+                        ? context.OriginalName
+                        : context.Name;
+                    var displayIsBillable = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalIsBillable.HasValue)
+                        ? context.OriginalIsBillable.Value
+                        : context.IsBillable;
+                }
+                @if (IsColumnVisible("date"))         { <MudTd DataLabel="Date">@displayDate.ToLocalTime().ToString("MM/dd/yyyy")</MudTd> }
+                @if (IsColumnVisible("employee"))     { <MudTd DataLabel="Employee">@context.UserName</MudTd> }
+                @if (IsColumnVisible("task"))         { <MudTd DataLabel="Task">@displayName</MudTd> }
+                @if (IsColumnVisible("project"))      { <MudTd DataLabel="Project">@displayProject</MudTd> }
+                @if (IsColumnVisible("organization")) { <MudTd DataLabel="Organization">@context.OrganizationName</MudTd> }
+                @if (IsColumnVisible("group"))        { <MudTd DataLabel="Group">@context.ProjectGroupName</MudTd> }
+                @if (IsColumnVisible("duration"))     { <MudTd DataLabel="Duration">@FormatDuration(displayDuration)</MudTd> }
+                @if (IsColumnVisible("billable")) {
+                <MudTd DataLabel="Billable" Style="text-align:center;">
+                    @if (displayIsBillable)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Variant="Variant.Outlined">Yes</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">No</MudText>
+                    }
+                </MudTd>
+                }
+                @if (IsColumnVisible("status")) {
+                <MudTd DataLabel="Status" Style="text-align:center;">
+                    <div class="d-flex flex-wrap justify-center gap-1">
+                        @if (context.IsMonthSubmitted)
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small"
+                                     Icon="@Icons.Material.Filled.CheckCircle">Submitted</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small"
+                                     Icon="@Icons.Material.Filled.Schedule">Unsubmitted</MudChip>
+                        }
+                        @if (context.IsAliased)
+                        {
+                            <MudChip T="string" Color="@(showOriginal ? Color.Default : Color.Info)" Size="Size.Small"
+                                     Icon="@Icons.Material.Filled.Edit">
+                                @(showOriginal ? "Original" : "Altered")
+                            </MudChip>
+                        }
+                        @if (context.IsDirectCorrected)
+                        {
+                            <MudChip T="string" Color="@(showOriginal ? Color.Default : Color.Warning)" Size="Size.Small"
+                                     Icon="@Icons.Material.Filled.Edit">
+                                @(showOriginal ? "Original" : "Adjusted")
+                            </MudChip>
+                        }
+                    </div>
+                </MudTd>
+                }
+                <MudTd Style="text-align:center; width:48px; padding: 0 4px;" @onclick:stopPropagation="true">
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true"
+                             AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                        @if (!context.IsAliased && !context.IsDirectCorrected)
+                        {
+                            @if (context.IsMonthSubmitted && canAliasCreateOrUpdate)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenAliasDialog(context))">
+                                    Update (Alias)
+                                </MudMenuItem>
+                            }
+                            @if (context.IsMonthSubmitted && canDirectCreateOrUpdate)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenDirectDialog(context))">
+                                    Update (Direct)
+                                </MudMenuItem>
+                            }
+                            else if (context.IsMonthSubmitted && !canAliasCreateOrUpdate && !canDirectCreateOrUpdate)
+                            {
+                                <MudTooltip Text="Manager corrections are disabled or not configured (see App Settings)." Placement="Placement.Left">
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Edit" Disabled="true">
+                                        Update
+                                    </MudMenuItem>
+                                </MudTooltip>
+                            }
+                            else if (!context.IsMonthSubmitted)
+                            {
+                                <MudTooltip Text="Employee must submit this month before it can be updated." Placement="Placement.Left">
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Edit" Disabled="true">
+                                        Update
+                                    </MudMenuItem>
+                                </MudTooltip>
+                            }
+                        }
+                        else if (context.IsAliased)
+                        {
+                            @if (canAliasCreateOrUpdate)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenAliasDialog(context))">
+                                    Update (Alias)
+                                </MudMenuItem>
+                            }
+                            <MudMenuItem Icon="@(showOriginal ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                         OnClick="@(() => ToggleOriginal(context.TaskId))">
+                                @(showOriginal ? "Show altered" : "Show original")
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Restore" OnClick="@(() => DeleteAliasAsync(context))">
+                                Delete alias (revert)
+                            </MudMenuItem>
+                        }
+                        else if (context.IsDirectCorrected)
+                        {
+                            @if (canDirectCreateOrUpdate)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => OpenDirectDialog(context))">
+                                    Update (Direct)
+                                </MudMenuItem>
+                            }
+                            <MudMenuItem Icon="@(showOriginal ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                                         OnClick="@(() => ToggleOriginal(context.TaskId))">
+                                @(showOriginal ? "Show corrected" : "Show original")
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Restore" OnClick="@(() => RevertDirectCorrectionAsync(context))">
+                                Revert correction
+                            </MudMenuItem>
+                        }
+                    </MudMenu>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <EmptyState Icon="@Icons.Material.Outlined.SearchOff"
+                            Title="No tasks match the selected filters"
+                            Message="Adjust the filters above and try again." />
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+        </MudTable>
+            </MudTabPanel>
+        </MudTabs>
+        </div>
+        }
+        </PageLoader>
+    }
+
+</div>

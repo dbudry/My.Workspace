@@ -1,0 +1,95 @@
+@page "/tyme/submit"
+@page "/tyme/submit-time"
+@* Tyme module surface. Requires a Tyme-scoped role (even for global Admins).
+   Matches the Intranet scoping model: global Admin is only for cross-cutting setup. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+
+@using My.Client.Components.TimeSubmissions
+@using My.Shared.Dtos.TimeSubmission
+
+<PageTitle>Submit Tasks</PageTitle>
+
+<PageHeader Title="Submit Tasks"
+            Description="@pageDescription" />
+
+@if (canManage)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-3">
+        <MudToggleGroup T="string" Value="@_managerView" ValueChanged="OnManagerViewChangedAsync"
+                        SelectionMode="SelectionMode.SingleSelection" Color="Color.Primary" Size="Size.Small"
+                        Class="submit-view-toggle">
+            <MudToggleItem Value="@("my")">My</MudToggleItem>
+            <MudToggleItem Value="@("team")">Team</MudToggleItem>
+        </MudToggleGroup>
+    </MudStack>
+}
+
+<PageLoader IsLoading="@isLoading">
+    @if (ShowMyMonths)
+    {
+        <SectionCard Title="Your months">
+            @if (rows.Count == 0)
+            {
+                <EmptyState Icon="@Icons.Material.Outlined.AccessTime"
+                            Title="No completed months yet"
+                            Message="Once you've tracked time in a calendar month and that month has ended, it will appear here." />
+            }
+            else
+            {
+                <MudTable Items="@rows" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
+                    <HeaderContent>
+                        <MudTh>Month</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh Style="width:240px; text-align:right;">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Month">@(new DateTime(context.Year, context.Month, 1).ToString("MMMM yyyy"))</MudTd>
+                        <MudTd DataLabel="Status">
+                            @if (context.IsSubmitted)
+                            {
+                                <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.CheckCircle">
+                                    Submitted @context.SubmittedAt?.ToLocalTime().ToString("MM/dd/yyyy")
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">
+                                    Not submitted
+                                </MudChip>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Actions" Style="text-align:right;">
+                            @* Self-Submit only. Managers unsubmit (themselves or anyone else) from
+                               the Team Submissions section — keeping that flow in one place
+                               avoids the "Submit" / "Unsubmit" toggle confusion in this row. *@
+                            @if (!context.IsSubmitted)
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.Send"
+                                           OnClick="@(() => SubmitAsync(context))"
+                                           Disabled="@(busyKey == $"{context.Year}-{context.Month}")">
+                                    Submit
+                                </MudButton>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </SectionCard>
+    }
+
+    @if (ShowTeamSubmissions)
+    {
+        <SectionCard Title="Team submissions">
+            <MudText Typo="Typo.body2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                Every (employee × month) you can manage. Filter by status, employee, or month.
+                Click <strong>Unsubmit</strong> on any submitted row to unlock that month for the
+                employee — useful if they need to correct an entry after submitting.
+            </MudText>
+            <TeamSubmissionsView ShowFilters="true"
+                                 DefaultStatusFilter="all"
+                                 DefaultYearFilter="@DateTime.Today.Year"
+                                 EmptyMessage="No matching rows. Adjust the filters or wait for employees to track more time." />
+        </SectionCard>
+    }
+</PageLoader>
