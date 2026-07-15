@@ -1,53 +1,79 @@
 @namespace My.Client.Components.Projects
 @using My.Client.Models
+@implements IDisposable
 
 @*
-    Shared project picker. Name on the left, optional calendar slug chip on the right.
+    Project picker that owns its text state.
 
-    Typing notes (MudBlazor 9 MudAutocomplete):
-    - SelectOnActivation defaults to true and re-selects the whole field when focus
-      re-enters after a search re-render — that collapses multi-character input to one letter.
-    - We force SelectOnActivation=false so users can type project names normally.
-    - CoerceText=false keeps free-typed text until an item is chosen.
-    - Modal=false avoids the popover overlay stealing focus from the input.
-    - OpenOnFocus still opens the suggestion list when the field is focused.
+    MudAutocomplete (MudBlazor 9) repeatedly rewrites/reselects input text after
+    SearchFunc re-renders, so calendar New/Edit only accepted one character at a
+    time. This control uses MudTextField + popover list instead so typing is
+    normal free text and selection only happens when the user picks a row.
 *@
 
-<MudAutocomplete T="Project" Value="Value" ValueChanged="ValueChanged"
-                 Label="@Label" Variant="@Variant" Margin="@Margin" Dense="@Dense"
-                 Clearable="true"
-                 OpenOnFocus="true"
-                 CoerceText="false"
-                 CoerceValue="false"
-                 SelectOnActivation="false"
-                 ResetValueOnEmptyText="true"
-                 Strict="true"
-                 DebounceInterval="250"
-                 MaxItems="25"
-                 Modal="false"
-                 Placeholder="@Placeholder"
-                 AdornmentIcon="@Icons.Material.Filled.Search"
-                 AdornmentColor="Color.Default"
-                 SearchFunc="SearchFunc"
-                 ToStringFunc="@(p => p?.DisplayName ?? string.Empty)"
-                 Style="@Style" Class="@Class">
-    <ItemTemplate Context="project">
-        <div class="d-flex align-center justify-space-between" style="width: 100%;">
-            <span>@project.DisplayName</span>
-            @if (!string.IsNullOrEmpty(project.FullSlug))
+<div class="project-autocomplete @Class" style="@Style" @onfocusin="OnFocusIn">
+    <MudTextField @ref="_textField"
+                  T="string"
+                  Value="_text"
+                  ValueChanged="OnTextChanged"
+                  Label="@Label"
+                  Variant="@Variant"
+                  Margin="@Margin"
+                  Dense="@Dense"
+                  Immediate="true"
+                  Clearable="true"
+                  Placeholder="@Placeholder"
+                  Adornment="Adornment.End"
+                  AdornmentIcon="@Icons.Material.Filled.Search"
+                  AdornmentColor="Color.Default"
+                  OnClearButtonClick="ClearAsync"
+                  OnBlur="OnBlur"
+                  OnKeyDown="OnKeyDown" />
+
+    @if (_open)
+    {
+        @* mousedown preventDefault keeps the text field focused so blur does not
+           close the list before the click selects a project. *@
+        <MudPaper Elevation="8" Class="project-autocomplete-popover mud-width-full"
+                  @onmousedown:preventDefault="true">
+            @if (_loading)
             {
-                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2">
-                    [@project.FullSlug]
-                </MudChip>
+                <div class="pa-3 d-flex justify-center">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                </div>
             }
-        </div>
-    </ItemTemplate>
-    <NoItemsTemplate>
-        <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
-            No matching projects. Try a different name or slug.
-        </MudText>
-    </NoItemsTemplate>
-</MudAutocomplete>
+            else if (_results.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
+                    No matching projects. Try a different name or slug.
+                </MudText>
+            }
+            else
+            {
+                <MudList T="Project" Dense="@Dense" Class="py-1">
+                    @for (var i = 0; i < _results.Count; i++)
+                    {
+                        var project = _results[i];
+                        var idx = i;
+                        <MudListItem T="Project"
+                                     OnClick="@(() => SelectAsync(project))"
+                                     Class="@(idx == _highlightIndex ? "mud-selected-item mud-primary-text mud-primary-hover" : null)">
+                            <div class="d-flex align-center justify-space-between" style="width: 100%;">
+                                <span>@project.DisplayName</span>
+                                @if (!string.IsNullOrEmpty(project.FullSlug))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2">
+                                        [@project.FullSlug]
+                                    </MudChip>
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudPaper>
+    }
+</div>
 
 @code {
     [Parameter] public Project? Value { get; set; }
@@ -57,8 +83,184 @@
     [Parameter] public string Placeholder { get; set; } = "Type to search projects…";
     [Parameter] public Variant Variant { get; set; } = Variant.Text;
     [Parameter] public Margin Margin { get; set; } = Margin.Dense;
-    // Compact list rendering. Defaults to true (inline pickers); dialogs pass Dense="false".
     [Parameter] public bool Dense { get; set; } = true;
     [Parameter] public string? Style { get; set; }
     [Parameter] public string? Class { get; set; }
+
+    private MudTextField<string>? _textField;
+    private string _text = string.Empty;
+    private string? _syncedValueId;
+    private bool _open;
+    private bool _loading;
+    private bool _suppressBlurClose;
+    private int _highlightIndex = -1;
+    private List<Project> _results = new();
+    private CancellationTokenSource? _searchCts;
+    private CancellationTokenSource? _debounceCts;
+
+    protected override void OnParametersSet()
+    {
+        // Sync external Value → text only when the selected project identity changes,
+        // never while the user is mid-typing (that was the multi-letter wipe).
+        var id = Value?.ProjectId;
+        if (id != _syncedValueId)
+        {
+            _syncedValueId = id;
+            _text = Value?.DisplayName ?? string.Empty;
+        }
+        else if (Value is null && _syncedValueId is not null)
+        {
+            _syncedValueId = null;
+            _text = string.Empty;
+        }
+    }
+
+    private async Task OnTextChanged(string? value)
+    {
+        _text = value ?? string.Empty;
+
+        // User is editing free text — drop the bound Project so we do not re-sync
+        // DisplayName over their keystrokes.
+        if (Value is not null
+            && !string.Equals(_text, Value.DisplayName, StringComparison.Ordinal))
+        {
+            _syncedValueId = null;
+            await ValueChanged.InvokeAsync(null);
+        }
+
+        await ScheduleSearchAsync();
+    }
+
+    private async Task ScheduleSearchAsync()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+
+        try
+        {
+            await Task.Delay(200, token);
+            await SearchAsync(token);
+        }
+        catch (OperationCanceledException)
+        {
+            // newer keystroke
+        }
+    }
+
+    private async Task SearchAsync(CancellationToken outerToken)
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
+        var token = _searchCts.Token;
+
+        _loading = true;
+        _open = true;
+        StateHasChanged();
+
+        try
+        {
+            var found = SearchFunc is null
+                ? Enumerable.Empty<Project>()
+                : await SearchFunc(_text, token);
+            if (token.IsCancellationRequested) return;
+
+            _results = found?.Take(25).ToList() ?? new List<Project>();
+            _highlightIndex = _results.Count > 0 ? 0 : -1;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch
+        {
+            _results = new List<Project>();
+            _highlightIndex = -1;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                _loading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task SelectAsync(Project project)
+    {
+        _suppressBlurClose = true;
+        _text = project.DisplayName ?? project.Name ?? string.Empty;
+        _syncedValueId = project.ProjectId;
+        _open = false;
+        _results = new List<Project>();
+        await ValueChanged.InvokeAsync(project);
+        _suppressBlurClose = false;
+    }
+
+    private async Task ClearAsync()
+    {
+        _text = string.Empty;
+        _syncedValueId = null;
+        _open = false;
+        _results = new List<Project>();
+        await ValueChanged.InvokeAsync(null);
+    }
+
+    private async Task OnFocusIn()
+    {
+        // Open suggestions when focusing (empty query = first page of lookup from SearchFunc).
+        if (!_open)
+            await ScheduleSearchAsync();
+    }
+
+    private async Task OnBlur()
+    {
+        // Delay so list item click can run before we close.
+        await Task.Delay(150);
+        if (_suppressBlurClose) return;
+        _open = false;
+        StateHasChanged();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (!_open && (e.Key is "ArrowDown" or "Enter"))
+        {
+            await ScheduleSearchAsync();
+            return;
+        }
+
+        if (!_open || _results.Count == 0) return;
+
+        if (e.Key == "ArrowDown")
+        {
+            _highlightIndex = Math.Min(_results.Count - 1, _highlightIndex + 1);
+            StateHasChanged();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            _highlightIndex = Math.Max(0, _highlightIndex - 1);
+            StateHasChanged();
+        }
+        else if (e.Key == "Enter" && _highlightIndex >= 0 && _highlightIndex < _results.Count)
+        {
+            await SelectAsync(_results[_highlightIndex]);
+        }
+        else if (e.Key == "Escape")
+        {
+            _open = false;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+    }
 }
