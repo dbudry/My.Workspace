@@ -2,24 +2,34 @@
 @using My.Client.Models
 
 @*
-    Shared project picker. Renders the project's name on the left and its combined slug
-    (if any) as a small chip on the right, so users see the calendar tag without it
-    crowding the primary label.
+    Shared project picker. Name on the left, optional calendar slug chip on the right.
 
-    OpenOnFocus + CoerceText="false" sidestep a MudAutocomplete quirk where the first
-    arrow-key press after clicking a pre-selected value doesn't navigate the list.
+    Typing notes (MudBlazor 9 MudAutocomplete):
+    - SelectOnActivation defaults to true and re-selects the whole field when focus
+      re-enters after a search re-render — that collapses multi-character input to one letter.
+    - We force SelectOnActivation=false so users can type project names normally.
+    - CoerceText=false keeps free-typed text until an item is chosen.
+    - Modal=false avoids the popover overlay stealing focus from the input.
+    - OpenOnFocus still opens the suggestion list when the field is focused.
 *@
 
-<div @onfocusin="HandleFocusIn">
-<MudAutocomplete @ref="_input" T="Project" Value="Value" ValueChanged="OnValueChanged"
+<MudAutocomplete T="Project" Value="Value" ValueChanged="ValueChanged"
                  Label="@Label" Variant="@Variant" Margin="@Margin" Dense="@Dense"
-                 Clearable="true" OpenOnFocus="true" CoerceText="false"
+                 Clearable="true"
+                 OpenOnFocus="true"
+                 CoerceText="false"
+                 CoerceValue="false"
+                 SelectOnActivation="false"
                  ResetValueOnEmptyText="true"
-                 DebounceInterval="200"
+                 Strict="true"
+                 DebounceInterval="250"
+                 MaxItems="25"
+                 Modal="false"
                  Placeholder="@Placeholder"
                  AdornmentIcon="@Icons.Material.Filled.Search"
                  AdornmentColor="Color.Default"
-                 SearchFunc="SearchFunc" ToStringFunc="@(p => p?.DisplayName ?? string.Empty)"
+                 SearchFunc="SearchFunc"
+                 ToStringFunc="@(p => p?.DisplayName ?? string.Empty)"
                  Style="@Style" Class="@Class">
     <ItemTemplate Context="project">
         <div class="d-flex align-center justify-space-between" style="width: 100%;">
@@ -38,7 +48,6 @@
         </MudText>
     </NoItemsTemplate>
 </MudAutocomplete>
-</div>
 
 @code {
     [Parameter] public Project? Value { get; set; }
@@ -48,42 +57,8 @@
     [Parameter] public string Placeholder { get; set; } = "Type to search projects…";
     [Parameter] public Variant Variant { get; set; } = Variant.Text;
     [Parameter] public Margin Margin { get; set; } = Margin.Dense;
-    // Compact list rendering. Defaults to true (the inline table/toolbar pickers want it);
-    // dialogs pass Dense="false" for a roomier field. Must exist as a real parameter —
-    // an undeclared Dense throws "does not have a property matching the name 'Dense'".
+    // Compact list rendering. Defaults to true (inline pickers); dialogs pass Dense="false".
     [Parameter] public bool Dense { get; set; } = true;
     [Parameter] public string? Style { get; set; }
     [Parameter] public string? Class { get; set; }
-
-    private MudAutocomplete<Project>? _input;
-
-    /// <summary>
-    /// Select-all only once per focus session. MudAutocomplete re-renders the input
-    /// after each SearchFunc result; if we SelectAsync on every focusin, the second
-    /// keystroke replaces the first letter instead of appending (one-letter typing).
-    /// </summary>
-    private bool _selectAllDoneThisFocus;
-
-    private Task OnValueChanged(Project? value)
-    {
-        // After pick/clear, allow select-all the next time the field is focused.
-        _selectAllDoneThisFocus = false;
-        return ValueChanged.InvokeAsync(value);
-    }
-
-    private async Task HandleFocusIn()
-    {
-        if (_input is null || Value is null || _selectAllDoneThisFocus)
-            return;
-
-        _selectAllDoneThisFocus = true;
-        try
-        {
-            await _input.SelectAsync();
-        }
-        catch
-        {
-            // SelectAsync can throw if the input was disposed mid-render.
-        }
-    }
 }
