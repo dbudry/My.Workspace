@@ -1,27 +1,29 @@
 # CI/CD workflows (My.Workspace)
 
 Three separate workflows so each Actions graph only shows jobs that actually run.
-No more mega-pipeline with a wall of grey/skipped jobs.
 
-## How work gets to production
+**My.Workspace is a generic product** for others to host. There is **no Azure publish**
+from this repository. Master creates a **GitHub Release** (`v{Version}`) after a green build.
+
+## How work becomes a release
 
 ```
 feature branch
     │  open PR → development
     ▼
-[PR] Build & Test → auto-merge into development
+[PR] Build & Test → (optional auto-merge into development)
     │
     ▼
 [Development] Build & Test
     → Check version vs master
-    → Create development >> master PR   (only if <Version> is ahead of master)
+    → Create development → master PR   (only if <Version> is ahead of master)
     │
     ▼
 [PR → master] Version bump check → Build & Test
-    → graph ends green = MERGE THE PR (that is the next step)
+    → green checks = MERGE THE PR
     │
     ▼
-[Master] Build & Test → Publish Azure → Create Release
+[Master] Build & Test → Create GitHub Release `vX.Y.Z`
 ```
 
 ## Version gate
@@ -31,8 +33,8 @@ Promotion PRs open only when `My.Client/My.Client.csproj` `<Version>` is **stric
 | Situation | What you see |
 |-----------|----------------|
 | Version not bumped | Development run: **Create PR fails red** with a clear message |
-| Version bumped + green build | Opens/keeps `development >> master (vX.Y.Z)` |
-| Master PR checks green | **You merge** → production deploy starts |
+| Version bumped + green build | Opens/keeps `development → master (vX.Y.Z)` |
+| Master PR checks green | **You merge** → Master workflow creates release |
 
 ## Files
 
@@ -40,12 +42,12 @@ Promotion PRs open only when `My.Client/My.Client.csproj` `<Version>` is **stric
 |------|----------------|--------------|
 | `pr.yml` | Any pull request | Build (+ version check on master PRs; auto-merge on development PRs) |
 | `development.yml` | Push to `development` | Build → version check → create promotion PR |
-| `master.yml` | Push to `master` | Detect → build → publish Azure → release |
+| `master.yml` | Push to `master` | Detect → build → **Create release** (no Azure) |
 | `_build-and-test.yml` | Called by the others | Shared build/test (not triggered alone) |
 
 ## Daily tips
 
-1. Land features via PR → `development` (auto-merges when green).
-2. When ready for production: bump `<Version>`, push to `development`, wait for the promotion PR.
-3. On the master PR, green checks mean **merge it** — deploy is not a job on that graph.
-4. Watch **Master** workflow after merge for Azure publish + release.
+1. Land features via PR → `development`.
+2. When ready for a public release: bump `<Version>`, merge to `development`, wait for the promotion PR.
+3. On the master PR, green checks mean **merge it** — the Master workflow creates `v{Version}` on GitHub.
+4. Consumers of this product deploy with **their own** Azure (or other) hosting; this repo does not deploy for them.
