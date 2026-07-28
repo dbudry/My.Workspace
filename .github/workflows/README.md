@@ -21,8 +21,10 @@ feature branch
     → graph ends green = MERGE THE PR (that is the next step)
     │
     ▼
-[Master] Build & Test → Publish Azure → Create Release
+[Master] Build & Test → Publish Azure → Create Release `vX.Y.Z`
 ```
+
+**Release rule:** After a green Build & Test on master (when app paths changed), **Create release** always tags `v{Version}` from `My.Client/My.Client.csproj`, **even if Azure publish fails** or OIDC secrets are missing. Configure `PRODUCTION_AZURE_*` secrets and `AZURE_*` variables when you want deploy + release together.
 
 ## Version gate
 
