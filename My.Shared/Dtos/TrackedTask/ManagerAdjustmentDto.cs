@@ -11,4 +11,8 @@ public class ManagerAdjustmentDto
     public TimeSpan Duration { get; set; }
     public string? ProjectId { get; set; }
     public string? ProjectName { get; set; }
+    public string? OrganizationName { get; set; }
+    public string? OrganizationColor { get; set; }
+    public string? ProjectGroupName { get; set; }
+    public string? ProjectGroupColor { get; set; }
 }

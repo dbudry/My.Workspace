@@ -78,14 +78,13 @@ internal static class TrackedTaskAdjustmentEnricher
         {
             dto.IsManagerAdjusted = true;
             dto.AdjustmentKind = "Alias";
-            dto.ManagerAdjustment = new ManagerAdjustmentDto
-            {
-                Name = alias.Name,
-                StartDate = alias.StartDate,
-                Duration = alias.Duration,
-                ProjectId = alias.ProjectId,
-                ProjectName = alias.Project?.Name
-            };
+            dto.ManagerAdjustment = BuildAdjustment(
+                alias.Name,
+                alias.StartDate,
+                alias.Duration,
+                alias.ProjectId,
+                context,
+                fallbackProject: alias.Project);
             return;
         }
 
@@ -94,14 +93,13 @@ internal static class TrackedTaskAdjustmentEnricher
 
         dto.IsManagerAdjusted = true;
         dto.AdjustmentKind = "Direct";
-        dto.ManagerAdjustment = new ManagerAdjustmentDto
-        {
-            Name = audit.NewName,
-            StartDate = audit.NewStartDate,
-            Duration = audit.NewDuration,
-            ProjectId = audit.NewProjectId,
-            ProjectName = ResolveProjectName(audit.NewProjectId, context.ProjectsById)
-        };
+        dto.ManagerAdjustment = BuildAdjustment(
+            audit.NewName,
+            audit.NewStartDate,
+            audit.NewDuration,
+            audit.NewProjectId,
+            context,
+            fallbackProject: null);
 
         // Task row in DB holds corrected values; restore the employee's original submission
         // on the main DTO (same shape as alias mode).
@@ -110,14 +108,38 @@ internal static class TrackedTaskAdjustmentEnricher
         dto.Duration = audit.PreviousDuration;
         dto.ProjectId = audit.PreviousProjectId;
         dto.Project = ResolveProjectDto(audit.PreviousProjectId, context.ProjectsById, mapper);
+        // EndDate is not stored on the audit — re-derive so read-only dialogs don't show the
+        // corrected end against the restored original start/duration.
+        dto.EndDate = audit.PreviousDuration > TimeSpan.Zero
+            ? audit.PreviousStartDate + audit.PreviousDuration
+            : null;
     }
 
-    private static string? ResolveProjectName(string? projectId, IReadOnlyDictionary<string, Project> projectsById)
+    private static ManagerAdjustmentDto BuildAdjustment(
+        string name,
+        DateTime startDate,
+        TimeSpan duration,
+        string? projectId,
+        TrackedTaskAdjustmentContext context,
+        Project? fallbackProject)
     {
-        if (string.IsNullOrEmpty(projectId))
-            return null;
+        Project? project = null;
+        if (!string.IsNullOrEmpty(projectId) && context.ProjectsById.TryGetValue(projectId, out var byId))
+            project = byId;
+        project ??= fallbackProject;
 
-        return projectsById.TryGetValue(projectId, out var project) ? project.Name : null;
+        return new ManagerAdjustmentDto
+        {
+            Name = name,
+            StartDate = startDate,
+            Duration = duration,
+            ProjectId = projectId,
+            ProjectName = project?.Name,
+            OrganizationName = project?.Organization?.Name,
+            OrganizationColor = project?.Organization?.Color,
+            ProjectGroupName = project?.ProjectGroup?.Name,
+            ProjectGroupColor = project?.ProjectGroup?.Color
+        };
     }
 
     private static ProjectDto? ResolveProjectDto(

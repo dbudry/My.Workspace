@@ -271,6 +271,12 @@ namespace My.Shared.Constants
             public const string TymeAllowManagerTimeCorrection = "TymeAllowManagerTimeCorrection";
             /// <summary>Alias or Direct — workspace uses one mode only.</summary>
             public const string TymeManagerCorrectionMode = "TymeManagerCorrectionMode";
+            /// <summary>
+            /// Employee-facing view for Tasks/Calendar/Reports:
+            /// their | adjusted | both (see <c>EmployeeTimeDisplayModeRules</c>).
+            /// Workspace-wide App Setting only — no per-page toggle.
+            /// </summary>
+            public const string TymeEmployeeTimeDisplayMode = "TymeEmployeeTimeDisplayMode";
             public const string TymeCalendarBackfillDefaultDays = "TymeCalendarBackfillDefaultDays";
             public const string TymeCalendarBackfillPromptUser = "TymeCalendarBackfillPromptUser";
             public const string WorkdayHours = "WorkdayHours";

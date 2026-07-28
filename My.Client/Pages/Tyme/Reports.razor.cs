@@ -25,6 +25,7 @@ namespace My.Client.Pages.Tyme
         private DateTime? dateTo;
         private Project? selectedProject;
         private bool isLoading = true;
+        private EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both;
 
         private string totalTimeFormatted = "00:00";
         private string topProjectName = "None";
@@ -94,6 +95,9 @@ namespace My.Client.Pages.Tyme
         [Inject]
         private TrackedTasksClient TrackedTasksClient { get; set; } = null!;
 
+        [Inject]
+        private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
         #endregion
 
         protected override async Task OnInitializedAsync()
@@ -109,6 +113,7 @@ namespace My.Client.Pages.Tyme
             SetPageTitle?.Invoke("Reports");
 
             await SettingsService.GetSettingsAsync();
+            await LoadDisplayModeFromAppSettingsAsync();
 
             // Default to current month in the user's timezone
             var userToday = SettingsService.GetUserToday();
@@ -118,6 +123,22 @@ namespace My.Client.Pages.Tyme
             await Task.WhenAll(LoadProjects(), LoadAllTasks());
             ApplyClientFilters();
             isLoading = false;
+        }
+
+        /// <summary>Workspace mode from App Settings only — no per-user override.</summary>
+        private async Task LoadDisplayModeFromAppSettingsAsync()
+        {
+            displayMode = EmployeeTimeDisplayMode.Both;
+            try
+            {
+                var settings = await AppSettingsCache.GetAsync();
+                displayMode = EmployeeTimeDisplayModeRules.FromAppSettings(
+                    settings.Select(s => new KeyValuePair<string, string?>(s.Key, s.Value)));
+            }
+            catch
+            {
+                displayMode = EmployeeTimeDisplayMode.Both;
+            }
         }
 
         private async Task LoadProjects()
@@ -274,24 +295,48 @@ namespace My.Client.Pages.Tyme
             }
         }
 
-        private static List<TrackedTask> BuildTaskDetailRows(IEnumerable<TrackedTask> tasks)
+        private List<TrackedTask> BuildTaskDetailRows(IEnumerable<TrackedTask> tasks)
         {
             var rows = new List<TrackedTask>();
             foreach (var task in tasks)
             {
-                rows.Add(task);
-                if (task.ManagerAdjustment == null || task.AdjustmentKind is not ("Alias" or "Direct"))
+                var hasAdj = task.ManagerAdjustment != null
+                    && task.AdjustmentKind is "Alias" or "Direct";
+
+                if (EmployeeTimeDisplayModeRules.IncludeOriginal(displayMode, hasAdj))
+                    rows.Add(task);
+
+                if (!EmployeeTimeDisplayModeRules.IncludeAdjustmentOverlay(displayMode, hasAdj)
+                    || task.ManagerAdjustment == null)
                     continue;
 
                 var adjustment = task.ManagerAdjustment;
                 var isAlias = task.AdjustmentKind == "Alias";
+                var startLocal = adjustment.StartDate.Kind == DateTimeKind.Utc
+                    ? adjustment.StartDate.ToLocalTime()
+                    : adjustment.StartDate;
+
                 rows.Add(new TrackedTask
                 {
                     TaskId = task.TaskId,
                     Name = adjustment.Name,
                     Duration = adjustment.Duration,
-                    StartDate = adjustment.StartDate.ToLocalTime(),
+                    StartDate = startLocal,
+                    EndDate = adjustment.Duration > TimeSpan.Zero
+                        ? startLocal + adjustment.Duration
+                        : null,
                     ProjectId = adjustment.ProjectId,
+                    Project = string.IsNullOrEmpty(adjustment.ProjectId) && string.IsNullOrEmpty(adjustment.ProjectName)
+                        ? null
+                        : new Project
+                        {
+                            ProjectId = adjustment.ProjectId ?? string.Empty,
+                            Name = adjustment.ProjectName ?? "None",
+                            OrganizationName = adjustment.OrganizationName,
+                            OrganizationColor = adjustment.OrganizationColor,
+                            ProjectGroupName = adjustment.ProjectGroupName,
+                            ProjectGroupColor = adjustment.ProjectGroupColor
+                        },
                     IsMonthSubmitted = task.IsMonthSubmitted,
                     UserId = task.UserId,
                     IsManagerAdjusted = !isAlias,

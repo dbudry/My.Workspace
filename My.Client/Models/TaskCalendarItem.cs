@@ -14,6 +14,9 @@ namespace My.Client.Models
         public string? ProjectId { get; set; }
         public bool IsLocked { get; set; }
 
+        /// <summary>True when the underlying tracked task is an all-day entry.</summary>
+        public bool IsAllDay { get; set; }
+
         public bool IsManagerAdjusted { get; set; }
 
         public bool IsManagerAdjustmentOverlay { get; set; }

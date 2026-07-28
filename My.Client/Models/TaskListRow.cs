@@ -19,6 +19,14 @@ namespace My.Client.Models
 
         public string? ProjectDisplayName { get; init; }
 
+        public string? OrganizationName { get; init; }
+
+        public string? OrganizationColor { get; init; }
+
+        public string? ProjectGroupName { get; init; }
+
+        public string? ProjectGroupColor { get; init; }
+
         public TimeSpan Duration { get; init; }
 
         /// <summary>Sort key — last worked for stopwatch, start date for manual.</summary>
@@ -37,8 +45,22 @@ namespace My.Client.Models
 
         public bool IsManagerAdjusted { get; init; }
 
+        /// <summary>True when this row presents manager-corrected values (alias or direct overlay).</summary>
+        public bool IsOverlayRow => IsManagerAdjustmentOverlay || IsManagerAdjusted;
+
         public StopwatchItemDto? StopwatchItem { get; init; }
 
         public TrackedTask? ManualTask { get; init; }
+
+        /// <summary>Overlay-only snapshot — ManualTask keeps the employee's original fields.</summary>
+        public string? OverlayProjectId { get; init; }
+
+        public string? OverlayName { get; init; }
+
+        public DateTime? OverlayStartDate { get; init; }
+
+        public DateTime? OverlayEndDate { get; init; }
+
+        public TimeSpan? OverlayDuration { get; init; }
     }
 }

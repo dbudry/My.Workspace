@@ -139,7 +139,8 @@
                     Download
                 </MudButton>
             </div>
-            <MudTabs @bind-ActivePanelIndex="activeReportTab" Outlined="true" Rounded="true" Border="true"
+            <MudTabs ActivePanelIndex="activeReportTab" ActivePanelIndexChanged="OnActiveReportTabChanged"
+                     Outlined="true" Rounded="true" Border="true"
                      ApplyEffectsToContainer="true" KeepPanelsAlive="true" Class="mb-2">
             <MudTabPanel Text="Summary" Icon="@Icons.Material.Outlined.BarChart">
         <MudTable Items="@userSummaries" Loading="@isRefreshing" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" AllowUnsorted="false">
