@@ -9,33 +9,97 @@
     <DialogContent>
         @if (Mode == TrackedTaskDialogMode.ReadOnly)
         {
-            <MudSimpleTable Dense="true" Hover="true" Bordered="false" Style="overflow: hidden;">
-                <tbody>
-                    @if (!string.IsNullOrEmpty(ProjectName))
-                    {
+            @if (ShowOriginalComparison)
+            {
+                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Style="overflow: hidden;">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th><strong>Your time</strong></th>
+                            <th><strong>Adjusted</strong></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Task</strong></td>
+                            <td>@(OriginalTaskName ?? "—")</td>
+                            <td>@TaskName</td>
+                        </tr>
                         <tr>
                             <td><strong>Project</strong></td>
-                            <td>@ProjectName</td>
+                            <td>@OriginalProjectLabel</td>
+                            <td>@ReadOnlyProjectLabel</td>
                         </tr>
-                    }
-                    <tr>
-                        <td><strong>Start</strong></td>
-                        <td>@FormatDateTime(StartDate)</td>
-                    </tr>
-                    @if (EndDate.HasValue)
-                    {
+                        <tr>
+                            <td><strong>Start</strong></td>
+                            <td>@(OriginalStartDate.HasValue ? FormatDateTime(OriginalStartDate.Value) : "—")</td>
+                            <td>@FormatDateTime(StartDate)</td>
+                        </tr>
                         <tr>
                             <td><strong>End</strong></td>
-                            <td>@FormatDateTime(EndDate.Value)</td>
+                            <td>@(OriginalEndDate.HasValue ? FormatDateTime(OriginalEndDate.Value) : "—")</td>
+                            <td>@(ReadOnlyEndDate.HasValue ? FormatDateTime(ReadOnlyEndDate.Value) : "—")</td>
                         </tr>
-                    }
-                    <tr>
-                        <td><strong>Duration</strong></td>
-                        <td>@($"{(int)Duration.TotalHours:00}:{Duration.Minutes:00}")</td>
-                    </tr>
-                </tbody>
-            </MudSimpleTable>
-            <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">This task is locked and cannot be edited.</MudAlert>
+                        <tr>
+                            <td><strong>Duration</strong></td>
+                            <td>@(OriginalDuration.HasValue ? FormatDuration(OriginalDuration.Value) : "—")</td>
+                            <td>@FormatDuration(Duration)</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                    Manager adjusted — your original values on the left, manager values on the right.
+                </MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Style="overflow: hidden;">
+                    <tbody>
+                        <tr>
+                            <td><strong>Task</strong></td>
+                            <td>@TaskName</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Project</strong></td>
+                            <td>@ReadOnlyProjectLabel</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Start</strong></td>
+                            <td>@FormatDateTime(StartDate)</td>
+                        </tr>
+                        @if (ReadOnlyEndDate.HasValue)
+                        {
+                            <tr>
+                                <td><strong>End</strong></td>
+                                <td>@FormatDateTime(ReadOnlyEndDate.Value)</td>
+                            </tr>
+                        }
+                        <tr>
+                            <td><strong>Duration</strong></td>
+                            <td>@FormatDuration(Duration)</td>
+                        </tr>
+                        @if (IsAllDay)
+                        {
+                            <tr>
+                                <td><strong>All day</strong></td>
+                                <td>Yes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+                @if (IsManagerAdjustmentView)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        Manager adjusted — details only (not editable here).
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
+                        This task is locked and cannot be edited.
+                    </MudAlert>
+                }
+            }
         }
         else
         {

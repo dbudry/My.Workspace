@@ -20,6 +20,7 @@ namespace My.Client.Pages.Tyme
         private List<TaskCalendarItem> calendarItems = new();
 
         private bool isLoading = true;
+        private EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both;
 
         private HttpClient client = null!;
 
@@ -54,6 +55,9 @@ namespace My.Client.Pages.Tyme
         [Inject]
         private UserSettingsService SettingsService { get; set; } = null!;
 
+        [Inject]
+        private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
         #endregion
 
         // Heron's MudCalendar measures its parent at construction time. If we render it on
@@ -77,6 +81,7 @@ namespace My.Client.Pages.Tyme
             SetPageTitle?.Invoke("Task Calendar");
 
             await SettingsService.GetSettingsAsync();
+            await LoadDisplayModeFromAppSettingsAsync();
             await LoadData();
         }
 
@@ -86,6 +91,22 @@ namespace My.Client.Pages.Tyme
             {
                 _calendarReady = true;
                 await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        /// <summary>Workspace mode from App Settings only — no per-user override.</summary>
+        private async Task LoadDisplayModeFromAppSettingsAsync()
+        {
+            displayMode = EmployeeTimeDisplayMode.Both;
+            try
+            {
+                var settings = await AppSettingsCache.GetAsync();
+                displayMode = EmployeeTimeDisplayModeRules.FromAppSettings(
+                    settings.Select(s => new KeyValuePair<string, string?>(s.Key, s.Value)));
+            }
+            catch
+            {
+                displayMode = EmployeeTimeDisplayMode.Both;
             }
         }
 
@@ -109,12 +130,26 @@ namespace My.Client.Pages.Tyme
 
                     if (task.IsAllDay)
                     {
-                        var firstDay = task.StartDate.Date;
-                        var lastDay = (task.EndDate ?? task.StartDate).Date;
-                        if (lastDay < firstDay) lastDay = firstDay;
+                        var hasAdj = task.ManagerAdjustment != null
+                            && task.AdjustmentKind is "Alias" or "Direct";
+                        if (EmployeeTimeDisplayModeRules.IncludeOriginal(displayMode, hasAdj))
+                        {
+                            var firstDay = task.StartDate.Date;
+                            var lastDay = (task.EndDate ?? task.StartDate).Date;
+                            if (lastDay < firstDay) lastDay = firstDay;
 
-                        for (var d = firstDay; d <= lastDay; d = d.AddDays(1))
-                            calendarItems.Add(BuildAllDayChip(task, d));
+                            for (var d = firstDay; d <= lastDay; d = d.AddDays(1))
+                                calendarItems.Add(BuildAllDayChip(task, d));
+                        }
+
+                        // Manager adjustments on all-day entries are rare; if present, paint
+                        // a single-day chip on the adjustment start date.
+                        if (EmployeeTimeDisplayModeRules.IncludeAdjustmentOverlay(displayMode, hasAdj)
+                            && task.ManagerAdjustment != null)
+                        {
+                            calendarItems.Add(BuildAdjustmentChip(task));
+                        }
+
                         continue;
                     }
 
@@ -169,51 +204,39 @@ namespace My.Client.Pages.Tyme
 
                 foreach (var task in loaded.Where(t => !t.IsAllDay && string.IsNullOrEmpty(t.StopwatchItemId)))
                 {
-                    var start = task.StartDate;
-                    var end = task.EndDate ?? task.StartDate.Add(task.Duration);
-                    if (end <= start)
-                        end = start.AddMinutes(15);
+                    var hasAdj = task.ManagerAdjustment != null
+                        && task.AdjustmentKind is "Alias" or "Direct";
 
-                    calendarItems.Add(new TaskCalendarItem
+                    if (EmployeeTimeDisplayModeRules.IncludeOriginal(displayMode, hasAdj))
                     {
-                        TaskId = task.TaskId,
-                        Text = task.Name,
-                        Start = start,
-                        End = end,
-                        AllDay = false,
-                        ProjectName = task.Project?.DisplayName,
-                        OrganizationName = task.Project?.OrganizationName,
-                        OrganizationColor = task.Project?.OrganizationColor,
-                        ProjectGroupName = task.Project?.ProjectGroupName,
-                        ProjectGroupColor = task.Project?.ProjectGroupColor,
-                        ProjectId = task.ProjectId,
-                        Duration = task.Duration,
-                        IsLocked = task.IsLocked
-                    });
+                        var start = task.StartDate;
+                        var end = task.EndDate ?? task.StartDate.Add(task.Duration);
+                        if (end <= start)
+                            end = start.AddMinutes(15);
 
-                    if (task.ManagerAdjustment != null && task.AdjustmentKind is "Alias" or "Direct")
-                    {
-                        var adj = task.ManagerAdjustment;
-                        var adjStart = adj.StartDate.ToLocalTime();
-                        var adjEnd = adjStart.Add(adj.Duration);
-                        if (adjEnd <= adjStart)
-                            adjEnd = adjStart.AddMinutes(15);
-
-                        var isAlias = task.AdjustmentKind == "Alias";
                         calendarItems.Add(new TaskCalendarItem
                         {
                             TaskId = task.TaskId,
-                            Text = isAlias ? $"{adj.Name} (adjustment)" : $"{adj.Name} (adjusted)",
-                            Start = adjStart,
-                            End = adjEnd,
+                            Text = task.Name,
+                            Start = start,
+                            End = end,
                             AllDay = false,
-                            ProjectName = adj.ProjectName,
-                            ProjectId = adj.ProjectId,
-                            Duration = adj.Duration,
+                            ProjectName = task.Project?.DisplayName,
+                            OrganizationName = task.Project?.OrganizationName,
+                            OrganizationColor = task.Project?.OrganizationColor,
+                            ProjectGroupName = task.Project?.ProjectGroupName,
+                            ProjectGroupColor = task.Project?.ProjectGroupColor,
+                            ProjectId = task.ProjectId,
+                            Duration = task.Duration,
                             IsLocked = task.IsLocked,
-                            IsManagerAdjustmentOverlay = isAlias,
-                            IsManagerAdjusted = !isAlias
+                            IsAllDay = task.IsAllDay
                         });
+                    }
+
+                    if (EmployeeTimeDisplayModeRules.IncludeAdjustmentOverlay(displayMode, hasAdj)
+                        && task.ManagerAdjustment != null)
+                    {
+                        calendarItems.Add(BuildAdjustmentChip(task));
                     }
                 }
             }
@@ -223,6 +246,37 @@ namespace My.Client.Pages.Tyme
             }
 
             isLoading = false;
+        }
+
+        private static TaskCalendarItem BuildAdjustmentChip(TrackedTask task)
+        {
+            var adj = task.ManagerAdjustment!;
+            var isAlias = task.AdjustmentKind == "Alias";
+            var adjStart = adj.StartDate.Kind == DateTimeKind.Utc
+                ? adj.StartDate.ToLocalTime()
+                : adj.StartDate;
+            var adjEnd = adjStart.Add(adj.Duration);
+            if (adjEnd <= adjStart)
+                adjEnd = adjStart.AddMinutes(15);
+
+            return new TaskCalendarItem
+            {
+                TaskId = task.TaskId,
+                Text = $"{adj.Name} (adjusted)",
+                Start = adjStart,
+                End = adjEnd,
+                AllDay = false,
+                ProjectName = adj.ProjectName,
+                OrganizationName = adj.OrganizationName,
+                OrganizationColor = adj.OrganizationColor,
+                ProjectGroupName = adj.ProjectGroupName,
+                ProjectGroupColor = adj.ProjectGroupColor,
+                ProjectId = adj.ProjectId,
+                Duration = adj.Duration,
+                IsLocked = task.IsLocked,
+                IsManagerAdjustmentOverlay = isAlias,
+                IsManagerAdjusted = !isAlias
+            };
         }
 
         /// <summary>
@@ -246,7 +300,8 @@ namespace My.Client.Pages.Tyme
                 ProjectGroupColor = task.Project?.ProjectGroupColor,
                 ProjectId = task.ProjectId,
                 Duration = task.Duration,
-                IsLocked = task.IsLocked
+                IsLocked = task.IsLocked,
+                IsAllDay = true
             };
 
         private async Task OnItemClicked(TaskCalendarItem item)
@@ -277,23 +332,52 @@ namespace My.Client.Pages.Tyme
             }
 
             var task = trackedTasksList.FirstOrDefault(t => t.TaskId == item.TaskId);
+            var isOverlay = item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted;
+            // Chip carries the values we display; do not mix original task.Name with overlay times.
+            var displayName = isOverlay
+                ? (task?.ManagerAdjustment?.Name ?? item.Text)
+                : (task?.Name ?? item.Text);
+
+            var mode = item.IsLocked || isOverlay
+                ? TrackedTaskDialogMode.ReadOnly
+                : TrackedTaskDialogMode.Edit;
+
+            var end = item.End;
+            if (item.Duration > TimeSpan.Zero)
+            {
+                var derived = item.Start + item.Duration;
+                // Prefer duration-derived end when the chip end is a calendar paint clamp.
+                if (!item.AllDay)
+                    end = derived;
+            }
 
             var parameters = new DialogParameters<TrackedTaskDialog>
             {
-                { x => x.Mode, item.IsLocked ? TrackedTaskDialogMode.ReadOnly : TrackedTaskDialogMode.Edit },
+                { x => x.Mode, mode },
                 { x => x.TaskId, item.TaskId },
-                { x => x.TaskName, task?.Name ?? item.Text },
+                { x => x.TaskName, displayName },
                 { x => x.ProjectId, item.ProjectId },
                 { x => x.ProjectName, item.ProjectName },
                 { x => x.StartDate, item.Start },
-                { x => x.EndDate, item.End },
+                { x => x.EndDate, end },
                 { x => x.Duration, item.Duration },
-                { x => x.IsAllDay, task?.IsAllDay ?? false },
+                { x => x.IsAllDay, item.IsAllDay || item.AllDay },
                 { x => x.Use24HourTime, SettingsService.Use24HourTime },
-                { x => x.HttpClient, client }
+                { x => x.HttpClient, client },
+                { x => x.IsManagerAdjustmentView, isOverlay }
             };
 
-            await ShowDialogAsync(task?.Name ?? item.Text, parameters);
+            if (isOverlay && task != null)
+            {
+                parameters.Add(x => x.OriginalTaskName, task.Name);
+                parameters.Add(x => x.OriginalProjectName, task.Project?.DisplayName);
+                parameters.Add(x => x.OriginalStartDate, task.StartDate);
+                parameters.Add(x => x.OriginalEndDate,
+                    task.EndDate ?? (task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null));
+                parameters.Add(x => x.OriginalDuration, task.Duration);
+            }
+
+            await ShowDialogAsync(displayName, parameters);
         }
 
         private async Task OnCellClicked(DateTime clickedDate)
@@ -356,7 +440,8 @@ namespace My.Client.Pages.Tyme
         {
             var item = contextMenuTarget;
             CloseContextMenu();
-            if (item == null || item.IsLocked) return;
+            if (item == null || item.IsLocked || item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted)
+                return;
 
             try
             {
@@ -386,7 +471,8 @@ namespace My.Client.Pages.Tyme
         {
             var item = contextMenuTarget;
             CloseContextMenu();
-            if (item == null || item.IsLocked) return;
+            if (item == null || item.IsLocked || item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted)
+                return;
 
             var confirmed = await DialogService.ShowMessageBoxAsync(
                 "Confirm Delete", $"Delete \"{item.Text}\"?",
@@ -415,15 +501,23 @@ namespace My.Client.Pages.Tyme
             }
         }
 
-        /// <summary>Resolves a calendar chip's background per the user's color-source
-        /// preference. Falls back to a neutral gray when the resolver returns null
-        /// (None source, or no colors set) so the chip stays readable.</summary>
+        /// <summary>
+        /// Manager-adjusted overlay chips use the theme warning orange so they read as
+        /// corrections, not as normal project-colored time. Other chips use the user's
+        /// org/group color preference, with neutral gray when unset.
+        /// </summary>
         private string GetChipColor(TaskCalendarItem item)
-            => My.Shared.Rules.ProjectColorRules.ResolveOrFallback(
+        {
+            // Theme warning orange so adjusted chips read as corrections.
+            if (item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted)
+                return "#E08E2A";
+
+            return My.Shared.Rules.ProjectColorRules.ResolveOrFallback(
                 item.OrganizationColor,
                 item.ProjectGroupColor,
                 SettingsService.ProjectColorSource,
                 "#616161");
+        }
 
         /// <summary>Tooltip text for a calendar chip — names the Org or Group whose
         /// color is being shown. Empty string (MudTooltip stays silent) when the

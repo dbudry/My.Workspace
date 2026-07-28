@@ -36,6 +36,15 @@ namespace My.Client.Components.TrackedTasks
         [Parameter] public bool IsAllDay { get; set; }
         [Parameter] public bool Use24HourTime { get; set; }
         [Parameter] public HttpClient HttpClient { get; set; } = null!;
+        /// <summary>When true, read-only view is for a manager adjustment overlay (not the original).</summary>
+        [Parameter] public bool IsManagerAdjustmentView { get; set; }
+
+        /// <summary>Employee original values — shown alongside adjusted values when set.</summary>
+        [Parameter] public string? OriginalTaskName { get; set; }
+        [Parameter] public string? OriginalProjectName { get; set; }
+        [Parameter] public DateTime? OriginalStartDate { get; set; }
+        [Parameter] public DateTime? OriginalEndDate { get; set; }
+        [Parameter] public TimeSpan? OriginalDuration { get; set; }
 
         [Inject] private IDialogService DialogService { get; set; } = null!;
         [Inject] private ISnackbar Snackbar { get; set; } = null!;
@@ -45,9 +54,15 @@ namespace My.Client.Components.TrackedTasks
         private string DialogTitle => Mode switch
         {
             TrackedTaskDialogMode.Create => "New Task",
+            TrackedTaskDialogMode.ReadOnly when IsManagerAdjustmentView => "Manager adjusted",
             TrackedTaskDialogMode.ReadOnly => TaskName,
             _ => $"Edit - {TaskName}"
         };
+
+        private bool ShowOriginalComparison =>
+            IsManagerAdjustmentView
+            && Mode == TrackedTaskDialogMode.ReadOnly
+            && (OriginalTaskName != null || OriginalStartDate.HasValue || OriginalDuration.HasValue);
 
         private string editName = "";
         private DateTime? editStartDateOnly;
@@ -414,6 +429,35 @@ namespace My.Client.Components.TrackedTasks
             return Use24HourTime
                 ? dt.ToString("MM/dd/yyyy HH:mm")
                 : dt.ToString("MM/dd/yyyy h:mm tt");
+        }
+
+        /// <summary>
+        /// Project label for read-only details — always show something so locked tasks
+        /// don't look empty when ProjectId is null.
+        /// </summary>
+        private string ReadOnlyProjectLabel =>
+            string.IsNullOrWhiteSpace(ProjectName) ? "None" : ProjectName;
+
+        private string OriginalProjectLabel =>
+            string.IsNullOrWhiteSpace(OriginalProjectName) ? "None" : OriginalProjectName;
+
+        private string FormatDuration(TimeSpan d) =>
+            $"{(int)d.TotalHours:00}:{d.Minutes:00}";
+
+        /// <summary>
+        /// Prefer an explicit EndDate; otherwise derive from Start + Duration so Direct
+        /// corrections that only store duration still display a coherent end.
+        /// </summary>
+        private DateTime? ReadOnlyEndDate
+        {
+            get
+            {
+                if (EndDate.HasValue)
+                    return EndDate;
+                if (Duration > TimeSpan.Zero)
+                    return StartDate + Duration;
+                return null;
+            }
         }
 
         private void Close() => MudDialog.Close(DialogResult.Cancel());

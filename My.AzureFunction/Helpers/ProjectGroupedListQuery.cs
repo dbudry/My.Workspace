@@ -248,7 +248,8 @@ namespace My.Functions.Helpers
                 ProjectGroupColor = p.ProjectGroup != null ? p.ProjectGroup.Color : null,
                 IsActive = p.IsActive,
                 IsArchived = p.IsArchived,
-                IsSharedAvailability = p.IsSharedAvailability
+                IsSharedAvailability = p.IsSharedAvailability,
+                IsBillable = p.IsBillable
             });
 
         private static ProjectListRowDto ProjectRow(ProjectDto project) =>

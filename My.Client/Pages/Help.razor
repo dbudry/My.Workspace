@@ -102,6 +102,23 @@
             </MudText>
         </MudExpansionPanel>
 
+        <MudExpansionPanel Text="Original and adjusted time" Icon="@Icons.Material.Filled.CompareArrows">
+            <MudText Typo="Typo.body2" Class="mb-2">
+                When submitted time has been corrected for billing, what you see on
+                <strong>Tasks</strong>, <strong>Calendar</strong>, and <strong>Reports</strong>
+                is controlled by App Settings (admins), not a per-page choice:
+            </MudText>
+            <ul class="mb-2" style="padding-left: 1.2rem;">
+                <li class="mb-1"><strong>Original</strong> — values you originally logged</li>
+                <li class="mb-1"><strong>Adjusted</strong> — corrected values when a correction exists (orange label)</li>
+                <li class="mb-1"><strong>Both</strong> — original row plus an <strong>Adjusted</strong> overlay</li>
+            </ul>
+            <MudText Typo="Typo.body2">
+                Open an Adjusted row for a side-by-side table (original on the left, adjusted on the right).
+                Overlay rows are read-only.
+            </MudText>
+        </MudExpansionPanel>
+
         <MudExpansionPanel Text="Task Calendar" Icon="@Icons.Material.Filled.CalendarMonth">
             <MudText Typo="Typo.body2" Class="mb-2">
                 The <strong>Calendar</strong> page is a visual layout of your tracked tasks

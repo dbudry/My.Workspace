@@ -32,6 +32,7 @@ namespace My.Client.Pages.Admin
         private int submissionMonthInterval = 1;
         private bool allowManagerTimeCorrection = true;
         private string managerCorrectionMode = "Alias";
+        private string employeeTimeDisplayMode = EmployeeTimeDisplayModeRules.BothKey;
         private int calendarBackfillDefaultDays = 30;
         private bool calendarBackfillPromptUser = true;
         private double workdayHours = 8.0;
@@ -132,6 +133,10 @@ namespace My.Client.Pages.Admin
                         managerCorrectionMode = ManagerCorrectionRules.ParseMode(modeVal.Value) == ManagerCorrectionRules.CorrectionMode.Direct
                             ? "Direct"
                             : "Alias";
+
+                    var employeeDisplayVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeEmployeeTimeDisplayMode);
+                    employeeTimeDisplayMode = EmployeeTimeDisplayModeRules.ToStorageKey(
+                        EmployeeTimeDisplayModeRules.Parse(employeeDisplayVal?.Value));
 
                     var backfillDaysVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeCalendarBackfillDefaultDays);
                     if (backfillDaysVal != null && int.TryParse(backfillDaysVal.Value, out var days2) && days2 >= 0)
@@ -276,6 +281,13 @@ namespace My.Client.Pages.Admin
                     new() { Key = Constants.SettingKeys.TymeSubmissionMonthInterval, Value = submissionMonthInterval.ToString() },
                     new() { Key = Constants.SettingKeys.TymeAllowManagerTimeCorrection, Value = allowManagerTimeCorrection.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.TymeManagerCorrectionMode, Value = managerCorrectionMode },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.TymeEmployeeTimeDisplayMode,
+                        Value = EmployeeTimeDisplayModeRules.ToStorageKey(
+                            EmployeeTimeDisplayModeRules.Parse(employeeTimeDisplayMode)),
+                        Description = "Employee view on Tasks, Calendar, and Reports: original, manager-adjusted, or both."
+                    },
                     new() { Key = Constants.SettingKeys.TymeCalendarBackfillDefaultDays, Value = calendarBackfillDefaultDays.ToString() },
                     new() { Key = Constants.SettingKeys.TymeCalendarBackfillPromptUser, Value = calendarBackfillPromptUser.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.WorkdayHours, Value = workdayHours.ToString(System.Globalization.CultureInfo.InvariantCulture) },
