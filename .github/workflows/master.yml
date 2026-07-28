@@ -2,8 +2,8 @@
 #
 #   Detect app changes
 #     → Build & Test (if app/workflow paths changed)
-#     → Publish Azure
-#     → Create Release
+#     → Publish Azure (optional; needs OIDC secrets + vars)
+#     → Create Release (after green Build & Test — always versioned)
 
 name: Master
 
@@ -209,10 +209,16 @@ jobs:
           echo "  200 = auth bypassed (should not happen)"
           exit 1
 
+  # Release is gated on Build & Test only (not Azure publish) so every master
+  # ship with a version bump still gets a GitHub Release even when Azure OIDC /
+  # SWA secrets are not configured (template repos, forks, pre-prod).
   create-release:
     name: Create release
-    needs: [ publish ]
-    if: always() && needs.publish.result == 'success'
+    needs: [ detect-changes, build, publish ]
+    if: >-
+      always()
+      && needs.detect-changes.outputs.app_changed == 'true'
+      && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -244,7 +250,14 @@ jobs:
             echo "Release $TAG already exists; skipping creation"
             exit 0
           fi
+          PUBLISH="${{ needs.publish.result }}"
+          NOTES="Automated release from master (v${{ steps.version.outputs.version }})."
+          if [[ "$PUBLISH" == "success" ]]; then
+            NOTES+=$'\n\nProduction Azure publish completed successfully.'
+          else
+            NOTES+=$'\n\nAzure publish did not succeed (result: '"$PUBLISH"'). GitHub Release was still created from a green Build & Test. Configure PRODUCTION_AZURE_* secrets and AZURE_* variables to enable deploy.'
+          fi
           gh release create "$TAG" \
             --title "Release $TAG" \
-            --notes "Automated release from master. Production deploy completed." \
+            --notes "$NOTES" \
             --target "${{ github.sha }}"
