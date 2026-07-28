@@ -16,13 +16,14 @@ namespace My.Tests.Components
     /// time in the browser ("... does not have a property matching the name 'Dense'").
     /// A dialog once passed Dense="false" to <see cref="ProjectAutocomplete"/> before it
     /// declared that parameter, crashing the Stopwatch "Assign project" / "Edit work item" flow.
+    ///
+    /// ProjectAutocomplete is now a MudTextField + results list (MudAutocomplete rewrote
+    /// typed text after search). Tests assert Dense still renders without throwing.
     /// </summary>
     public class ProjectAutocompleteTests : BunitContext, IAsyncLifetime
     {
         public ProjectAutocompleteTests()
         {
-            // CheckForPopoverProvider=false lets MudAutocomplete's popover initialize without a
-            // MudPopoverProvider in the (headless) test render tree.
             Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
             JSInterop.Mode = JSRuntimeMode.Loose;
         }
@@ -35,14 +36,15 @@ namespace My.Tests.Components
         [InlineData(false)]
         public void Renders_and_binds_Dense_in_either_density(bool dense)
         {
+            // Must not throw when Dense is passed (the original markup-parameter bug).
             var cut = Render<ProjectAutocomplete>(ps => ps
                 .Add(p => p.SearchFunc, NoProjects)
                 .Add(p => p.Dense, dense));
 
-            // The inner MudAutocomplete must receive the density we asked for. This is the exact
-            // binding that used to throw when Dense wasn't a real parameter on ProjectAutocomplete.
-            var autocomplete = cut.FindComponent<MudAutocomplete<Project>>();
-            Assert.Equal(dense, autocomplete.Instance.Dense);
+            Assert.Equal(dense, cut.Instance.Dense);
+            // Text-field picker (not MudAutocomplete). Markup must render without throw.
+            Assert.Contains("mud-input", cut.Markup, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("mud-autocomplete", cut.Markup, StringComparison.OrdinalIgnoreCase);
         }
 
         [Fact]

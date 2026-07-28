@@ -19,6 +19,7 @@ namespace My.Client.Pages.Tyme
         private MudTable<TaskListRow> table = null!;
 
         string searchString = "";
+        private EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both;
 
         HttpClient client = null!;
 
@@ -48,6 +49,9 @@ namespace My.Client.Pages.Tyme
         [Inject]
         private TrackedTasksClient TrackedTasksClient { get; set; } = null!;
 
+        [Inject]
+        private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
         #endregion
 
         protected override async Task OnInitializedAsync()
@@ -63,6 +67,23 @@ namespace My.Client.Pages.Tyme
             SetPageTitle?.Invoke("Tasks");
 
             await SettingsService.GetSettingsAsync();
+            await LoadDisplayModeFromAppSettingsAsync();
+        }
+
+        /// <summary>Workspace mode from App Settings only — no per-user override.</summary>
+        private async Task LoadDisplayModeFromAppSettingsAsync()
+        {
+            displayMode = EmployeeTimeDisplayMode.Both;
+            try
+            {
+                var settings = await AppSettingsCache.GetAsync();
+                displayMode = EmployeeTimeDisplayModeRules.FromAppSettings(
+                    settings.Select(s => new KeyValuePair<string, string?>(s.Key, s.Value)));
+            }
+            catch
+            {
+                displayMode = EmployeeTimeDisplayMode.Both;
+            }
         }
 
         /// <summary>
@@ -93,7 +114,8 @@ namespace My.Client.Pages.Tyme
                     }
 
                     if (dto.ManualTask != null)
-                        rows.AddRange(TaskListRowBuilder.ExpandManualRows(new TrackedTask(dto.ManualTask)));
+                        rows.AddRange(TaskListRowBuilder.ExpandManualRows(
+                            new TrackedTask(dto.ManualTask), displayMode));
                 }
 
                 return new TableData<TaskListRow>
@@ -116,30 +138,18 @@ namespace My.Client.Pages.Tyme
         private Task ReloadAsync() => table.ReloadServerData();
 
         private string? GetRowColor(TaskListRow row) =>
-            row.Kind == TaskListRowKind.Stopwatch
-                ? ProjectColorRules.Resolve(
-                    row.StopwatchItem?.Project?.OrganizationColor,
-                    row.StopwatchItem?.Project?.ProjectGroupColor,
-                    SettingsService.ProjectColorSource)
-                : ProjectColorRules.Resolve(
-                    row.ManualTask?.Project?.OrganizationColor,
-                    row.ManualTask?.Project?.ProjectGroupColor,
-                    SettingsService.ProjectColorSource);
+            ProjectColorRules.Resolve(
+                row.OrganizationColor,
+                row.ProjectGroupColor,
+                SettingsService.ProjectColorSource);
 
         private string GetRowLabel(TaskListRow row) =>
-            row.Kind == TaskListRowKind.Stopwatch
-                ? ProjectColorRules.ResolveLabel(
-                    row.StopwatchItem?.Project?.OrganizationName,
-                    row.StopwatchItem?.Project?.ProjectGroupName,
-                    row.StopwatchItem?.Project?.OrganizationColor,
-                    row.StopwatchItem?.Project?.ProjectGroupColor,
-                    SettingsService.ProjectColorSource) ?? string.Empty
-                : ProjectColorRules.ResolveLabel(
-                    row.ManualTask?.Project?.OrganizationName,
-                    row.ManualTask?.Project?.ProjectGroupName,
-                    row.ManualTask?.Project?.OrganizationColor,
-                    row.ManualTask?.Project?.ProjectGroupColor,
-                    SettingsService.ProjectColorSource) ?? string.Empty;
+            ProjectColorRules.ResolveLabel(
+                row.OrganizationName,
+                row.ProjectGroupName,
+                row.OrganizationColor,
+                row.ProjectGroupColor,
+                SettingsService.ProjectColorSource) ?? string.Empty;
 
         private async Task OnSearchChanged(string value)
         {
@@ -152,7 +162,7 @@ namespace My.Client.Pages.Tyme
             if (row.Kind == TaskListRowKind.Stopwatch && row.StopwatchItem != null)
                 await OpenStopwatchSessionsAsync(row.StopwatchItem);
             else if (row.ManualTask != null)
-                await OpenTaskDialog(row.ManualTask);
+                await OpenTaskDialog(row);
         }
 
         private static string FormatDuration(TaskListRow row)
@@ -183,24 +193,74 @@ namespace My.Client.Pages.Tyme
                 await ReloadAsync();
         }
 
-        private async Task OpenTaskDialog(TrackedTask task)
+        private async Task OpenTaskDialog(TaskListRow row)
         {
+            var task = row.ManualTask!;
+            var isOverlay = row.IsOverlayRow;
+
+            string name;
+            string? projectId;
+            string? projectName;
+            DateTime start;
+            DateTime? end;
+            TimeSpan duration;
+            bool isAllDay;
+
+            if (isOverlay)
+            {
+                name = row.OverlayName ?? row.Name;
+                projectId = row.OverlayProjectId;
+                projectName = row.ProjectDisplayName;
+                start = row.OverlayStartDate ?? row.DisplayDate;
+                end = row.OverlayEndDate;
+                duration = row.OverlayDuration ?? row.Duration;
+                isAllDay = false;
+            }
+            else
+            {
+                name = task.Name;
+                projectId = task.ProjectId;
+                projectName = task.Project?.DisplayName;
+                start = task.StartDate;
+                end = task.EndDate ?? (task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null);
+                duration = task.Duration;
+                isAllDay = task.IsAllDay;
+            }
+
+            // Overlay rows are always read-only (employee can't edit manager values from here).
+            // Locked originals are also read-only.
+            var mode = task.IsLocked || isOverlay
+                ? TrackedTaskDialogMode.ReadOnly
+                : TrackedTaskDialogMode.Edit;
+
             var parameters = new DialogParameters<TrackedTaskDialog>
             {
-                { x => x.Mode, task.IsLocked ? TrackedTaskDialogMode.ReadOnly : TrackedTaskDialogMode.Edit },
+                { x => x.Mode, mode },
                 { x => x.TaskId, task.TaskId },
-                { x => x.TaskName, task.Name },
-                { x => x.ProjectId, task.ProjectId },
-                { x => x.ProjectName, task.Project?.DisplayName },
-                { x => x.StartDate, task.StartDate },
-                { x => x.EndDate, task.EndDate },
-                { x => x.Duration, task.Duration },
-                { x => x.IsAllDay, task.IsAllDay },
+                { x => x.TaskName, name },
+                { x => x.ProjectId, projectId },
+                { x => x.ProjectName, projectName },
+                { x => x.StartDate, start },
+                { x => x.EndDate, end },
+                { x => x.Duration, duration },
+                { x => x.IsAllDay, isAllDay },
                 { x => x.Use24HourTime, SettingsService.Use24HourTime },
-                { x => x.HttpClient, client }
+                { x => x.HttpClient, client },
+                { x => x.IsManagerAdjustmentView, isOverlay }
             };
 
-            var dialog = await DialogService.ShowAsync<TrackedTaskDialog>(task.Name, parameters,
+            // When opening the adjusted overlay, pass the employee's original values for side-by-side compare.
+            if (isOverlay)
+            {
+                parameters.Add(x => x.OriginalTaskName, task.Name);
+                parameters.Add(x => x.OriginalProjectName, task.Project?.DisplayName);
+                parameters.Add(x => x.OriginalStartDate, task.StartDate);
+                parameters.Add(x => x.OriginalEndDate,
+                    task.EndDate ?? (task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null));
+                parameters.Add(x => x.OriginalDuration, task.Duration);
+            }
+
+            var dialog = await DialogService.ShowAsync<TrackedTaskDialog>(name, parameters,
                 new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
             var result = await dialog.Result;
 

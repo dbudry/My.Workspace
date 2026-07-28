@@ -37,11 +37,7 @@
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Stopwatch</MudChip>
                     }
-                    @if (context.IsManagerAdjustmentOverlay)
-                    {
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Adjustment</MudChip>
-                    }
-                    @if (context.IsManagerAdjusted)
+                    @if (context.IsManagerAdjustmentOverlay || context.IsManagerAdjusted)
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
                     }
@@ -59,7 +55,7 @@
                             <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px;")"></div>
                         </MudTooltip>
                     }
-                    <span>@context.ProjectDisplayName</span>
+                    <span>@(string.IsNullOrWhiteSpace(context.ProjectDisplayName) ? "None" : context.ProjectDisplayName)</span>
                 </div>
             </MudTd>
             <MudTd DataLabel="Duration" Style="font-family: monospace;">

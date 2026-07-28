@@ -18,6 +18,10 @@ namespace My.Client.Helpers
                 Kind = TaskListRowKind.Stopwatch,
                 Name = item.Name,
                 ProjectDisplayName = ProjectDisplayHelper.FromDto(item.Project),
+                OrganizationName = item.Project?.OrganizationName,
+                OrganizationColor = item.Project?.OrganizationColor,
+                ProjectGroupName = item.Project?.ProjectGroupName,
+                ProjectGroupColor = item.Project?.ProjectGroupColor,
                 Duration = duration,
                 SortDate = item.LastWorkedAt,
                 DisplayDate = item.LastWorkedAt.ToLocalTime(),
@@ -32,6 +36,10 @@ namespace My.Client.Helpers
                 Kind = TaskListRowKind.Manual,
                 Name = task.Name,
                 ProjectDisplayName = task.Project?.DisplayName,
+                OrganizationName = task.Project?.OrganizationName,
+                OrganizationColor = task.Project?.OrganizationColor,
+                ProjectGroupName = task.Project?.ProjectGroupName,
+                ProjectGroupColor = task.Project?.ProjectGroupColor,
                 Duration = task.Duration,
                 SortDate = task.StartDate,
                 DisplayDate = task.StartDate,
@@ -47,29 +55,53 @@ namespace My.Client.Helpers
                 return null;
 
             var isAlias = task.AdjustmentKind == "Alias";
+            var startLocal = adjustment.StartDate.Kind == DateTimeKind.Utc
+                ? adjustment.StartDate.ToLocalTime()
+                : adjustment.StartDate;
 
             return new TaskListRow
             {
                 Kind = TaskListRowKind.Manual,
                 Name = adjustment.Name,
                 ProjectDisplayName = adjustment.ProjectName,
+                OrganizationName = adjustment.OrganizationName,
+                OrganizationColor = adjustment.OrganizationColor,
+                ProjectGroupName = adjustment.ProjectGroupName,
+                ProjectGroupColor = adjustment.ProjectGroupColor,
                 Duration = adjustment.Duration,
-                SortDate = adjustment.StartDate.ToLocalTime(),
-                DisplayDate = adjustment.StartDate.ToLocalTime(),
+                SortDate = startLocal,
+                DisplayDate = startLocal,
                 IsLocked = task.IsLocked,
                 IsManagerAdjustmentOverlay = isAlias,
                 IsManagerAdjusted = !isAlias,
-                ManualTask = task
+                ManualTask = task,
+                // Snapshot of adjusted values for dialog open (ManualTask holds employee original).
+                OverlayProjectId = adjustment.ProjectId,
+                OverlayStartDate = startLocal,
+                OverlayEndDate = adjustment.Duration > TimeSpan.Zero
+                    ? startLocal + adjustment.Duration
+                    : null,
+                OverlayDuration = adjustment.Duration,
+                OverlayName = adjustment.Name
             };
         }
 
-        public static IEnumerable<TaskListRow> ExpandManualRows(TrackedTask task)
+        public static IEnumerable<TaskListRow> ExpandManualRows(
+            TrackedTask task,
+            EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both)
         {
-            yield return FromManual(task);
-            var overlay = FromManagerAdjustmentOverlay(task);
-            if (overlay != null)
-                yield return overlay;
-        }
+            var hasAdjustment = task.ManagerAdjustment != null
+                && task.AdjustmentKind is "Alias" or "Direct";
 
+            if (EmployeeTimeDisplayModeRules.IncludeOriginal(displayMode, hasAdjustment))
+                yield return FromManual(task);
+
+            if (EmployeeTimeDisplayModeRules.IncludeAdjustmentOverlay(displayMode, hasAdjustment))
+            {
+                var overlay = FromManagerAdjustmentOverlay(task);
+                if (overlay != null)
+                    yield return overlay;
+            }
+        }
     }
 }

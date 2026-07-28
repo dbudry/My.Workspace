@@ -38,6 +38,8 @@ namespace My.Client.Pages.Tyme
         // Column visibility for the Task Details table — persisted per user via LocalStorage
         // so the manager's last picked column set is restored on next visit.
         private const string ColumnPrefsStorageKey = "management.columns";
+        /// <summary>Filter bar state (dates, employees, org/project, toggles, tab).</summary>
+        private const string FilterPrefsStorageKey = "management.filters";
 
         private static readonly (string Key, string Label)[] availableColumns = new[]
         {
@@ -109,18 +111,21 @@ namespace My.Client.Pages.Tyme
         {
             selectedOrganizationId = option?.Id;
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private void OnSelectedProjectGroupChanged(FilterOption? option)
         {
             selectedProjectGroupId = option?.Id;
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private void OnSelectedProjectChanged(FilterOption? option)
         {
             selectedProjectId = option?.Id;
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private static Task<IEnumerable<FilterOption>> SearchFilterOptions(
@@ -216,10 +221,122 @@ namespace My.Client.Pages.Tyme
             }
             catch { /* fall back to "show all" defaults */ }
 
+            await RestoreFilterPrefsAsync();
+
             await LoadCorrectionSettingsAsync();
             await Task.WhenAll(LoadEmployeeOptionsAsync(), LoadFilterOptionsAsync());
+            // Re-apply saved employee ids after options load (ids may not exist until then).
+            await RestoreEmployeeSelectionAfterOptionsAsync();
             await LoadTaskDataAsync();
             isLoading = false;
+        }
+
+        private async Task RestoreFilterPrefsAsync()
+        {
+            try
+            {
+                var prefs = await LocalStorage.GetItemAsync<ManagementFilterPrefs>(FilterPrefsStorageKey);
+                if (prefs == null)
+                    return;
+
+                if (DateTime.TryParse(prefs.DateFrom, out var from))
+                    dateFrom = from.Date;
+                if (DateTime.TryParse(prefs.DateTo, out var to))
+                    dateTo = to.Date;
+
+                selectedOrganizationId = prefs.OrganizationId;
+                selectedProjectGroupId = prefs.ProjectGroupId;
+                selectedProjectId = prefs.ProjectId;
+
+                if (!string.IsNullOrWhiteSpace(prefs.SubmissionFilter)
+                    && Enum.TryParse<SubmissionFilter>(prefs.SubmissionFilter, ignoreCase: true, out var sub))
+                    selectedSubmissionFilter = sub;
+
+                if (!string.IsNullOrWhiteSpace(prefs.BillableFilter)
+                    && Enum.TryParse<BillableFilter>(prefs.BillableFilter, ignoreCase: true, out var bill))
+                    selectedBillableFilter = bill;
+
+                if (prefs.ActiveReportTab is 0 or 1)
+                    activeReportTab = prefs.ActiveReportTab;
+
+                _pendingEmployeeUserIds = prefs.UserIds;
+                _pendingSelectNone = prefs.SelectNone;
+                _pendingSelectAll = prefs.SelectAll;
+            }
+            catch
+            {
+                // Defaults already applied.
+            }
+        }
+
+        private List<string>? _pendingEmployeeUserIds;
+        private bool _pendingSelectNone;
+        private bool _pendingSelectAll;
+
+        private Task RestoreEmployeeSelectionAfterOptionsAsync()
+        {
+            if (_pendingSelectAll)
+            {
+                selectedUserIds = userOptions.Select(u => u.UserId).ToHashSet();
+                selectAllEmployeesChecked = true;
+                selectNoneEmployeesChecked = false;
+            }
+            else if (_pendingEmployeeUserIds is { Count: > 0 })
+            {
+                var valid = userOptions.Select(u => u.UserId).ToHashSet();
+                selectedUserIds = _pendingEmployeeUserIds.Where(valid.Contains).ToHashSet();
+                SyncEmployeeSelectionState();
+            }
+            else if (_pendingSelectNone)
+            {
+                selectedUserIds = new HashSet<string>();
+                selectAllEmployeesChecked = false;
+                selectNoneEmployeesChecked = true;
+            }
+
+            _pendingEmployeeUserIds = null;
+            return Task.CompletedTask;
+        }
+
+        private async Task PersistFilterPrefsAsync()
+        {
+            try
+            {
+                var prefs = new ManagementFilterPrefs
+                {
+                    DateFrom = dateFrom?.ToString("yyyy-MM-dd"),
+                    DateTo = dateTo?.ToString("yyyy-MM-dd"),
+                    UserIds = selectedUserIds.ToList(),
+                    SelectNone = selectNoneEmployeesChecked,
+                    SelectAll = selectAllEmployeesChecked,
+                    OrganizationId = selectedOrganizationId,
+                    ProjectGroupId = selectedProjectGroupId,
+                    ProjectId = selectedProjectId,
+                    SubmissionFilter = selectedSubmissionFilter.ToString(),
+                    BillableFilter = selectedBillableFilter.ToString(),
+                    ActiveReportTab = activeReportTab
+                };
+                await LocalStorage.SetItemAsync(FilterPrefsStorageKey, prefs);
+            }
+            catch
+            {
+                // Non-fatal — never break Management over storage.
+            }
+        }
+
+        private sealed class ManagementFilterPrefs
+        {
+            public string? DateFrom { get; set; }
+            public string? DateTo { get; set; }
+            public List<string>? UserIds { get; set; }
+            public bool SelectNone { get; set; }
+            public bool SelectAll { get; set; }
+            public string? OrganizationId { get; set; }
+            public string? ProjectGroupId { get; set; }
+            public string? ProjectId { get; set; }
+            public string? SubmissionFilter { get; set; }
+            public string? BillableFilter { get; set; }
+            public int ActiveReportTab { get; set; }
         }
 
         private async Task LoadCorrectionSettingsAsync()
@@ -368,6 +485,7 @@ namespace My.Client.Pages.Tyme
 
             SyncEmployeeSelectionState();
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private void OnSelectNoneEmployeesChanged(bool value)
@@ -380,6 +498,7 @@ namespace My.Client.Pages.Tyme
             }
 
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private void OnEmployeeCheckboxChanged(string userId, bool isChecked)
@@ -412,6 +531,7 @@ namespace My.Client.Pages.Tyme
 
             selectedUserIds = selectedUserIds.ToHashSet();
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private void MergeTaskUsersIntoEmployeeOptions()
@@ -501,6 +621,7 @@ namespace My.Client.Pages.Tyme
             isRefreshing = true;
             try
             {
+                await PersistFilterPrefsAsync();
                 await LoadTaskDataAsync();
             }
             finally
@@ -533,6 +654,7 @@ namespace My.Client.Pages.Tyme
             isRefreshing = true;
             try
             {
+                await PersistFilterPrefsAsync();
                 await LoadTaskDataAsync();
             }
             finally
@@ -545,12 +667,20 @@ namespace My.Client.Pages.Tyme
         {
             selectedSubmissionFilter = value;
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
         }
 
         private void OnBillableFilterChanged(BillableFilter value)
         {
             selectedBillableFilter = value;
             ApplyClientFilters();
+            _ = PersistFilterPrefsAsync();
+        }
+
+        private async Task OnActiveReportTabChanged(int index)
+        {
+            activeReportTab = index;
+            await PersistFilterPrefsAsync();
         }
 
         public enum SubmissionFilter
@@ -646,6 +776,12 @@ namespace My.Client.Pages.Tyme
             var displayIsBillable = isCorrected && showOriginal && task.OriginalIsBillable.HasValue
                 ? task.OriginalIsBillable.Value
                 : task.IsBillable;
+            var displayOrganization = isCorrected && showOriginal
+                ? task.OriginalOrganizationName
+                : task.OrganizationName;
+            var displayGroup = isCorrected && showOriginal
+                ? task.OriginalProjectGroupName
+                : task.ProjectGroupName;
 
             var statusParts = new List<string>
             {
@@ -661,9 +797,9 @@ namespace My.Client.Pages.Tyme
                 Date = displayDate.ToLocalTime().ToString("MM/dd/yyyy"),
                 Employee = task.UserName,
                 Task = displayName,
-                Project = displayProject,
-                Organization = task.OrganizationName,
-                Group = task.ProjectGroupName,
+                Project = string.IsNullOrWhiteSpace(displayProject) ? "None" : displayProject,
+                Organization = displayOrganization,
+                Group = displayGroup,
                 Duration = FormatDuration(displayDuration),
                 Billable = displayIsBillable ? "Yes" : "No",
                 Status = string.Join(", ", statusParts)
@@ -821,6 +957,8 @@ namespace My.Client.Pages.Tyme
             public double? OriginalDurationSeconds { get; set; }
             public string? OriginalProjectId { get; set; }
             public string? OriginalProjectName { get; set; }
+            public string? OriginalOrganizationName { get; set; }
+            public string? OriginalProjectGroupName { get; set; }
             public string? OriginalName { get; set; }
         }
 

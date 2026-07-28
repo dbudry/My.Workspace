@@ -11,7 +11,6 @@
 <PageHeader Title="Reports" Description="Time spent across projects, with totals and trends." />
 
 <div>
-
     <FilterBar>
         <MudDatePicker @bind-Date="dateFrom" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;" />
         <MudDatePicker @bind-Date="dateTo" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 150px;" />
@@ -110,11 +109,7 @@
                 <MudTd DataLabel="Date">@context.StartDate.ToLocalTime().ToString("MM/dd/yyyy")</MudTd>
                 <MudTd DataLabel="Task">
                     <div class="d-flex align-center" style="gap: 8px;">
-                        @if (context.AdjustmentKind == "AliasOverlay")
-                        {
-                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Adjustment</MudChip>
-                        }
-                        @if (context.AdjustmentKind == "DirectOverlay")
+                        @if (context.AdjustmentKind is "AliasOverlay" or "DirectOverlay")
                         {
                             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
                         }
@@ -132,7 +127,7 @@
                                 <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px;")"></div>
                             </MudTooltip>
                         }
-                        <span>@context.Project?.DisplayName</span>
+                        <span>@(string.IsNullOrWhiteSpace(context.Project?.DisplayName) ? "None" : context.Project!.DisplayName)</span>
                     </div>
                 </MudTd>
                 <MudTd DataLabel="Duration">@($"{(int)context.Duration.TotalHours:00}:{context.Duration.Minutes:00}")</MudTd>

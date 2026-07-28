@@ -184,8 +184,24 @@
                             Direct — edit the employee's entry in place (manager audit log)
                         </MudRadio>
                     </MudRadioGroup>
-                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
                         The workspace uses one mode only. Managers cannot mix alias and direct corrections.
+                    </MudText>
+
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">Employee time display</MudText>
+                    <MudRadioGroup T="string" @bind-Value="employeeTimeDisplayMode" Class="mb-2">
+                        <MudRadio T="string" Value="@("their")" Color="Color.Primary" Dense="true">
+                            Original — only the employee's original submission
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("adjusted")" Color="Color.Primary" Dense="true">
+                            Adjusted — manager corrections when present; otherwise original
+                        </MudRadio>
+                        <MudRadio T="string" Value="@("both")" Color="Color.Primary" Dense="true">
+                            Both — original entry plus adjusted overlay
+                        </MudRadio>
+                    </MudRadioGroup>
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Controls Tasks, Calendar, and Reports for all users. There is no per-page toggle.
                     </MudText>
                 </SectionCard>
 
