@@ -222,6 +222,22 @@
                     </MudText>
                 </SectionCard>
 
+                <SectionCard Title="Time of day">
+                    <MudSwitch T="bool" Value="trackTimeOfDay" Label="Track start time of day"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => trackTimeOfDay = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                        When <b>on</b> (default), Tasks dialogs and grids collect a start clock time
+                        (e.g. 9:00 AM) along with the date and duration.
+                    </MudText>
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        When <b>off</b>, entry UIs are date + hours only — no start-time fields or columns.
+                        New timed entries are stored at the start of the calendar day in each user’s timezone.
+                        Google Calendar, stopwatch sessions, and existing start times still use real
+                        timestamps under the hood.
+                    </MudText>
+                </SectionCard>
+
                 <SectionCard Title="All-Day Entries">
                     <MudNumericField T="double" @bind-Value="workdayHours" Label="Workday hours"
                                      Variant="Variant.Outlined" Min="0.5" Max="24" Step="0.5" Class="mb-2" />

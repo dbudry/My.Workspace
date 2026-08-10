@@ -110,12 +110,13 @@ namespace My.Client.Pages.Tyme
             try
             {
                 var submissionsTask = client.GetFromJsonAsync<List<TimeSubmissionDto>>(Constants.API.TimeSubmission.Get);
-                var overdueTask = client.GetFromJsonAsync<List<OverdueMonthDto>>(Constants.API.TimeSubmission.GetOverdue);
+                // Shared cache: publishes to nav badge without a second overdue GET.
+                var overdueTask = SubmissionEvents.RefreshAsync();
 
                 await Task.WhenAll(submissionsTask, overdueTask);
 
                 var submissions = submissionsTask.Result ?? new List<TimeSubmissionDto>();
-                var overdue = overdueTask.Result ?? new List<OverdueMonthDto>();
+                var overdue = overdueTask.Result.ToList();
 
                 var seen = new HashSet<(int Y, int M)>();
                 var combined = new List<MonthRow>();

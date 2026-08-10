@@ -34,7 +34,6 @@ namespace My.Client.Components.TrackedTasks
         private bool editIsBillable;
         private string? saveError;
         private bool isBusy;
-        private IReadOnlyList<Project> allProjects = Array.Empty<Project>();
 
         protected override async Task OnInitializedAsync()
         {
@@ -46,9 +45,8 @@ namespace My.Client.Components.TrackedTasks
 
             try
             {
-                allProjects = await ProjectsCache.LookupAsync();
                 if (!string.IsNullOrEmpty(InitialProjectId))
-                    selectedProject = allProjects.FirstOrDefault(p => p.ProjectId == InitialProjectId);
+                    selectedProject = await ProjectsCache.ResolveByIdAsync(InitialProjectId);
             }
             catch (Exception ex)
             {
@@ -56,13 +54,22 @@ namespace My.Client.Components.TrackedTasks
             }
         }
 
-        private Task<IEnumerable<Project>> SearchProjects(string query, CancellationToken token)
+        /// <summary>
+        /// Server-backed search — same pattern as Tasks/Reports. The old in-memory pool
+        /// was capped at the first 25 projects and left managers with an empty picker.
+        /// </summary>
+        private async Task<IEnumerable<Project>> SearchProjects(string? query, CancellationToken token)
         {
-            var pool = allProjects.Where(p => p.IsActive && !p.IsArchived);
-            if (string.IsNullOrEmpty(query))
-                return Task.FromResult<IEnumerable<Project>>(pool.Take(20));
-            return Task.FromResult<IEnumerable<Project>>(
-                pool.Where(p => p.Name.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(20));
+            try
+            {
+                var results = await ProjectsCache.LookupActiveAsync(search: query);
+                return results.Where(p => p.IsActive && !p.IsArchived);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't search projects.");
+                return Enumerable.Empty<Project>();
+            }
         }
 
         private void OnProjectChanged(Project? project) => selectedProject = project;

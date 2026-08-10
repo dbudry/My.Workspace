@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using My.Shared.Constants;
 using My.Shared.Dtos;
+using My.Shared.Rules;
 
 namespace My.Client.Services
 {
@@ -48,6 +49,17 @@ namespace My.Client.Services
             _cached = null;
             _inflight = null;
             Changed?.Invoke();
+        }
+
+        /// <summary>
+        /// Whether Tyme entry UIs should collect start time of day (default true).
+        /// </summary>
+        public async Task<bool> GetTymeTrackTimeOfDayAsync(bool forceRefresh = false)
+        {
+            var settings = await GetAsync(forceRefresh);
+            var row = settings.FirstOrDefault(s =>
+                string.Equals(s.Key, Constants.SettingKeys.TymeTrackTimeOfDay, StringComparison.Ordinal));
+            return TymeTimeOfDayRules.ParseTrackTimeOfDay(row?.Value);
         }
 
         private async Task<List<AppSettingDto>> LoadAsync()

@@ -25,17 +25,13 @@
                             <MudListItem T="string" OnClick="@(() => OpenTaskDialogAsync(capturedTask))" Style="cursor: pointer;">
                                 <div class="d-flex align-center">
                                     <MudText Style="flex: 1;">@trackedTask.Name</MudText>
-                                    <div style="flex: 1;" class="d-flex align-center" >
-                                        @{
-                                            var rowColor = GetRowColor(trackedTask);
-                                        }
-                                        @if (rowColor != null)
-                                        {
-                                            <MudTooltip Text="@GetRowLabel(trackedTask)" Placement="Placement.Top">
-                                                <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px; margin-right:8px;")"></div>
-                                            </MudTooltip>
-                                        }
-                                        <MudText>@trackedTask.Project?.DisplayName</MudText>
+                                    <div style="flex: 1;">
+                                        <ProjectAffiliationDisplay ProjectName="@trackedTask.Project?.Name"
+                                                                   DisplayName="@trackedTask.Project?.DisplayName"
+                                                                   OrganizationName="@trackedTask.Project?.OrganizationName"
+                                                                   OrganizationColor="@trackedTask.Project?.OrganizationColor"
+                                                                   ProjectGroupName="@trackedTask.Project?.ProjectGroupName"
+                                                                   ProjectGroupColor="@trackedTask.Project?.ProjectGroupColor" />
                                     </div>
                                     <MudText Style="width: 80px; text-align: right;">@($"{(int)trackedTask.Duration.TotalHours:00}:{trackedTask.Duration.Minutes:00}")</MudText>
                                     @if (trackedTask.IsLocked)

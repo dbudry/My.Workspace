@@ -143,11 +143,11 @@ namespace My.Client.Pages.Tyme
 
         private async Task LoadProjects()
         {
-            // Used only for empty-search suggestions (first page of lookup). Typed search
-            // hits the server via SearchProjects so projects past the first 25 still appear.
+            // Used only for empty-search suggestions (first page of active projects).
+            // Typed search hits the server via SearchProjects so projects past page 1 still appear.
             try
             {
-                projects = (await ProjectsCache.LookupAsync()).ToList();
+                projects = (await ProjectsCache.LookupActiveAsync()).ToList();
             }
             catch (Exception ex)
             {
@@ -251,22 +251,6 @@ namespace My.Client.Pages.Tyme
                 .ToList();
         }
 
-        /// <summary>Color bar shown next to the project name in the Task Details rows.</summary>
-        private string? GetRowColor(TrackedTask task)
-            => ProjectColorRules.Resolve(
-                task.Project?.OrganizationColor,
-                task.Project?.ProjectGroupColor,
-                SettingsService.ProjectColorSource);
-
-        /// <summary>Tooltip naming the Org/Group whose color is drawn on the row.</summary>
-        private string GetRowLabel(TrackedTask task)
-            => ProjectColorRules.ResolveLabel(
-                task.Project?.OrganizationName,
-                task.Project?.ProjectGroupName,
-                task.Project?.OrganizationColor,
-                task.Project?.ProjectGroupColor,
-                SettingsService.ProjectColorSource) ?? string.Empty;
-
         private async Task ClearFilters()
         {
             var userToday = SettingsService.GetUserToday();
@@ -286,7 +270,7 @@ namespace My.Client.Pages.Tyme
 
             try
             {
-                return await ProjectsCache.LookupAsync(search: value);
+                return await ProjectsCache.LookupActiveAsync(search: value);
             }
             catch (Exception ex)
             {

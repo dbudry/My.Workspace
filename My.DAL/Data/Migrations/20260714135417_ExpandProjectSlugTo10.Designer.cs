@@ -1044,6 +1044,9 @@ namespace My.DAL.Data.Migrations
                     b.Property<DateTime?>("CalendarBackfillAcknowledgedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("DefaultStartTimeMinutes")
+                        .HasColumnType("int");
+
                     b.Property<string>("FavoriteIntranetPageIdsJson")
                         .HasColumnType("nvarchar(max)");
 

@@ -1,0 +1,154 @@
+@namespace My.Client.Components.TrackedTasks
+@using My.Shared.Rules
+
+@* Week → Day layout: all projects/tasks for the week, days across, editable H:MM, horizontal scroll. *@
+
+@if (isLoading)
+{
+    <div class="d-flex align-center gap-2 mb-2">
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        <MudText Typo="Typo.caption">Loading week…</MudText>
+    </div>
+}
+else if (!string.IsNullOrEmpty(loadError))
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@loadError</MudAlert>
+}
+else
+{
+    @* Always show day headers so the week frame is clear even with no rows. *@
+    <div class="week-entry-grid-scroll mb-3">
+        <table class="week-entry-grid-table">
+            <thead>
+                <tr>
+                    <th class="week-entry-col-task">Project / Task</th>
+                    @foreach (var day in visibleDays)
+                    {
+                        <th class="week-entry-col-day">@DayHeader(day)</th>
+                    }
+                    <th class="week-entry-col-total">Total</th>
+                </tr>
+            </thead>
+            @if (rows.Count == 0)
+            {
+                <tbody>
+                    <tr>
+                        <td colspan="@(1 + visibleDays.Count + 1)" class="week-entry-empty-cell">
+                            <EmptyState Icon="@Icons.Material.Outlined.DateRange"
+                                        Title="No time this week"
+                                        Message="Nothing logged for this week yet. Click New Task to add a row, or use Project view." />
+                        </td>
+                    </tr>
+                </tbody>
+            }
+            else
+            {
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        <tr>
+                            <td class="week-entry-col-task">
+                                @if (row.ShowDraftEditors)
+                                {
+                                    <div class="week-day-draft-label">
+                                        <ProjectAutocomplete Value="@row.DraftProject"
+                                                             ValueChanged="@(p => OnDraftProjectChanged(row, p))"
+                                                             Label=""
+                                                             Placeholder="Project"
+                                                             SearchFunc="SearchProjectsAsync"
+                                                             ClearValueWhileTyping="false"
+                                                             Margin="Margin.Dense"
+                                                             Variant="Variant.Outlined"
+                                                             Class="week-entry-draft-project" />
+                                        <MudTextField T="string"
+                                                      Value="@row.DraftTaskName"
+                                                      ValueChanged="@(v => OnDraftTaskNameChanged(row, v))"
+                                                      Margin="Margin.Dense"
+                                                      Variant="Variant.Outlined"
+                                                      Immediate="true"
+                                                      Placeholder="Task name"
+                                                      Class="week-entry-draft-task-name" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="week-day-row-label">
+                                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary); line-height: 1.2;">
+                                            @row.ProjectName
+                                        </MudText>
+                                        <MudText Typo="Typo.body2">
+                                            <strong>@row.TaskName</strong>
+                                        </MudText>
+                                    </div>
+                                }
+                            </td>
+                            @for (var di = 0; di < row.Cells.Length; di++)
+                            {
+                                var dayIndex = di;
+                                var cell = row.Cells[dayIndex];
+                                <td class="week-entry-col-day">
+                                    <div class="week-entry-day-cell">
+                                        @* Pencil always inside the field so every day column has identical width. *@
+                                        <MudTextField T="string"
+                                                      Value="@(cell.IsReadOnly
+                                                          ? (cell.SavedDuration > TimeSpan.Zero
+                                                              ? WeekEntryGridRules.FormatDayDurationInput(cell.SavedDuration)
+                                                              : "")
+                                                          : cell.DurationText)"
+                                                      ValueChanged="@(v => { if (!cell.IsReadOnly) OnDurationChanged(row, dayIndex, v); })"
+                                                      Margin="Margin.Dense"
+                                                      Variant="Variant.Outlined"
+                                                      Immediate="true"
+                                                      Placeholder="00:00"
+                                                      MaxLength="5"
+                                                      ReadOnly="@cell.IsReadOnly"
+                                                      Disabled="@(isLoading || cell.IsReadOnly || !row.CanEnterDuration)"
+                                                      Class="week-entry-day-duration"
+                                                      Adornment="Adornment.End"
+                                                      AdornmentIcon="@(cell.IsMultiple ? Icons.Material.Filled.Layers : Icons.Material.Filled.Edit)"
+                                                      IconSize="Size.Small"
+                                                      AdornmentColor="@(string.IsNullOrEmpty(cell.TaskId) && !cell.IsMultiple ? Color.Default : Color.Primary)"
+                                                      OnAdornmentClick="@(() => OpenCellAsync(cell))" />
+                                        <MudText Typo="Typo.caption"
+                                                 Align="Align.Center"
+                                                 Class="week-entry-day-status"
+                                                 Style="@(cell.Status == CellSaveStatus.Error
+                                                     || !string.IsNullOrEmpty(cell.ErrorMessage)
+                                                     ? "color: var(--mud-palette-error);"
+                                                     : "color: var(--mud-palette-text-secondary);")">
+                                            @(!string.IsNullOrEmpty(cell.ErrorMessage) && cell.IsReadOnly
+                                                ? cell.ErrorMessage
+                                                : StatusLabel(cell))
+                                        </MudText>
+                                    </div>
+                                </td>
+                            }
+                            <td class="week-entry-col-total">
+                                <MudText Typo="Typo.caption">@RowTotalLabel(row)</MudText>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    @{
+                        const string totalRowBg = "background: var(--mud-palette-background-grey);";
+                    }
+                    <tr>
+                        <td class="week-entry-col-task" style="@totalRowBg border-radius: 4px 0 0 4px;">
+                            <MudText Typo="Typo.subtitle2">Total</MudText>
+                        </td>
+                        @for (var di = 0; di < visibleDays.Count; di++)
+                        {
+                            <td class="week-entry-col-day" style="font-family: monospace; @totalRowBg">
+                                <strong>@DayColumnTotalLabel(di)</strong>
+                            </td>
+                        }
+                        <td class="week-entry-col-total" style="font-family: monospace; @totalRowBg border-radius: 0 4px 4px 0;">
+                            <strong>@GrandTotalLabel</strong>
+                        </td>
+                    </tr>
+                </tfoot>
+            }
+        </table>
+    </div>
+}

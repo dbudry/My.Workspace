@@ -17,6 +17,10 @@ namespace My.Client.Models
 
         public string Name { get; init; } = null!;
 
+        /// <summary>Bare project name (no group prefix). Prefer for row primary text.</summary>
+        public string? ProjectName { get; init; }
+
+        /// <summary>Group-prefixed display when available (legacy / dialogs).</summary>
         public string? ProjectDisplayName { get; init; }
 
         public string? OrganizationName { get; init; }

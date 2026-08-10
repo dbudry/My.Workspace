@@ -1,4 +1,5 @@
 @namespace My.Client.Components.Projects
+@using My.Client.Helpers
 @using My.Client.Models
 @implements IDisposable
 
@@ -11,7 +12,7 @@
     normal free text and selection only happens when the user picks a row.
 *@
 
-<div class="project-autocomplete @Class" style="@Style" @onfocusin="OnFocusIn">
+<div class="project-autocomplete @Class @(_open ? "project-autocomplete-open" : null)" style="@Style" @onfocusin="OnFocusIn">
     <MudTextField @ref="_textField"
                   T="string"
                   Value="_text"
@@ -19,10 +20,10 @@
                   Label="@Label"
                   Variant="@Variant"
                   Margin="@Margin"
-                  Dense="@Dense"
                   Immediate="true"
                   Clearable="true"
                   Placeholder="@Placeholder"
+                  AutoFocus="@AutoFocus"
                   Adornment="Adornment.End"
                   AdornmentIcon="@Icons.Material.Filled.Search"
                   AdornmentColor="Color.Default"
@@ -30,12 +31,21 @@
                   OnBlur="OnBlur"
                   OnKeyDown="OnKeyDown" />
 
-    @if (_open)
-    {
-        @* mousedown preventDefault keeps the text field focused so blur does not
-           close the list before the click selects a project. *@
-        <MudPaper Elevation="8" Class="project-autocomplete-popover mud-width-full"
-                  @onmousedown:preventDefault="true">
+    @* Fixed MudPopover portals above the table so overflow:auto / row height on
+       MudTable cannot clip the list. RelativeWidth=Ignore so the menu is not
+       limited to the narrow inline grid column (input can stay compact). *@
+    <MudPopover Open="_open"
+                Fixed="true"
+                Paper="true"
+                Elevation="8"
+                MaxHeight="360"
+                RelativeWidth="DropdownWidth.Ignore"
+                OverflowBehavior="OverflowBehavior.FlipOnOpen"
+                AnchorOrigin="Origin.BottomLeft"
+                TransformOrigin="Origin.TopLeft"
+                Class="project-autocomplete-popover"
+                Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
+        <div @onmousedown:preventDefault="true">
             @if (_loading)
             {
                 <div class="pa-3 d-flex justify-center">
@@ -50,7 +60,7 @@
             }
             else
             {
-                <MudList T="Project" Dense="@Dense" Class="py-1">
+                <MudList T="Project" Dense="@Dense" Class="py-1 project-autocomplete-list">
                     @for (var i = 0; i < _results.Count; i++)
                     {
                         var project = _results[i];
@@ -58,11 +68,23 @@
                         <MudListItem T="Project"
                                      OnClick="@(() => SelectAsync(project))"
                                      Class="@(idx == _highlightIndex ? "mud-selected-item mud-primary-text mud-primary-hover" : null)">
-                            <div class="d-flex align-center justify-space-between" style="width: 100%;">
-                                <span>@project.DisplayName</span>
+                            <div class="d-flex align-center justify-space-between" style="width: 100%; gap: 8px;">
+                                <div class="d-flex flex-column" style="min-width: 0; flex: 1;">
+                                    <span>@project.Name</span>
+                                    @{
+                                        var affiliation = ProjectDisplayHelper.AffiliationCaption(
+                                            project.OrganizationName, project.ProjectGroupName);
+                                    }
+                                    @if (!string.IsNullOrEmpty(affiliation))
+                                    {
+                                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary); line-height: 1.2;">
+                                            @affiliation
+                                        </MudText>
+                                    }
+                                </div>
                                 @if (!string.IsNullOrEmpty(project.FullSlug))
                                 {
-                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2" Style="flex-shrink: 0;">
                                         [@project.FullSlug]
                                     </MudChip>
                                 }
@@ -71,8 +93,8 @@
                     }
                 </MudList>
             }
-        </MudPaper>
-    }
+        </div>
+    </MudPopover>
 </div>
 
 @code {
@@ -87,9 +109,32 @@
     [Parameter] public string? Style { get; set; }
     [Parameter] public string? Class { get; set; }
 
+    /// <summary>
+    /// When true, focus the search field on first render (e.g. Tasks list click-to-edit)
+    /// so a single click opens the editor and activates the input.
+    /// </summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>
+    /// When true (default for dialogs), typing free text clears the bound <see cref="Value"/>
+    /// so parent code does not re-push DisplayName over keystrokes.
+    /// When false (inline table rows that auto-save), typing only searches — parent is notified
+    /// on Select/Clear only. Otherwise each keystroke would save ProjectId = null.
+    /// </summary>
+    [Parameter] public bool ClearValueWhileTyping { get; set; } = true;
+
+    /// <summary>
+    /// Fires when the field is dismissed without a new selection (blur outside / Escape).
+    /// Used by Tasks inline edit to leave edit mode and show the read-only project label again.
+    /// </summary>
+    [Parameter] public EventCallback Dismissed { get; set; }
+
     private MudTextField<string>? _textField;
+    private bool _autoFocusApplied;
     private string _text = string.Empty;
     private string? _syncedValueId;
+    /// <summary>True while the user has edited text without picking a result yet.</summary>
+    private bool _textDirty;
     private bool _open;
     private bool _loading;
     private bool _suppressBlurClose;
@@ -103,10 +148,13 @@
         // Sync external Value → text only when the selected project identity changes,
         // never while the user is mid-typing (that was the multi-letter wipe).
         var id = Value?.ProjectId;
+        if (_textDirty)
+            return;
+
         if (id != _syncedValueId)
         {
             _syncedValueId = id;
-            _text = Value?.DisplayName ?? string.Empty;
+            _text = Value is null ? string.Empty : (Value.DisplayName ?? Value.Name ?? string.Empty);
         }
         else if (Value is null && _syncedValueId is not null)
         {
@@ -115,14 +163,38 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Mud AutoFocus can miss when the field is swapped in via click-to-edit.
+        // Force focus once so the first click both opens the editor and activates it.
+        if (!_autoFocusApplied && AutoFocus && _textField is not null)
+        {
+            _autoFocusApplied = true;
+            try
+            {
+                await _textField.FocusAsync();
+                // Open browse list immediately (same as OnFocusIn) so the user can pick without a second click.
+                if (!_open)
+                    await SearchAsync(string.Empty, CancellationToken.None);
+            }
+            catch
+            {
+                // Focus can fail if the element was already torn down.
+            }
+        }
+    }
+
     private async Task OnTextChanged(string? value)
     {
         _text = value ?? string.Empty;
+        _textDirty = true;
 
-        // User is editing free text — drop the bound Project so we do not re-sync
-        // DisplayName over their keystrokes.
-        if (Value is not null
-            && !string.Equals(_text, Value.DisplayName, StringComparison.Ordinal))
+        // Dialog mode: drop bound Project so DisplayName is not re-synced over keystrokes.
+        // Inline auto-save mode: do NOT notify parent (would wipe ProjectId on every letter).
+        if (ClearValueWhileTyping
+            && Value is not null
+            && !string.Equals(_text, Value.DisplayName, StringComparison.Ordinal)
+            && !string.Equals(_text, Value.Name, StringComparison.Ordinal))
         {
             _syncedValueId = null;
             await ValueChanged.InvokeAsync(null);
@@ -141,7 +213,8 @@
         try
         {
             await Task.Delay(200, token);
-            await SearchAsync(token);
+            // Use current field text for filter while typing.
+            await SearchAsync(_text, token);
         }
         catch (OperationCanceledException)
         {
@@ -149,7 +222,12 @@
         }
     }
 
-    private async Task SearchAsync(CancellationToken outerToken)
+    /// <param name="query">
+    /// Search term passed to <see cref="SearchFunc"/>. Pass empty/null to browse the first page
+    /// of projects — do not pass the currently selected project's name on focus, or the list
+    /// only returns that one match.
+    /// </param>
+    private async Task SearchAsync(string? query, CancellationToken outerToken)
     {
         _searchCts?.Cancel();
         _searchCts?.Dispose();
@@ -164,11 +242,23 @@
         {
             var found = SearchFunc is null
                 ? Enumerable.Empty<Project>()
-                : await SearchFunc(_text, token);
+                : await SearchFunc(query, token);
             if (token.IsCancellationRequested) return;
 
             _results = found?.Take(25).ToList() ?? new List<Project>();
-            _highlightIndex = _results.Count > 0 ? 0 : -1;
+            // Prefer highlighting the currently selected project when browsing the full list.
+            _highlightIndex = 0;
+            if (Value is not null && _results.Count > 0)
+            {
+                var selectedIdx = _results.FindIndex(p =>
+                    string.Equals(p.ProjectId, Value.ProjectId, StringComparison.Ordinal));
+                if (selectedIdx >= 0)
+                    _highlightIndex = selectedIdx;
+            }
+            else if (_results.Count == 0)
+            {
+                _highlightIndex = -1;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -194,6 +284,7 @@
         _suppressBlurClose = true;
         _text = project.DisplayName ?? project.Name ?? string.Empty;
         _syncedValueId = project.ProjectId;
+        _textDirty = false;
         _open = false;
         _results = new List<Project>();
         await ValueChanged.InvokeAsync(project);
@@ -204,6 +295,7 @@
     {
         _text = string.Empty;
         _syncedValueId = null;
+        _textDirty = false;
         _open = false;
         _results = new List<Project>();
         await ValueChanged.InvokeAsync(null);
@@ -211,9 +303,14 @@
 
     private async Task OnFocusIn()
     {
-        // Open suggestions when focusing (empty query = first page of lookup from SearchFunc).
+        // Browse list on open: empty query returns the first page of projects.
+        // Searching with the selected project's name only returns that one row —
+        // which is what looked broken in the Tasks inline picker.
         if (!_open)
-            await ScheduleSearchAsync();
+        {
+            _debounceCts?.Cancel();
+            await SearchAsync(string.Empty, CancellationToken.None);
+        }
     }
 
     private async Task OnBlur()
@@ -221,15 +318,44 @@
         // Delay so list item click can run before we close.
         await Task.Delay(150);
         if (_suppressBlurClose) return;
+        await DismissEditorAsync();
+    }
+
+    private async Task DismissEditorAsync()
+    {
         _open = false;
+
+        // Inline mode: abandon uncommitted search text and restore the bound project label.
+        if (!ClearValueWhileTyping && _textDirty && Value is not null)
+        {
+            _text = Value.DisplayName ?? Value.Name ?? string.Empty;
+            _syncedValueId = Value.ProjectId;
+            _textDirty = false;
+        }
+        else if (!ClearValueWhileTyping && _textDirty && Value is null)
+        {
+            _text = string.Empty;
+            _textDirty = false;
+        }
+
         StateHasChanged();
+
+        if (Dismissed.HasDelegate)
+            await Dismissed.InvokeAsync();
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
+        if (e.Key == "Escape")
+        {
+            await DismissEditorAsync();
+            return;
+        }
+
         if (!_open && (e.Key is "ArrowDown" or "Enter"))
         {
-            await ScheduleSearchAsync();
+            // Same as focus: open the browse list, not a filter on the current label.
+            await SearchAsync(string.Empty, CancellationToken.None);
             return;
         }
 
@@ -249,15 +375,13 @@
         {
             await SelectAsync(_results[_highlightIndex]);
         }
-        else if (e.Key == "Escape")
-        {
-            _open = false;
-            StateHasChanged();
-        }
     }
 
     public void Dispose()
     {
+        // Ensure portaled Fixed popover is not left open when the host unmounts
+        // (view switch while inline project edit was active).
+        _open = false;
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
         _searchCts?.Cancel();

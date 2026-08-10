@@ -21,6 +21,7 @@ namespace My.Client.Pages.Settings
         private bool isLoading = true;
         private bool isSaving;
         private bool use24HourTime;
+        private TimeSpan? defaultStartTime = DefaultStartTimeRules.DefaultTimeOfDay;
         private string? selectedTimeZone;
 
         private bool isGoogleConnected;
@@ -106,6 +107,7 @@ namespace My.Client.Pages.Settings
                 SettingsService.InvalidateCache();
                 var settings = await SettingsService.GetSettingsAsync();
                 use24HourTime = settings.Use24HourTime;
+                defaultStartTime = DefaultStartTimeRules.Resolve(settings.DefaultStartTimeMinutes);
                 selectedTimeZone = settings.TimeZone;
                 isGoogleConnected = settings.IsGoogleCalendarConnected;
                 googleEmail = settings.GoogleCalendarEmail;
@@ -129,6 +131,8 @@ namespace My.Client.Pages.Settings
                 await SettingsService.UpdateSettingsAsync(new UpdateUserSettingsDto
                 {
                     Use24HourTime = use24HourTime,
+                    DefaultStartTimeMinutes = DefaultStartTimeRules.FromTimeSpan(
+                        defaultStartTime ?? DefaultStartTimeRules.DefaultTimeOfDay),
                     TimeZone = selectedTimeZone,
                     PublishToGoogleCalendar = publishToGoogle,
                     ImportFromGoogleCalendar = importFromGoogle,

@@ -78,6 +78,7 @@ builder.Services.AddScoped<NavigationPersistenceService>();
 builder.Services.AddScoped<ImpersonationService>();
 builder.Services.AddScoped<SessionExpiryService>();
 builder.Services.AddScoped<TimeSubmissionEvents>();
+builder.Services.AddScoped<TasksPagePreferencesService>();
 builder.Services.AddScoped<IntranetNavigationEvents>();
 builder.Services.AddScoped(_ => new HttpClient
 {

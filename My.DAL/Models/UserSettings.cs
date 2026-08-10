@@ -8,6 +8,12 @@ namespace My.DAL.Models
 
         public bool Use24HourTime { get; set; }
 
+        /// <summary>
+        /// Default start time of day for new timed Tyme entries, as minutes past midnight
+        /// in the user's timezone (0–1439). Default 480 = 08:00.
+        /// </summary>
+        public int DefaultStartTimeMinutes { get; set; } = 480;
+
         /// <summary>IANA timezone ID (e.g. "America/New_York"). Null = not yet set.</summary>
         public string? TimeZone { get; set; }
 

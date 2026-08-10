@@ -261,7 +261,7 @@
         }
     }
 
-    private void OnSubmissionChanged() => _ = LoadOverdueAsync();
+    private void OnSubmissionChanged() => _ = SyncOverdueBadgeAsync();
 
     private void OnIntranetNavChanged() => _ = LoadIntranetNavigationAsync();
 
@@ -284,13 +284,23 @@
             await PersistNavStateAsync();
         });
 
-    private async Task LoadOverdueAsync()
+    /// <summary>
+    /// Badge count: use shared session cache when another page already loaded overdue
+    /// (dashboard/submit) — no extra HTTP. Otherwise one coalesced GET.
+    /// </summary>
+    private async Task SyncOverdueBadgeAsync()
     {
         try
         {
-            var client = ClientFactory.CreateClient(Constants.API.ClientName);
-            var list = await client.GetFromJsonAsync<List<OverdueMonthDto>>(Constants.API.TimeSubmission.GetOverdue);
-            overdueCount = list?.Count ?? 0;
+            if (SubmissionEvents.HasLoaded)
+            {
+                overdueCount = SubmissionEvents.OverdueCount;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var list = await SubmissionEvents.RefreshAsync();
+            overdueCount = list.Count;
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -299,6 +309,8 @@
             Logger.LogWarning(ex, "Failed to load overdue count for nav badge.");
         }
     }
+
+    private Task LoadOverdueAsync() => SyncOverdueBadgeAsync();
 
     private async Task LoadIntranetNavigationAsync()
     {

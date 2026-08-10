@@ -4,62 +4,613 @@
 @attribute [Authorize(Policy = "Tyme:User:Scoped")]
 
 @using My.Client.Components.TrackedTasks
-
 @using My.Client.Models
+@using My.Shared.Rules
 
 <PageTitle>Tasks</PageTitle>
 
 <PageHeader Title="Tasks" Description="Tracked time entries across your projects." />
 
-<div>
-    <MudTable @ref="table" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
-              AllowUnsorted="false"
-              OnRowClick="@((TableRowClickEventArgs<TaskListRow> args) => { if (args.Item != null) _ = OnRowClickAsync(args.Item); })">
-        <ToolBarContent>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="OpenCreateDialog">New Task</MudButton>
-            <MudSpacer />
-            <MudTextField Value="searchString" ValueChanged="@(async (string v) => await OnSearchChanged(v))" Placeholder="Search" Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
-                          Immediate="true" DebounceInterval="300" />
-        </ToolBarContent>
-        <HeaderContent>
-            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Name">Name</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Project">Project</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Duration">Duration</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Date" InitialDirection="SortDirection.Descending">Date</MudTableSortLabel></MudTh>
-            <MudTh Style="width:60px; text-align:center;">Actions</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Name">
-                <div class="d-flex align-center" style="gap: 8px;">
+@*
+  Toolbar rows (left-aligned; wrap cleanly on narrow screens):
+  All:
+    1) view mode
+    2) label-color + search + New Task
+  Week:
+    1) view mode | Week of | List/Day | (Day only) Business/Full
+    2) label-color + New Task
+  Project:
+    1) view mode | Week of | Business week / Full week
+    2) Project search | New Task
+*@
+<div class="tasks-toolbar mb-3">
+    <div class="tasks-toolbar-row tasks-toolbar-view-row @((viewMode is TasksViewMode.Project or TasksViewMode.Weekly) ? "tasks-toolbar-view-row-project" : null)">
+        <MudToggleGroup T="TasksViewMode" Value="viewMode" ValueChanged="OnViewModeChangedAsync"
+                        SelectionMode="SelectionMode.SingleSelection" Color="Color.Primary" Size="Size.Small"
+                        Class="submit-view-toggle">
+            <MudToggleItem Value="TasksViewMode.Grid">All</MudToggleItem>
+            <MudToggleItem Value="TasksViewMode.Weekly">Week</MudToggleItem>
+            <MudToggleItem Value="TasksViewMode.Project">Project</MudToggleItem>
+        </MudToggleGroup>
+
+        @if (viewMode == TasksViewMode.Weekly)
+        {
+            <div class="tasks-week-nav">
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
+                               aria-label="Previous week"
+                               OnClick="PrevWeekAsync"
+                               Disabled="@(isLoadingWeekly || isWeeklyDayBusy)" />
+                <div class="management-date-field tasks-toolbar-week-field">
+                    <MudDatePicker Date="weekPickerDate"
+                                   DateChanged="OnWeekDatePickedAsync"
+                                   Placeholder="Week of"
+                                   DateFormat="MMM d, yyyy"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Editable="true"
+                                   Disabled="@(isLoadingWeekly || isWeeklyDayBusy)" />
+                </div>
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                               aria-label="Next week"
+                               OnClick="NextWeekAsync"
+                               Disabled="@(isLoadingWeekly || isWeeklyDayBusy)" />
+            </div>
+
+            <MudToggleGroup T="WeeklyLayoutMode" Value="weeklyLayoutMode" ValueChanged="OnWeeklyLayoutChangedAsync"
+                            SelectionMode="SelectionMode.SingleSelection" Color="Color.Primary" Size="Size.Small"
+                            Class="submit-view-toggle tasks-week-layout-toggle">
+                <MudToggleItem Value="WeeklyLayoutMode.List">List</MudToggleItem>
+                <MudToggleItem Value="WeeklyLayoutMode.Day">Day</MudToggleItem>
+            </MudToggleGroup>
+
+            @if (weeklyLayoutMode == WeeklyLayoutMode.Day)
+            {
+                <MudToggleGroup T="bool" Value="weeklyBusinessWeekOnly" ValueChanged="OnWeeklyBusinessWeekChanged"
+                                Color="Color.Primary" Size="Size.Small" CheckMark="false"
+                                SelectionMode="SelectionMode.SingleSelection"
+                                Class="submit-view-toggle tasks-business-week-toggle">
+                    <MudToggleItem Value="true">Business week</MudToggleItem>
+                    <MudToggleItem Value="false">Full week</MudToggleItem>
+                </MudToggleGroup>
+            }
+        }
+        else if (viewMode == TasksViewMode.Project)
+        {
+            <div class="tasks-week-nav">
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
+                               aria-label="Previous week"
+                               OnClick="PrevProjectWeekAsync"
+                               Disabled="@isProjectWeekBusy" />
+                <div class="management-date-field tasks-toolbar-week-field">
+                    <MudDatePicker Date="projectWeekPickerDate"
+                                   DateChanged="OnProjectWeekDatePickedAsync"
+                                   Placeholder="Week of"
+                                   DateFormat="MMM d, yyyy"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Editable="true"
+                                   Disabled="@isProjectWeekBusy" />
+                </div>
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                               aria-label="Next week"
+                               OnClick="NextProjectWeekAsync"
+                               Disabled="@isProjectWeekBusy" />
+            </div>
+
+            <MudToggleGroup T="bool" Value="projectBusinessWeekOnly" ValueChanged="OnProjectBusinessWeekChanged"
+                            Color="Color.Primary" Size="Size.Small" CheckMark="false"
+                            SelectionMode="SelectionMode.SingleSelection"
+                            Class="submit-view-toggle tasks-business-week-toggle">
+                <MudToggleItem Value="true">Business week</MudToggleItem>
+                <MudToggleItem Value="false">Full week</MudToggleItem>
+            </MudToggleGroup>
+        }
+    </div>
+
+    @if (viewMode == TasksViewMode.Grid)
+    {
+        @* Left-grouped: label toggle | search | New Task. *@
+        <div class="tasks-toolbar-row tasks-toolbar-all-controls">
+            <MudToggleGroup T="ProjectColorSource"
+                            Value="projectColorSource"
+                            ValueChanged="OnProjectColorSourceChangedAsync"
+                            SelectionMode="SelectionMode.SingleSelection"
+                            Color="Color.Primary"
+                            Size="Size.Small"
+                            Class="submit-view-toggle tasks-label-color-toggle"
+                            Disabled="@isSavingColorSource">
+                <MudToggleItem Value="ProjectColorSource.Organization">By Organization</MudToggleItem>
+                <MudToggleItem Value="ProjectColorSource.ProjectGroup">By Project Group</MudToggleItem>
+            </MudToggleGroup>
+
+            <div class="tasks-toolbar-search-wrap">
+                <MudTextField Value="searchString"
+                              ValueChanged="@(async (string v) => await OnSearchChanged(v))"
+                              Placeholder="Search"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              IconSize="Size.Medium"
+                              Margin="Margin.Dense"
+                              Immediate="true"
+                              DebounceInterval="300"
+                              Class="mt-0 tasks-toolbar-search" />
+            </div>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreateDialog"
+                       Class="tasks-toolbar-new">
+                New Task
+            </MudButton>
+        </div>
+    }
+    else if (viewMode == TasksViewMode.Weekly)
+    {
+        <div class="tasks-toolbar-row tasks-toolbar-all-controls">
+            <MudToggleGroup T="ProjectColorSource"
+                            Value="projectColorSource"
+                            ValueChanged="OnProjectColorSourceChangedAsync"
+                            SelectionMode="SelectionMode.SingleSelection"
+                            Color="Color.Primary"
+                            Size="Size.Small"
+                            Class="submit-view-toggle tasks-label-color-toggle"
+                            Disabled="@isSavingColorSource">
+                <MudToggleItem Value="ProjectColorSource.Organization">By Organization</MudToggleItem>
+                <MudToggleItem Value="ProjectColorSource.ProjectGroup">By Project Group</MudToggleItem>
+            </MudToggleGroup>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OnWeeklyNewTask"
+                       Class="tasks-toolbar-new">
+                New Task
+            </MudButton>
+        </div>
+    }
+    else if (viewMode == TasksViewMode.Project)
+    {
+        <div class="tasks-toolbar-row tasks-toolbar-project-task-row">
+            <div class="tasks-toolbar-project-picker">
+                <ProjectAutocomplete Value="projectViewSelectedProject"
+                                     ValueChanged="OnProjectViewProjectChangedAsync"
+                                     Label=""
+                                     Placeholder="Project"
+                                     SearchFunc="SearchProjectsForProjectView"
+                                     Margin="Margin.Dense"
+                                     Variant="Variant.Outlined" />
+            </div>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OnProjectViewNewTask"
+                       Disabled="@(isProjectWeekBusy || projectViewSelectedProject == null)"
+                       Class="tasks-toolbar-new">
+                New Task
+            </MudButton>
+        </div>
+    }
+</div>
+
+@if (viewMode == TasksViewMode.Project)
+{
+    <div class="tasks-project-view">
+        <WeekEntryPanel @ref="weekEntryPanel"
+                        EntriesChanged="OnWeekEntriesChanged"
+                        BusinessWeekOnly="projectBusinessWeekOnly"
+                        WeekStartMonday="projectWeekStartMonday"
+                        LoadingChanged="OnProjectWeekLoadingChanged"
+                        ProjectSelectionChanged="OnProjectPanelSelectionChanged" />
+    </div>
+}
+else if (viewMode == TasksViewMode.Weekly)
+{
+    @if (weeklyLayoutMode == WeeklyLayoutMode.Day)
+    {
+        <WeekDayAcrossGrid @ref="weekDayAcrossGrid"
+                           WeekStartMonday="weekStartMonday"
+                           BusinessWeekOnly="weeklyBusinessWeekOnly"
+                           EntriesChanged="OnWeekEntriesChanged"
+                           LoadingChanged="OnWeeklyDayLoadingChanged" />
+    }
+    else if (isLoadingWeekly)
+    {
+        <PageLoader IsLoading="true" />
+    }
+    else if (!string.IsNullOrEmpty(weeklyLoadError))
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@weeklyLoadError</MudAlert>
+    }
+    else
+    {
+        @* Headers always visible; empty week uses NoRecordsContent under the column titles. *@
+        <MudTable Items="@weeklyRows" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+                  Class="tasks-list-table"
+                  OnRowClick="@((TableRowClickEventArgs<TaskListRow> args) => { if (args.Item != null) _ = OnRowClickAsync(args.Item); })">
+            <ColGroup>
+                <col class="tasks-col-name" />
+                <col class="tasks-col-project" />
+                <col class="tasks-col-date" />
+                <col class="tasks-col-duration" />
+                <col class="tasks-col-actions" />
+            </ColGroup>
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>Project</MudTh>
+                <MudTh>@(trackTimeOfDay ? "Date / Start" : "Date")</MudTh>
+                <MudTh>Duration</MudTh>
+                <MudTh Style="text-align:center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                @RenderTaskRow(context)
+            </RowTemplate>
+            <NoRecordsContent>
+                <EmptyState Icon="@Icons.Material.Outlined.DateRange"
+                            Title="No time this week"
+                            Message="Nothing logged for this week yet. Use New Task, Project view, or Stopwatch to add time." />
+            </NoRecordsContent>
+            <FooterContent>
+                <MudTd>
+                    @if (weeklyTotals.ShowAdjustedSeparately)
+                    {
+                        <MudText Typo="Typo.subtitle2">Your time</MudText>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Adjusted
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.subtitle2">Total</MudText>
+                    }
+                </MudTd>
+                <MudTd></MudTd>
+                <MudTd></MudTd>
+                <MudTd Style="font-family: monospace;">
+                    @if (weeklyTotals.ShowAdjustedSeparately)
+                    {
+                        <div><strong>@FormatHours(weeklyTotals.OriginalTotal)</strong></div>
+                        <MudText Typo="Typo.caption">
+                            <strong>@FormatHours(weeklyTotals.AdjustedTotal)</strong>
+                        </MudText>
+                    }
+                    else
+                    {
+                        <strong>@FormatHours(weeklyTotals.PrimaryTotal)</strong>
+                    }
+                </MudTd>
+                <MudTd></MudTd>
+            </FooterContent>
+        </MudTable>
+    }
+}
+else
+{
+    @* Grid — full paged list (search + New Task live in the shared toolbar above). *@
+    <div>
+        <MudTable @ref="table" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+                  AllowUnsorted="false"
+                  Class="tasks-list-table"
+                  OnRowClick="@((TableRowClickEventArgs<TaskListRow> args) => { if (args.Item != null) _ = OnRowClickAsync(args.Item); })">
+            <ColGroup>
+                <col class="tasks-col-name" />
+                <col class="tasks-col-project" />
+                <col class="tasks-col-date" />
+                <col class="tasks-col-duration" />
+                <col class="tasks-col-actions" />
+            </ColGroup>
+            <HeaderContent>
+                <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Name">Name</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Project">Project</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Date" InitialDirection="SortDirection.Descending">@(trackTimeOfDay ? "Date / Start" : "Date")</MudTableSortLabel></MudTh>
+                <MudTh><MudTableSortLabel T="TaskListRow" SortLabel="Duration">Duration</MudTableSortLabel></MudTh>
+                <MudTh Style="text-align:center;">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                @RenderTaskRow(context)
+            </RowTemplate>
+            <NoRecordsContent>
+                <EmptyState Icon="@Icons.Material.Outlined.AccessTime"
+                            Title="No tasks yet"
+                            Message="Click New Task to add a completed entry, use Week or Project view, or use the Stopwatch page to log live time." />
+            </NoRecordsContent>
+            <PagerContent>
+                <MudTablePager />
+            </PagerContent>
+        </MudTable>
+    </div>
+}
+
+@code {
+    private RenderFragment<TaskListRow> RenderTaskRow => context => __builder =>
+    {
+        var canEdit = CanInlineEdit(context);
+        var isStopwatch = context.Kind == TaskListRowKind.Stopwatch && context.StopwatchItem != null;
+        // Manual rows stop bubble so field click-to-edit does not also fire row handlers.
+        // Stopwatch rows must bubble — click opens the sessions editor (not inline fields).
+        var stopCellBubble = canEdit;
+        var task = context.ManualTask;
+        var project = task?.Project;
+        var orgName = project?.OrganizationName ?? context.OrganizationName;
+        var orgColor = project?.OrganizationColor ?? context.OrganizationColor;
+        var groupName = project?.ProjectGroupName ?? context.ProjectGroupName;
+        var groupColor = project?.ProjectGroupColor ?? context.ProjectGroupColor;
+        // Always prefer live ManualTask values — list-row snapshot is immutable at load time.
+        var displayName = FormatRowDisplayName(context);
+        var displayDate = FormatRowDisplayDate(context);
+        var displayProjectName = FormatRowProjectName(context);
+        var tid = task?.TaskId;
+
+        <MudTd DataLabel="Name" @onclick:stopPropagation="@stopCellBubble"
+               Class="@(isStopwatch ? "tasks-stopwatch-row-cell" : null)">
+            <div class="d-flex align-center tasks-inline-name-row">
+                @* Fixed-width type markers so Name text lines up on every row. *@
+                <div class="tasks-row-markers" aria-hidden="@(!(isStopwatch || context.IsRunning || context.IsManagerAdjustmentOverlay || context.IsManagerAdjusted))">
                     @if (context.Kind == TaskListRowKind.Stopwatch)
                     {
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Stopwatch</MudChip>
+                        <MudTooltip Text="Stopwatch work item">
+                            <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Color="Color.Info"
+                                     Class="tasks-row-marker-icon" />
+                        </MudTooltip>
+                    }
+                    @if (context.IsRunning)
+                    {
+                        <MudTooltip Text="Running">
+                            <MudIcon Icon="@Icons.Material.Filled.FiberManualRecord" Size="Size.Small" Color="Color.Success"
+                                     Class="tasks-row-marker-icon" />
+                        </MudTooltip>
                     }
                     @if (context.IsManagerAdjustmentOverlay || context.IsManagerAdjusted)
                     {
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
-                    }
-                    <MudText Typo="Typo.body2" Style="@(context.IsRunning ? "font-weight: bold;" : "")">@context.Name</MudText>
-                </div>
-            </MudTd>
-            <MudTd DataLabel="Project">
-                <div class="d-flex align-center" style="gap: 8px;">
-                    @{
-                        var rowColor = GetRowColor(context);
-                    }
-                    @if (rowColor != null)
-                    {
-                        <MudTooltip Text="@GetRowLabel(context)" Placement="Placement.Top">
-                            <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px;")"></div>
+                        <MudTooltip Text="Manager adjusted">
+                            <MudIcon Icon="@Icons.Material.Filled.EditNote" Size="Size.Small" Color="Color.Warning"
+                                     Class="tasks-row-marker-icon" />
                         </MudTooltip>
                     }
-                    <span>@(string.IsNullOrWhiteSpace(context.ProjectDisplayName) ? "None" : context.ProjectDisplayName)</span>
                 </div>
-            </MudTd>
-            <MudTd DataLabel="Duration" Style="font-family: monospace;">
-                @FormatDuration(context)
+                @if (canEdit && task != null && tid != null && IsEditing(tid, "name"))
+                {
+                    <MudTextField T="string"
+                                  Value="@GetNameDraft(task)"
+                                  ValueChanged="@(v => { SetNameDraft(task, v); SetInlineFieldError(tid, "name", null); })"
+                                  Margin="Margin.Dense"
+                                  Variant="Variant.Outlined"
+                                  Immediate="true"
+                                  AutoFocus="true"
+                                  Disabled="@IsRowSaving(tid)"
+                                  Class="tasks-inline-name"
+                                  Style="flex: 1 1 auto; width: 100%; min-width: 0;"
+                                  Error="@(GetInlineFieldError(tid, "name") != null)"
+                                  ErrorText="@GetInlineFieldError(tid, "name")"
+                                  OnBlur="@(async _ => await CommitInlineNameAsync(context))" />
+                }
+                else if (canEdit && task != null && tid != null)
+                {
+                    <div class="tasks-inline-display tasks-inline-display-name"
+                         @onclick="@(() => BeginInlineEdit(tid, "name"))"
+                         @ondblclick="@(() => BeginInlineEdit(tid, "name"))">
+                        <MudText Typo="Typo.body2">@displayName</MudText>
+                    </div>
+                }
+                else if (isStopwatch)
+                {
+                    <div class="tasks-inline-display tasks-inline-display-name"
+                         title="Edit sessions"
+                         @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                         @onclick:stopPropagation="true">
+                        <MudText Typo="Typo.body2" Class="tasks-row-name-text"
+                                 Style="@(context.IsRunning ? "font-weight: bold;" : null)">@displayName</MudText>
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="tasks-row-name-text"
+                             Style="@(context.IsRunning ? "font-weight: bold;" : null)">@displayName</MudText>
+                }
+            </div>
+        </MudTd>
+        <MudTd DataLabel="Project" @onclick:stopPropagation="@stopCellBubble"
+               Class="@(isStopwatch ? "tasks-stopwatch-row-cell" : null)">
+            @if (canEdit && task != null && tid != null && IsEditing(tid, "project"))
+            {
+                <div class="d-flex align-center" style="gap: 8px; min-width: 10rem;">
+                    <ProjectAffiliationDisplay ProjectName="@null"
+                                               DisplayName="@null"
+                                               OrganizationName="@orgName"
+                                               OrganizationColor="@orgColor"
+                                               ProjectGroupName="@groupName"
+                                               ProjectGroupColor="@groupColor"
+                                               ColorSource="@projectColorSource"
+                                               NoneLabel="" />
+                    <div class="tasks-inline-project" style="flex: 1; min-width: 9rem; max-width: 16rem;">
+                        <ProjectAutocomplete Value="@task.Project"
+                                             ValueChanged="@(p => OnInlineProjectChangedAsync(context, p))"
+                                             Label=""
+                                             Placeholder="Project"
+                                             SearchFunc="SearchProjectsForInline"
+                                             ClearValueWhileTyping="false"
+                                             AutoFocus="true"
+                                             Dismissed="@(async () => await ExitInlineEditSafeAsync(tid))"
+                                             Margin="Margin.Dense"
+                                             Variant="Variant.Outlined" />
+                    </div>
+                </div>
+            }
+            else if (canEdit && task != null && tid != null)
+            {
+                <div class="tasks-inline-display"
+                     @onclick="@(() => BeginInlineEdit(tid, "project"))"
+                     @ondblclick="@(() => BeginInlineEdit(tid, "project"))">
+                    <ProjectAffiliationDisplay ProjectName="@displayProjectName"
+                                               DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
+                                               OrganizationName="@orgName"
+                                               OrganizationColor="@orgColor"
+                                               ProjectGroupName="@groupName"
+                                               ProjectGroupColor="@groupColor"
+                                               ColorSource="@projectColorSource" />
+                </div>
+            }
+            else if (isStopwatch)
+            {
+                <div class="tasks-inline-display"
+                     title="Edit sessions"
+                     @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                     @onclick:stopPropagation="true">
+                    <ProjectAffiliationDisplay @key="@($"{displayName}|{projectColorSource}")"
+                                               ProjectName="@displayProjectName"
+                                               DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
+                                               OrganizationName="@orgName"
+                                               OrganizationColor="@orgColor"
+                                               ProjectGroupName="@groupName"
+                                               ProjectGroupColor="@groupColor"
+                                               ColorSource="@projectColorSource" />
+                </div>
+            }
+            else
+            {
+                <ProjectAffiliationDisplay @key="@($"{displayName}|{projectColorSource}")"
+                                           ProjectName="@displayProjectName"
+                                           DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
+                                           OrganizationName="@orgName"
+                                           OrganizationColor="@orgColor"
+                                           ProjectGroupName="@groupName"
+                                           ProjectGroupColor="@groupColor"
+                                           ColorSource="@projectColorSource" />
+            }
+        </MudTd>
+        <MudTd DataLabel="@(trackTimeOfDay ? "Date / Start" : "Date")" @onclick:stopPropagation="@stopCellBubble"
+               Class="@(isStopwatch ? "tasks-stopwatch-row-cell" : null)">
+            @if (canEdit && task != null && tid != null)
+            {
+                <div class="tasks-inline-date-time">
+                    @if (IsEditing(tid, "date"))
+                    {
+                        <div class="tasks-inline-date">
+                            <MudDatePicker Date="@task.StartDate.Date"
+                                           DateChanged="@(d => OnInlineDateChangedAsync(context, d))"
+                                           DateFormat="MM/dd/yy"
+                                           Variant="Variant.Outlined"
+                                           Margin="Margin.Dense"
+                                           Editable="true"
+                                           Disabled="@IsRowSaving(tid)"
+                                           Class="tasks-inline-datepicker" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="tasks-inline-display tasks-list-date"
+                             @onclick="@(() => BeginInlineEdit(tid, "date"))"
+                             @ondblclick="@(() => BeginInlineEdit(tid, "date"))">
+                            @FormatShortDate(displayDate)
+                        </div>
+                    }
+
+                    @if (context.IsAllDay)
+                    {
+                        <MudText Typo="Typo.caption" Class="tasks-inline-allday-label"
+                                 Style="color: var(--mud-palette-text-secondary);">All day</MudText>
+                    }
+                    else if (trackTimeOfDay && IsEditing(tid, "time"))
+                    {
+                        <MudTextField T="string"
+                                      Value="@GetStartTimeDraft(task)"
+                                      ValueChanged="@(v => { SetStartTimeDraft(task, v); SetInlineFieldError(tid, "time", null); })"
+                                      Margin="Margin.Dense"
+                                      Variant="Variant.Outlined"
+                                      Immediate="true"
+                                      AutoFocus="true"
+                                      Placeholder="@(SettingsService.Use24HourTime ? "14:30" : "9:00 AM")"
+                                      Disabled="@IsRowSaving(tid)"
+                                      Class="tasks-inline-start-time"
+                                      Style="width: 5.75rem; max-width: 5.75rem;"
+                                      Error="@(GetInlineFieldError(tid, "time") != null)"
+                                      ErrorText="@GetInlineFieldError(tid, "time")"
+                                      OnBlur="@(async _ => await CommitInlineStartTimeAsync(context))" />
+                    }
+                    else if (trackTimeOfDay)
+                    {
+                        <div class="tasks-inline-display tasks-list-time"
+                             @onclick="@(() => BeginInlineEdit(tid, "time"))"
+                             @ondblclick="@(() => BeginInlineEdit(tid, "time"))">
+                            @FormatStartTime(displayDate)
+                        </div>
+                    }
+                </div>
+            }
+            else if (isStopwatch)
+            {
+                <div class="tasks-inline-display tasks-inline-date-time"
+                     title="Edit sessions"
+                     @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                     @onclick:stopPropagation="true">
+                    <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
+                    @if (trackTimeOfDay)
+                    {
+                        <span class="tasks-list-time">@FormatStartTime(displayDate)</span>
+                    }
+                </div>
+            }
+            else if (context.IsAllDay)
+            {
+                <div class="tasks-inline-date-time tasks-inline-date-time-readonly">
+                    <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
+                    <MudText Typo="Typo.caption" Class="tasks-inline-allday-label"
+                             Style="color: var(--mud-palette-text-secondary);">All day</MudText>
+                </div>
+            }
+            else if (trackTimeOfDay)
+            {
+                <div class="tasks-inline-date-time tasks-inline-date-time-readonly">
+                    <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
+                    <span class="tasks-list-time">@FormatStartTime(displayDate)</span>
+                </div>
+            }
+            else
+            {
+                <div class="tasks-inline-date-time tasks-inline-date-time-readonly">
+                    <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
+                </div>
+            }
+        </MudTd>
+        <MudTd DataLabel="Duration" @onclick:stopPropagation="@stopCellBubble"
+               Class="@(isStopwatch ? "tasks-stopwatch-row-cell tasks-list-duration-cell" : "tasks-list-duration-cell")">
+            @if (canEdit && task != null && tid != null && !context.IsAllDay && IsEditing(tid, "duration"))
+            {
+                <MudTextField T="string"
+                              Value="@GetDurationDraft(task)"
+                              ValueChanged="@(v => { SetDurationDraft(task, v); SetInlineFieldError(tid, "duration", null); })"
+                              Margin="Margin.Dense"
+                              Variant="Variant.Outlined"
+                              Immediate="true"
+                              AutoFocus="true"
+                              Placeholder="00:00"
+                              MaxLength="5"
+                              Disabled="@IsRowSaving(tid)"
+                              Class="tasks-inline-duration"
+                              Style="width: 4.5rem; max-width: 4.5rem;"
+                              Error="@(GetInlineFieldError(tid, "duration") != null)"
+                              ErrorText="@GetInlineFieldError(tid, "duration")"
+                              OnBlur="@(async _ => await CommitInlineDurationAsync(context))" />
+            }
+            else if (canEdit && task != null && tid != null && !context.IsAllDay)
+            {
+                <div class="tasks-inline-display tasks-inline-display-duration"
+                     @onclick="@(() => BeginInlineEdit(tid, "duration"))"
+                     @ondblclick="@(() => BeginInlineEdit(tid, "duration"))">
+                    @FormatRowDuration(context)
+                </div>
+            }
+            else if (isStopwatch)
+            {
+                @* Total is sum of sessions — open sessions dialog to change duration. *@
+                <div class="tasks-inline-display tasks-inline-display-duration"
+                     title="Edit sessions to change duration"
+                     @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                     @onclick:stopPropagation="true">
+                    <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
+                </div>
+            }
+            else
+            {
+                <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
                 @if (context.IsAllDay)
                 {
                     <MudTooltip Text="All-day entry — duration is workday hours × calendar days">
@@ -67,32 +618,48 @@
                                  Style="color: var(--mud-palette-text-secondary);" />
                     </MudTooltip>
                 }
-            </MudTd>
-            <MudTd DataLabel="Date">@context.DisplayDate.ToString("MM/dd/yyyy")</MudTd>
-            <MudTd DataLabel="Actions" Style="text-align:center;" @onclick:stopPropagation="true">
-                @if (context.Kind == TaskListRowKind.Manual && context.ManualTask != null)
-                {
-                    @if (context.IsLocked)
-                    {
-                        <MudTooltip Text="@($"Time for {context.ManualTask.StartDate:MMM yyyy} has been submitted")">
-                            <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" />
-                        </MudTooltip>
-                    }
-                    else
-                    {
+            }
+        </MudTd>
+        <MudTd DataLabel="Actions" Style="text-align:center;" @onclick:stopPropagation="true">
+            @if (isStopwatch)
+            {
+                <div class="d-flex justify-center align-center" style="gap: 0;">
+                    @* No pencil — open sessions via duration/name click or the list icon. *@
+                    <MudTooltip Text="Sessions (create duration, start/stop)">
+                        <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Delete work item and all sessions">
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                       OnClick="@(() => DeleteRow(context.ManualTask))" />
-                    }
+                                       OnClick="@(() => DeleteStopwatchItemAsync(context.StopwatchItem!))" />
+                    </MudTooltip>
+                </div>
+            }
+            else if (context.Kind == TaskListRowKind.Manual && task != null)
+            {
+                @if (context.IsLocked)
+                {
+                    <MudTooltip Text="@($"Time for {task.StartDate:MMM yyyy} has been submitted")">
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" />
+                    </MudTooltip>
                 }
-            </MudTd>
-        </RowTemplate>
-        <NoRecordsContent>
-            <EmptyState Icon="@Icons.Material.Outlined.AccessTime"
-                        Title="No tasks yet"
-                        Message="Click New Task to add a completed entry, or use the Stopwatch page to log live time." />
-        </NoRecordsContent>
-        <PagerContent>
-            <MudTablePager />
-        </PagerContent>
-    </MudTable>
-</div>
+                else
+                {
+                    <div class="d-flex justify-center align-center" style="gap: 0;">
+                        <MudTooltip Text="@(context.IsOverlayRow ? "View" : "Edit details")">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => OpenTaskDialog(context))" />
+                        </MudTooltip>
+                        @if (!context.IsOverlayRow)
+                        {
+                            <MudTooltip Text="Delete">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                               OnClick="@(() => DeleteRow(task))" />
+                            </MudTooltip>
+                        }
+                    </div>
+                }
+            }
+        </MudTd>
+    };
+}

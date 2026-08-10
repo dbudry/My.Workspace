@@ -152,6 +152,9 @@ namespace My.Client.Components.Dashboard
         [Inject]
         private IUserRoleRefreshService RoleRefresh { get; set; } = null!;
 
+        [Inject]
+        private TimeSubmissionEvents SubmissionEvents { get; set; } = null!;
+
         #endregion
 
         [CascadingParameter]
@@ -390,8 +393,10 @@ namespace My.Client.Components.Dashboard
         {
             try
             {
-                var list = await client.GetFromJsonAsync<List<OverdueMonthDto>>(Constants.API.TimeSubmission.GetOverdue);
-                overdueMonths = list ?? new();
+                // Shared session cache: refreshes once, then publishes so the nav badge
+                // picks up the same count without a second /overdue request.
+                var list = await SubmissionEvents.RefreshAsync();
+                overdueMonths = list.ToList();
                 StateHasChanged();
             }
             catch (Exception ex)

@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using My.Client.Helpers;
 using My.Shared.Dtos.TrackedTask;
 
 namespace My.Client.Models
@@ -63,10 +64,14 @@ namespace My.Client.Models
 
         public TrackedTask()
         {
-
         }
 
-        public TrackedTask(TrackedTaskDto trackedTask)
+        /// <summary>
+        /// Maps an API DTO into UI model times. Timed values are UTC in the database and
+        /// are converted to <paramref name="userTimeZone"/> (from UserSettings.TimeZone).
+        /// All-day entries stay date-only (no zone shift).
+        /// </summary>
+        public TrackedTask(TrackedTaskDto trackedTask, TimeZoneInfo? userTimeZone = null)
         {
             TaskId = trackedTask.TaskId;
             Name = trackedTask.Name;
@@ -74,11 +79,9 @@ namespace My.Client.Models
             Duration = trackedTask.Duration;
             IsAllDay = trackedTask.IsAllDay;
 
-            // All-day entries are date-only — the day the user picked. Converting to local
-            // time shifted them by the UTC offset and made a "May 20" entry render on
-            // "May 19" for anyone west of UTC. Skip the conversion and preserve the date.
             if (IsAllDay)
             {
+                // Date-only — converting would shift the calendar day west of UTC.
                 StartDate = DateTime.SpecifyKind(trackedTask.StartDate.Date, DateTimeKind.Unspecified);
                 EndDate = trackedTask.EndDate.HasValue
                     ? DateTime.SpecifyKind(trackedTask.EndDate.Value.Date, DateTimeKind.Unspecified)
@@ -86,8 +89,9 @@ namespace My.Client.Models
             }
             else
             {
-                StartDate = trackedTask.StartDate.ToLocalTime();
-                EndDate = trackedTask.EndDate?.ToLocalTime();
+                var tz = userTimeZone ?? TimeZoneInfo.Utc;
+                StartDate = DateTimeWire.ToUserTime(trackedTask.StartDate, tz);
+                EndDate = DateTimeWire.ToUserTime(trackedTask.EndDate, tz);
             }
 
             ProjectId = trackedTask.ProjectId;

@@ -117,18 +117,12 @@
                     </div>
                 </MudTd>
                 <MudTd DataLabel="Project">
-                    <div class="d-flex align-center" style="gap: 8px;">
-                        @{
-                            var rowColor = GetRowColor(context);
-                        }
-                        @if (rowColor != null)
-                        {
-                            <MudTooltip Text="@GetRowLabel(context)" Placement="Placement.Top">
-                                <div style="@($"width:6px; height:18px; background-color:{rowColor}; border-radius:2px;")"></div>
-                            </MudTooltip>
-                        }
-                        <span>@(string.IsNullOrWhiteSpace(context.Project?.DisplayName) ? "None" : context.Project!.DisplayName)</span>
-                    </div>
+                    <ProjectAffiliationDisplay ProjectName="@context.Project?.Name"
+                                               DisplayName="@context.Project?.DisplayName"
+                                               OrganizationName="@context.Project?.OrganizationName"
+                                               OrganizationColor="@context.Project?.OrganizationColor"
+                                               ProjectGroupName="@context.Project?.ProjectGroupName"
+                                               ProjectGroupColor="@context.Project?.ProjectGroupColor" />
                 </MudTd>
                 <MudTd DataLabel="Duration">@($"{(int)context.Duration.TotalHours:00}:{context.Duration.Minutes:00}")</MudTd>
             </RowTemplate>

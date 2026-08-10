@@ -101,8 +101,7 @@ namespace My.Client.Components.TrackedTasks
 
             try
             {
-                var results = await ProjectsCache.LookupAsync(search: value);
-                return results.Where(p => p.IsActive && !p.IsArchived);
+                return await ProjectsCache.LookupActiveAsync(search: value);
             }
             catch (AccessTokenNotAvailableException ex)
             {

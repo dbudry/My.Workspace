@@ -414,9 +414,26 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
+            // Never store leading/trailing whitespace on task names.
+            trackedTask!.Name = WeekEntryGridRules.SanitizeTaskName(trackedTask.Name);
+
             var newTrackedTask = mapper.DtoToTrackedTask(trackedTask!);
             newTrackedTask.UserId = userId;
             newTrackedTask.ProjectId = string.IsNullOrEmpty(trackedTask!.ProjectId) ? null : trackedTask.ProjectId;
+
+            // Optional stopwatch work-item link (manual "Add session" from the sessions dialog).
+            if (!string.IsNullOrWhiteSpace(trackedTask.StopwatchItemId))
+            {
+                var sw = await dbContext.StopwatchItems.AsNoTracking()
+                    .FirstOrDefaultAsync(i => i.StopwatchItemId == trackedTask.StopwatchItemId);
+                if (sw == null || sw.UserId != userId)
+                    return new BadRequestObjectResult("Stopwatch work item not found.");
+                newTrackedTask.StopwatchItemId = sw.StopwatchItemId;
+            }
+            else
+            {
+                newTrackedTask.StopwatchItemId = null;
+            }
 
             // All-day entries are date-only — the client sends them stamped Kind=Utc so the
             // wire format is "YYYY-MM-DDT00:00:00Z" with no offset shifts. Don't run them
@@ -459,6 +476,29 @@ namespace My.Functions
             newTrackedTask.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, newTrackedTask.ProjectId);
 
             await taskRepository.Insert(newTrackedTask);
+
+            // Keep work-item recency in sync when logging a session outside Start/Stop.
+            if (!string.IsNullOrEmpty(newTrackedTask.StopwatchItemId))
+            {
+                var sw = await dbContext.StopwatchItems
+                    .FirstOrDefaultAsync(i => i.StopwatchItemId == newTrackedTask.StopwatchItemId);
+                if (sw != null)
+                {
+                    // Only advance, never rewind: Start/Stop (StopwatchItemFunction) always
+                    // stamps LastWorkedAt with DateTime.UtcNow at the moment of the action.
+                    // A manually-logged session can be backdated (e.g. "add session for
+                    // yesterday"), so blindly assigning EndDate/StartDate here could move
+                    // LastWorkedAt backward and corrupt the "recently worked" sort order
+                    // (StopwatchItemFunction.cs OrderByDescending(i => i.LastWorkedAt)).
+                    var candidate = newTrackedTask.EndDate ?? newTrackedTask.StartDate;
+                    if (candidate > sw.LastWorkedAt)
+                    {
+                        sw.LastWorkedAt = candidate;
+                        await dbContext.SaveChangesAsync();
+                    }
+                }
+            }
+
             await TryPushCreateAsync(newTrackedTask);
 
             var createdDto = mapper.TrackedTaskToDto(newTrackedTask);
@@ -572,6 +612,9 @@ namespace My.Functions
             var (trackedTask, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, updateValidator);
             if (validationError != null)
                 return validationError;
+
+            // Never store leading/trailing whitespace on task names.
+            trackedTask!.Name = WeekEntryGridRules.SanitizeTaskName(trackedTask.Name);
 
             var foundTrackedTask = await taskRepository.Find(trackedTask!.TaskId);
             if (foundTrackedTask == null)

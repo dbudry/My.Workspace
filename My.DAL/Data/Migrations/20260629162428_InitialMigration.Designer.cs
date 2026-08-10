@@ -932,6 +932,9 @@ namespace My.DAL.Data.Migrations
                     b.Property<string>("GoogleSyncToken")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("DefaultStartTimeMinutes")
+                        .HasColumnType("int");
+
                     b.Property<bool>("ImportFromGoogleCalendar")
                         .HasColumnType("bit");
 

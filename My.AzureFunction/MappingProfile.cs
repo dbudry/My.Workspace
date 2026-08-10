@@ -37,8 +37,8 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(TrackedTask.Project))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.TeamAvailabilityEventId))]
-        [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItemId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItem))]
+        // StopwatchItemId is mapped when client logs a session against a work item.
         public partial TrackedTask DtoToTrackedTask(CreateTrackedTaskDto dto);
 
         [MapperIgnoreSource(nameof(UpdateTrackedTaskDto.Project))]
@@ -207,6 +207,7 @@ namespace My.Functions
                 UserSettingsId = settings.UserSettingsId,
                 UserId = settings.UserId,
                 Use24HourTime = settings.Use24HourTime,
+                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(settings.DefaultStartTimeMinutes),
                 TimeZone = settings.TimeZone,
                 IsGoogleCalendarConnected = !string.IsNullOrEmpty(settings.GoogleRefreshToken)
                                             && !string.IsNullOrEmpty(settings.GoogleCalendarId),

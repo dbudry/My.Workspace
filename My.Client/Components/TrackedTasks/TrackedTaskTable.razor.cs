@@ -46,23 +46,6 @@ namespace My.Client.Components.TrackedTasks
             await Task.WhenAll(LoadTrackedTasks(1, 10), SettingsService.GetSettingsAsync());
         }
 
-        /// <summary>Row color bar resolved per the user's color-source preference.
-        /// Null when the preference is None or the project has no source color set.</summary>
-        private string? GetRowColor(TrackedTask task)
-            => ProjectColorRules.Resolve(
-                task.Project?.OrganizationColor,
-                task.Project?.ProjectGroupColor,
-                SettingsService.ProjectColorSource);
-
-        /// <summary>Tooltip text naming the Org/Group whose color is drawn on the row.</summary>
-        private string GetRowLabel(TrackedTask task)
-            => ProjectColorRules.ResolveLabel(
-                task.Project?.OrganizationName,
-                task.Project?.ProjectGroupName,
-                task.Project?.OrganizationColor,
-                task.Project?.ProjectGroupColor,
-                SettingsService.ProjectColorSource) ?? string.Empty;
-
         private async Task LoadTrackedTasks(int pageNumber, int pageSize)
         {
             var client = ClientFactory.CreateClient(Constants.API.ClientName);
@@ -85,8 +68,10 @@ namespace My.Client.Components.TrackedTasks
                     pagingAttributes.PageSize = pagedResponse.PageSize;
                     pagingAttributes.TotalCount = pagedResponse.TotalCount;
 
+                    await SettingsService.GetSettingsAsync();
+                    var tz = SettingsService.GetTimeZoneInfo();
                     var trackedTaskList = pagedResponse.Items
-                        .Select(dto => new TrackedTask(dto))
+                        .Select(dto => new TrackedTask(dto, tz))
                         .ToList();
 
                     GroupTrackedTasksByDay(trackedTaskList);
@@ -143,7 +128,7 @@ namespace My.Client.Components.TrackedTasks
                 { x => x.ProjectId, task.ProjectId },
                 { x => x.ProjectName, task.Project?.DisplayName },
                 { x => x.StartDate, task.StartDate },
-                { x => x.EndDate, task.EndDate },
+                { x => x.EndDate, task.EndDate ?? (task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null) },
                 { x => x.Duration, task.Duration },
                 { x => x.IsAllDay, task.IsAllDay },
                 { x => x.Use24HourTime, SettingsService.Use24HourTime },

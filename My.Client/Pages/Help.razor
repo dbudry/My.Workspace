@@ -29,18 +29,44 @@
                 Use the <strong>Tasks</strong> page to add or edit completed entries directly —
                 useful for back-filling time you forgot to log.
             </MudText>
-            <MudText Typo="Typo.body2" Class="mt-2">
-                The Tasks list shows your stopwatch work items and manual entries together, 50 rows
-                at a time. Use the search box to filter by task or project name, click a column header
-                to sort, and the pager at the bottom to move between pages — the list is filtered,
-                sorted, and paged on the server, so it stays fast no matter how many entries you have.
+            <MudText Typo="Typo.body2" Class="mt-2 mb-2">
+                <strong>Tasks</strong> has three modes (toggle at the top):
+            </MudText>
+            <ul class="mb-2" style="padding-left: 1.2rem;">
+                <li class="mb-1">
+                    <strong>All</strong> — stopwatch work items and manual entries in a searchable,
+                    paged list (50 rows at a time). Use <strong>New Task</strong> to add a completed entry.
+                    Filter by task or project name, click a column header to sort; list work is done
+                    on the server so it stays fast.
+                </li>
+                <li class="mb-1">
+                    <strong>Week</strong> — all time for one week. Defaults to the current week;
+                    use the arrows or the date picker (Week of) to move weeks. The footer total
+                    follows App Settings for original vs adjusted time: one total when there are
+                    no corrections (or only one view is enabled); both <em>Your time</em> and
+                    <em>Adjusted</em> when the setting is Both and corrections exist.
+                </li>
+                <li class="mb-1">
+                    <strong>Project</strong> — choose project, week, and business/full week. Existing
+                    tasks for that project this week appear as rows (task left, day durations across).
+                    <strong>New Task</strong> adds a row; type a task name, then enter duration
+                    (H:MM) per day. Use the edit icon next to a day to open that day's full entry
+                    dialog. Footer shows this project's day totals and an <em>All projects</em> row.
+                    Changes save automatically.
+                </li>
+            </ul>
+            <MudText Typo="Typo.body2">
+                Your last view (All / Week / Project), week, business/full week, project, and search
+                are remembered in this browser.
             </MudText>
         </MudExpansionPanel>
 
         <MudExpansionPanel Text="Editing past tasks" Icon="@Icons.Material.Filled.Edit">
             <MudText Typo="Typo.body2" Class="mb-2">
-                On the <strong>Tasks</strong> list, click any row to open it in a dialog where you
+                In All or Week, click a row to open it in a dialog where you
                 can change the project, name, start time, or duration — or delete the entry entirely.
+                Use <strong>By Organization</strong> / <strong>By Project Group</strong> on the toolbar to choose
+                which color the bar next to each project uses. Hover the color or name to see the org or group name.
             </MudText>
             <MudText Typo="Typo.body2" Class="mb-2">
                 On the <strong>Stopwatch</strong> list, each work item's row has the
