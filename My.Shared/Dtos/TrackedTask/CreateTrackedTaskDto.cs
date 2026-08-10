@@ -30,5 +30,10 @@ namespace My.Shared.Dtos.TrackedTask
         public string? ProjectId { get; set; }
 
         public ProjectDto? Project { get; set; }
+
+        /// <summary>
+        /// When set, the entry is a stopwatch session for this work item (must belong to the caller).
+        /// </summary>
+        public string? StopwatchItemId { get; set; }
     }
 }

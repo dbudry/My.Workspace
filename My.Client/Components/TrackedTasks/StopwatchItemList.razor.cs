@@ -44,20 +44,6 @@ namespace My.Client.Components.TrackedTasks
             StartTickLoop();
         }
 
-        private string? GetRowColor(StopwatchItemDto item)
-            => ProjectColorRules.Resolve(
-                item.Project?.OrganizationColor,
-                item.Project?.ProjectGroupColor,
-                SettingsService.ProjectColorSource);
-
-        private string GetRowLabel(StopwatchItemDto item)
-            => ProjectColorRules.ResolveLabel(
-                item.Project?.OrganizationName,
-                item.Project?.ProjectGroupName,
-                item.Project?.OrganizationColor,
-                item.Project?.ProjectGroupColor,
-                SettingsService.ProjectColorSource) ?? string.Empty;
-
         private static string? GetProjectDisplayName(StopwatchItemDto item)
             => ProjectDisplayHelper.FromDto(item.Project);
 
@@ -252,8 +238,7 @@ namespace My.Client.Components.TrackedTasks
 
             try
             {
-                var results = await ProjectsCache.LookupAsync(search: value);
-                return results.Where(p => p.IsActive && !p.IsArchived);
+                return await ProjectsCache.LookupActiveAsync(search: value);
             }
             catch (Exception ex)
             {
@@ -337,6 +322,7 @@ namespace My.Client.Components.TrackedTasks
             {
                 { x => x.ItemId, item.StopwatchItemId },
                 { x => x.ItemName, item.Name },
+                { x => x.ItemProjectId, item.ProjectId },
                 { x => x.ItemProjectName, GetProjectDisplayName(item) },
                 { x => x.HttpClient, client }
             };

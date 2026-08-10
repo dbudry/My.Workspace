@@ -36,6 +36,8 @@ namespace My.Client.Pages.Admin
         private int calendarBackfillDefaultDays = 30;
         private bool calendarBackfillPromptUser = true;
         private double workdayHours = 8.0;
+        /// <summary>When true, Tyme dialogs/grids collect start time of day (default).</summary>
+        private bool trackTimeOfDay = TymeTimeOfDayRules.DefaultTrackTimeOfDay;
         private string teamAvailabilityCalendarId = string.Empty;
         private string intranetDriveParentFolderId = string.Empty;
         private List<IntranetUploadLimitDto> intranetUploadLimits = new();
@@ -149,6 +151,9 @@ namespace My.Client.Pages.Admin
                     var workdayVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.WorkdayHours);
                     if (workdayVal != null && double.TryParse(workdayVal.Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var hours))
                         workdayHours = hours;
+
+                    var trackTimeVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeTrackTimeOfDay);
+                    trackTimeOfDay = TymeTimeOfDayRules.ParseTrackTimeOfDay(trackTimeVal?.Value);
 
                     var teamCalVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TeamAvailabilityCalendarId);
                     if (teamCalVal != null)
@@ -291,6 +296,12 @@ namespace My.Client.Pages.Admin
                     new() { Key = Constants.SettingKeys.TymeCalendarBackfillDefaultDays, Value = calendarBackfillDefaultDays.ToString() },
                     new() { Key = Constants.SettingKeys.TymeCalendarBackfillPromptUser, Value = calendarBackfillPromptUser.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.WorkdayHours, Value = workdayHours.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.TymeTrackTimeOfDay,
+                        Value = trackTimeOfDay.ToString().ToLowerInvariant(),
+                        Description = "When false, Tyme entry UIs are date + duration only (start time of day hidden). Calendar and stopwatch still use real times."
+                    },
                     new() { Key = Constants.SettingKeys.TeamAvailabilityCalendarId, Value = (teamAvailabilityCalendarId ?? string.Empty).Trim() },
                     new() { Key = Constants.SettingKeys.IntranetDriveParentFolderId, Value = (intranetDriveParentFolderId ?? string.Empty).Trim() },
                     new()

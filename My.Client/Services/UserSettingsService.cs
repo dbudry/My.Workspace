@@ -27,6 +27,12 @@ namespace My.Client.Services
 
         public bool Use24HourTime => _cachedSettings?.Use24HourTime ?? false;
 
+        /// <summary>
+        /// Wall-clock default start for new timed Tyme entries (user timezone). Defaults to 08:00.
+        /// </summary>
+        public TimeSpan DefaultStartTimeOfDay =>
+            DefaultStartTimeRules.Resolve(_cachedSettings?.DefaultStartTimeMinutes);
+
         public string? TimeZone => _cachedSettings?.TimeZone;
 
         public bool IsGoogleCalendarConnected => _cachedSettings?.IsGoogleCalendarConnected ?? false;
@@ -66,6 +72,27 @@ namespace My.Client.Services
             OnSettingsChanged?.Invoke();
         }
 
+        /// <summary>
+        /// Updates only project color source (org / group / etc.), preserving other settings.
+        /// Used from Tasks toolbar so users can switch the color bar without opening Settings.
+        /// </summary>
+        public async Task UpdateProjectColorSourceAsync(ProjectColorSource source)
+        {
+            var current = await GetSettingsAsync();
+            await UpdateSettingsAsync(new UpdateUserSettingsDto
+            {
+                Use24HourTime = current.Use24HourTime,
+                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
+                TimeZone = current.TimeZone,
+                PublishToGoogleCalendar = current.PublishToGoogleCalendar,
+                ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,
+                TymeEventColorId = current.TymeEventColorId,
+                TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
+                ProjectColorSource = source,
+                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>()
+            });
+        }
+
         /// <summary>Forces the next GetSettingsAsync to fetch from the server.</summary>
         public void InvalidateCache()
         {
@@ -79,21 +106,23 @@ namespace My.Client.Services
             UserTimeZoneRules.Resolve(_cachedSettings?.TimeZone);
 
         /// <summary>
-        /// Converts a UTC DateTime to the user's configured timezone.
+        /// Converts a UTC DateTime (DB/API) to the user's configured timezone wall clock.
         /// </summary>
-        public DateTime ConvertToUserTime(DateTime utcDateTime)
-        {
-            return TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.SpecifyKind(utcDateTime, DateTimeKind.Utc),
-                GetTimeZoneInfo());
-        }
+        public DateTime ConvertToUserTime(DateTime utcDateTime) =>
+            Helpers.DateTimeWire.ToUserTime(utcDateTime, GetTimeZoneInfo());
+
+        /// <summary>
+        /// Converts a wall-clock DateTime in the user's configured timezone to UTC for the API.
+        /// </summary>
+        public DateTime ConvertFromUserTime(DateTime userWallClock) =>
+            Helpers.DateTimeWire.ToUtc(userWallClock, GetTimeZoneInfo());
 
         /// <summary>
         /// Gets today's date in the user's configured timezone.
         /// </summary>
         public DateOnly GetUserToday()
         {
-            var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, GetTimeZoneInfo());
+            var userNow = ConvertToUserTime(DateTime.UtcNow);
             return DateOnly.FromDateTime(userNow);
         }
 
@@ -129,6 +158,8 @@ namespace My.Client.Services
                 await UpdateSettingsAsync(new UpdateUserSettingsDto
                 {
                     Use24HourTime = _cachedSettings.Use24HourTime,
+                    DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(
+                        _cachedSettings.DefaultStartTimeMinutes),
                     TimeZone = browserTz.Trim(),
                     PublishToGoogleCalendar = _cachedSettings.PublishToGoogleCalendar,
                     ImportFromGoogleCalendar = _cachedSettings.ImportFromGoogleCalendar,
@@ -167,6 +198,7 @@ namespace My.Client.Services
             var dto = new UpdateUserSettingsDto
             {
                 Use24HourTime = current.Use24HourTime,
+                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
                 TimeZone = current.TimeZone,
                 PublishToGoogleCalendar = current.PublishToGoogleCalendar,
                 ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,

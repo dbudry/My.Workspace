@@ -209,3 +209,913 @@ h1:focus {
 .management-employees-menu {
     min-width: 220px;
 }
+
+.tasks-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tasks-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    width: 100%;
+}
+
+/* Space under All / Week / Project before the next toolbar row. */
+.tasks-toolbar-view-row {
+    margin-bottom: 0.35rem;
+}
+
+/* Desktop: New Task on the right of its toolbar row (All / Week / Project). */
+.tasks-toolbar .tasks-toolbar-new {
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+.tasks-toolbar-all-controls {
+    justify-content: flex-start;
+    align-items: center;
+    width: 100%;
+}
+
+.tasks-toolbar .tasks-week-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* Search sits away from the org/group toggle (wrapper margin is reliable with Mud). */
+.tasks-toolbar .tasks-toolbar-search-wrap {
+    flex: 0 1 280px;
+    align-self: center;
+    width: 280px;
+    max-width: 100%;
+    margin-left: 1.25rem;
+}
+
+.tasks-toolbar .tasks-toolbar-search {
+    width: 100%;
+    max-width: 100%;
+}
+
+.tasks-toolbar .tasks-toolbar-search.mud-input-control,
+.tasks-toolbar .tasks-toolbar-search .mud-input-control {
+    margin-top: 0;
+}
+
+.submit-view-toggle.mud-toggle-group .mud-button-root,
+.submit-view-toggle.mud-button-group .mud-button-root {
+    padding-left: 16px;
+    padding-right: 16px;
+}
+
+/* Narrow / mobile: full-width controls, no auto margins fighting wrap. */
+@media (max-width: 720px) {
+    .tasks-toolbar-row {
+        width: 100%;
+    }
+
+    .tasks-toolbar .tasks-toolbar-new {
+        margin-left: 0 !important;
+        width: 100%;
+    }
+
+    .tasks-toolbar .tasks-toolbar-search-wrap {
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: 100%;
+        margin-left: 0; /* full-width row on mobile — no side offset needed */
+    }
+
+    .tasks-toolbar-all-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .tasks-toolbar .tasks-week-nav {
+        flex: 1 1 100%;
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .tasks-toolbar .tasks-week-nav .management-date-field {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .tasks-toolbar .submit-view-toggle.mud-toggle-group,
+    .tasks-toolbar .submit-view-toggle.mud-button-group {
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .tasks-toolbar .submit-view-toggle.mud-toggle-group .mud-button-root,
+    .tasks-toolbar .submit-view-toggle.mud-button-group .mud-button-root {
+        padding-left: 10px;
+        padding-right: 10px;
+        font-size: 0.8125rem;
+    }
+
+    .tasks-toolbar .tasks-label-color-toggle,
+    .tasks-toolbar .tasks-business-week-toggle {
+        flex: 1 1 100%;
+        width: 100%;
+        display: flex !important;
+    }
+
+    .tasks-toolbar .tasks-label-color-toggle .mud-button-root,
+    .tasks-toolbar .tasks-business-week-toggle .mud-button-root {
+        flex: 1 1 0;
+    }
+}
+
+/* Stopwatch work-item rows: click opens sessions (not inline field edit). */
+.tasks-stopwatch-row-cell {
+    cursor: pointer;
+}
+
+/* All / Week list: stable column tracks so cells don't wander per row. */
+.tasks-list-table table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.tasks-list-table .tasks-col-name {
+    width: 32%;
+}
+
+.tasks-list-table .tasks-col-project {
+    width: 24%;
+}
+
+.tasks-list-table .tasks-col-date {
+    width: 22%;
+}
+
+.tasks-list-table .tasks-col-duration {
+    width: 12%;
+}
+
+.tasks-list-table .tasks-col-actions {
+    width: 6rem;
+}
+
+/* Fixed marker gutter — empty or icon — so Name text starts on one vertical line. */
+.tasks-inline-name-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+
+.tasks-row-markers {
+    flex: 0 0 1.35rem;
+    width: 1.35rem;
+    min-width: 1.35rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1px;
+}
+
+.tasks-row-marker-icon {
+    flex-shrink: 0;
+}
+
+.tasks-row-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Date + time share fixed tracks so stopwatch and manual rows align. */
+.tasks-inline-date-time {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+}
+
+.tasks-list-date {
+    flex: 0 0 4.5rem;
+    width: 4.5rem;
+    min-width: 4.5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.tasks-list-time {
+    flex: 0 0 5.25rem;
+    min-width: 4.5rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Click-to-edit date/time: keep the same tracks as read-only (no extra padding skew). */
+.tasks-inline-display.tasks-list-date,
+.tasks-inline-display.tasks-list-time {
+    padding: 2px 0;
+    min-height: 0;
+    display: inline-flex;
+}
+
+.tasks-list-duration-cell {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tasks-list-duration-text {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Week / Project day grids: horizontal scroll + pencil hugs the duration field ---- */
+.week-entry-grid-scroll {
+    overflow-x: auto;
+    width: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+.week-entry-grid-table {
+    border-collapse: separate;
+    border-spacing: 6px 8px;
+    min-width: min-content;
+    width: max-content;
+    max-width: none;
+}
+
+.week-entry-col-task {
+    text-align: left;
+    min-width: 12rem;
+    max-width: 18rem;
+    padding: 2px 8px 4px 0;
+    font-weight: 500;
+    color: var(--mud-palette-text-secondary);
+    /* Top-align with duration inputs (middle-align dropped draft fields below the day cells). */
+    vertical-align: top;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    /* Match page/content background — surface white looked like a random card strip. */
+    background: var(--mud-palette-background);
+}
+
+/* Draft task name: same ~36px shell as week-entry-day-duration (no floating label). */
+.week-entry-draft-task-name.mud-input-control {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.week-entry-draft-task-name .mud-input-outlined,
+.week-entry-draft-task-name .mud-input {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.week-entry-draft-task-name .mud-input-slot,
+.week-entry-draft-task-name .mud-input > input,
+.week-entry-draft-task-name input {
+    font-size: 0.8125rem !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.week-entry-task-label {
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+}
+
+tbody .week-entry-col-task {
+    font-weight: 400;
+    color: inherit;
+    background: var(--mud-palette-background);
+}
+
+/* Footer sticky label cells: same as page, not a white block. */
+tfoot .week-entry-col-task {
+    background: var(--mud-palette-background-grey, var(--mud-palette-background));
+}
+
+.week-entry-col-day {
+    text-align: center;
+    /* Compact field + in-field pencil adornment. */
+    min-width: 4.85rem;
+    width: 4.85rem;
+    padding: 2px 2px;
+    font-weight: 500;
+    color: var(--mud-palette-text-secondary);
+    vertical-align: top;
+}
+
+tbody .week-entry-col-day {
+    font-weight: 400;
+    color: inherit;
+}
+
+.week-entry-col-total {
+    text-align: right;
+    min-width: 3.5rem;
+    padding: 4px 0 4px 8px;
+    font-weight: 500;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.week-entry-day-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+}
+
+/* Duration field: ~36px tall; text + pencil packed (no dead space after icon). */
+.week-entry-day-duration.mud-input-control {
+    width: 4.85rem !important;
+    max-width: 4.85rem !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.week-entry-day-duration .mud-input-control-input-container {
+    margin: 0 !important;
+}
+
+.week-entry-day-duration .mud-input-outlined,
+.week-entry-day-duration .mud-input {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    /* Mud default end padding left a gap after the pencil. */
+    padding-left: 4px !important;
+    padding-right: 0 !important;
+    column-gap: 0 !important;
+    gap: 0 !important;
+}
+
+.week-entry-day-duration .mud-input-outlined-border,
+.week-entry-day-duration fieldset {
+    padding-right: 0 !important;
+}
+
+.week-entry-day-duration .mud-input-adornment,
+.week-entry-day-duration .mud-input-adornment-end {
+    margin: 0 !important;
+    margin-inline-start: 0 !important;
+    padding: 0 2px 0 0 !important;
+    height: 100% !important;
+    align-self: stretch;
+    display: flex !important;
+    align-items: center !important;
+    flex: 0 0 auto !important;
+}
+
+.week-entry-day-duration .mud-input-adornment .mud-icon-button,
+.week-entry-day-duration .mud-input-adornment .mud-button-root {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    min-height: 20px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.week-entry-day-duration .mud-input-adornment .mud-icon-root,
+.week-entry-day-duration .mud-input-adornment .mud-svg-icon {
+    font-size: 0.95rem !important;
+    width: 0.95rem !important;
+    height: 0.95rem !important;
+}
+
+.week-entry-day-duration .mud-input-slot,
+.week-entry-day-duration .mud-input > input,
+.week-entry-day-duration input {
+    font-size: 0.8125rem !important;
+    line-height: 1.25 !important;
+    text-align: center;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 2px !important;
+    padding-right: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    /* Let the input shrink so the pencil can sit at the right edge. */
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+}
+
+.week-entry-day-status {
+    min-height: 0.75rem;
+    font-size: 0.7rem;
+    width: 100%;
+}
+
+/* Empty week under day headers — keep header row, center empty-state in the body. */
+.week-entry-empty-cell {
+    padding: 1.5rem 0.5rem 2rem;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.week-day-row-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    /* Match top of duration field (~36px control, no floating label offset). */
+    padding-top: 0;
+    min-width: 11rem;
+    max-width: 16rem;
+    min-height: 36px;
+    justify-content: center;
+}
+
+/* Week → Day draft New Task: project on the same baseline as duration inputs. */
+.week-day-draft-label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 12rem;
+    max-width: 18rem;
+    padding: 0;
+    margin: 0;
+}
+
+.week-entry-draft-project.mud-input-control,
+.week-entry-draft-project .mud-input-control,
+.week-entry-draft-project .project-autocomplete {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    width: 100%;
+}
+
+.week-entry-draft-project .mud-input-outlined,
+.week-entry-draft-project .mud-input,
+.week-day-draft-label .mud-input-outlined,
+.week-day-draft-label .mud-input {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+.week-day-draft-label .mud-input-control {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* ProjectAutocomplete wraps MudTextField — kill extra wrapper spacing. */
+.week-day-draft-label .project-autocomplete {
+    display: block;
+    line-height: 0;
+}
+
+.week-day-draft-label .project-autocomplete .mud-input-control {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+/* Project picker in table: input stays compact; list is a Fixed MudPopover (portal). */
+.tasks-inline-project {
+    position: relative;
+    z-index: 1;
+    overflow: visible;
+    align-self: flex-start;
+}
+
+/* Portaled list — do not force position:absolute (that re-clips inside the grid). */
+.project-autocomplete-popover {
+    min-width: 18rem !important;
+    max-width: min(28rem, 92vw) !important;
+    z-index: 3000 !important;
+}
+
+/* Click-to-edit: plain text until clicked/double-clicked, then becomes an input. */
+.tasks-inline-display {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 4px 6px;
+    min-height: 1.75rem;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    /* Same body font for date, time, duration — not monospace. */
+    font-family: inherit;
+    color: inherit;
+    user-select: none; /* double-click opens editor instead of selecting text */
+}
+
+.tasks-inline-display:hover {
+    background: var(--mud-palette-action-default-hover);
+}
+
+/* Name column: display and input fill remaining width after the marker gutter. */
+.tasks-inline-display-name {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+}
+
+.tasks-inline-name {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+}
+
+.tasks-inline-name.mud-input-control,
+.tasks-inline-name .mud-input-control {
+    width: 100%;
+    max-width: none;
+    margin-top: 0;
+}
+
+.tasks-inline-display-duration {
+    font-family: inherit;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Task name: always left-aligned (Mud dense fields can look centered). */
+.tasks-inline-name .mud-input-slot,
+.tasks-inline-name .mud-input > input,
+.tasks-inline-name input {
+    text-align: left !important;
+    padding-left: 10px !important;
+    padding-right: 8px !important;
+}
+
+/* Compact inline date: hug MM/dd/yy + icon (no dead space between them). */
+.tasks-inline-date {
+    width: 5.75rem;
+    min-width: 5.75rem;
+    max-width: 5.75rem;
+    flex: 0 0 5.75rem;
+}
+
+.tasks-inline-date .mud-input-control,
+.tasks-inline-date .tasks-inline-datepicker.mud-input-control {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.tasks-inline-date .mud-input-control-input-container {
+    margin: 0 !important;
+}
+
+/* One shell height — matches other dense inline fields (~36px). */
+.tasks-inline-date .mud-input-outlined,
+.tasks-inline-date .mud-input {
+    min-height: 36px !important;
+    height: 36px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 4px !important;
+    padding-right: 0 !important;
+    /* Keep text + icon packed; don't let the input flex-grow open a gap. */
+    column-gap: 0 !important;
+    gap: 0 !important;
+}
+
+.tasks-inline-date .mud-input-outlined .mud-input-root,
+.tasks-inline-date .mud-input .mud-input-root {
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+}
+
+.tasks-inline-date .mud-input-slot,
+.tasks-inline-date .mud-input > input,
+.tasks-inline-date input {
+    font-size: 0.8125rem !important;
+    line-height: 1.25 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 2px !important;
+    padding-right: 0 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    /* ~8 chars of MM/dd/yy — icon sits immediately after. */
+    width: 3.85rem !important;
+    max-width: 3.85rem !important;
+    min-width: 0 !important;
+    flex: 0 0 3.85rem !important;
+}
+
+/* Calendar icon flush against the date text. */
+.tasks-inline-date .mud-input-adornment,
+.tasks-inline-date .mud-input-adornment-end {
+    margin: 0 !important;
+    padding: 0 2px 0 0 !important;
+    margin-inline-start: 0 !important;
+    height: 100% !important;
+    align-self: stretch;
+    display: flex !important;
+    align-items: center !important;
+    flex: 0 0 auto !important;
+}
+
+.tasks-inline-date .mud-button-root,
+.tasks-inline-date .mud-icon-button {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.tasks-inline-date .mud-icon-root,
+.tasks-inline-date .mud-svg-icon {
+    font-size: 0.95rem !important;
+    width: 0.95rem !important;
+    height: 0.95rem !important;
+}
+
+/* Compact duration (H:MM). */
+.tasks-inline-duration {
+    width: 4.5rem;
+    min-width: 4.5rem;
+    max-width: 4.5rem;
+    flex: 0 0 4.5rem;
+}
+
+.tasks-inline-duration.mud-input-control,
+.tasks-inline-duration .mud-input-control {
+    margin-top: 0;
+    width: 100%;
+}
+
+.tasks-inline-duration .mud-input-slot,
+.tasks-inline-duration .mud-input > input,
+.tasks-inline-duration input,
+.week-entry-day-duration .mud-input-slot,
+.week-entry-day-duration .mud-input > input,
+.week-entry-day-duration input {
+    user-select: text !important;
+}
+
+.tasks-inline-duration .mud-input-slot,
+.tasks-inline-duration .mud-input > input,
+.tasks-inline-duration input {
+    font-size: 0.8125rem !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    text-align: center;
+}
+
+/* Compact start-time — fits "5:00 AM" / "14:30". */
+.tasks-inline-start-time {
+    width: 5.75rem;
+    min-width: 5.75rem;
+    max-width: 5.75rem;
+    flex: 0 0 5.75rem;
+}
+
+.tasks-inline-start-time.mud-input-control,
+.tasks-inline-start-time .mud-input-control {
+    margin-top: 0;
+    width: 100%;
+}
+
+.tasks-inline-start-time .mud-input-slot,
+.tasks-inline-start-time .mud-input > input,
+.tasks-inline-start-time input {
+    font-size: 0.8125rem !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    text-align: center;
+}
+
+.tasks-inline-allday-label {
+    white-space: nowrap;
+}
+
+/*
+  Project / Week toolbar row 1: view | week picker | layout toggles.
+  Match Mud Size.Small toggle height (~36px) — do not inflate the date field.
+*/
+.tasks-toolbar-view-row-project {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field.management-date-field {
+    width: 10.75rem;
+    min-width: 10.75rem;
+    flex: 0 0 auto;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input-control {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    height: 36px;
+}
+
+/* Outlined root + inner slot: fixed 36px like Size.Small buttons. */
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input-outlined,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input-outlined-border,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input {
+    min-height: 36px !important;
+    height: 36px !important;
+    max-height: 36px !important;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input-slot,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input > input,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field input {
+    height: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    box-sizing: border-box !important;
+    font-size: 0.8125rem !important;
+    line-height: 1.25 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 10px !important;
+    padding-right: 4px !important;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input-adornment,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-input-adornment-end {
+    margin: 0 !important;
+    padding: 0 4px 0 0 !important;
+    height: 36px;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-icon-button,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-button-root {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    padding: 2px !important;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-icon-root,
+.tasks-toolbar-view-row-project .tasks-toolbar-week-field .mud-svg-icon {
+    font-size: 1.125rem !important;
+    width: 1.125rem !important;
+    height: 1.125rem !important;
+}
+
+.tasks-toolbar-view-row-project .tasks-week-nav {
+    align-items: center;
+    align-self: center;
+    height: 36px;
+}
+
+/* Leave Size.Small toggles at their natural height; only pin chevrons to 36px. */
+.tasks-toolbar-view-row-project .tasks-week-nav > .mud-icon-button {
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+}
+
+.tasks-toolbar-project-task-row {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    width: 100%;
+}
+
+.tasks-toolbar-project-picker {
+    flex: 0 1 280px;
+    width: 280px;
+    max-width: 100%;
+    min-width: 10rem;
+    position: relative;
+    z-index: 5;
+}
+
+.tasks-toolbar-project-picker .mud-input-control {
+    margin-top: 0;
+}
+
+.tasks-project-view {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+.tasks-project-status {
+    width: 100%;
+}
+
+.tasks-project-empty.empty-state,
+.empty-state.tasks-project-empty {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    margin: 0 auto;
+    min-height: 200px;
+}
+
+@media (max-width: 720px) {
+    .tasks-toolbar-view-row-project {
+        align-items: stretch;
+    }
+
+    .tasks-toolbar-view-row-project .submit-view-toggle,
+    .tasks-toolbar-view-row-project .tasks-business-week-toggle,
+    .tasks-toolbar-view-row-project .tasks-week-layout-toggle {
+        width: 100%;
+    }
+
+    .tasks-toolbar-view-row-project .tasks-week-nav {
+        flex: 1 1 100%;
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .tasks-toolbar-view-row-project .tasks-week-nav .management-date-field,
+    .tasks-toolbar-view-row-project .tasks-toolbar-week-field {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .tasks-toolbar-project-task-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .tasks-toolbar-project-picker {
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .tasks-toolbar-project-task-row .tasks-toolbar-new {
+        width: 100%;
+        margin-left: 0 !important;
+    }
+}
+
+/* Management filter bar — Mud child components need global selectors (scoped CSS misses them). */
+.management-date-field {
+    width: 12.5rem;
+    min-width: 12.5rem;
+    flex: 0 0 auto;
+}
+
+.management-date-field .mud-input-control {
+    width: 100%;
+}
+
+.management-submission-field {
+    transform: translateY(-3px);
+}
+
+.management-submission-field .mud-toggle-group,
+.management-submission-field .mud-button-group {
+    width: auto;
+    display: inline-flex;
+}
+
+.management-submission-field .mud-button-root {
+    min-height: 40px;
+    padding-left: 16px;
+    padding-right: 16px;
+    white-space: nowrap;
+}
+
+/* Data Extraction filters — Mud child components need global selectors. */
+.dataextraction-date-field .mud-input-control {
+    margin-top: 0;
+}
+
+.dataextraction-employees-field .mud-menu,
+.dataextraction-employees-field .mud-menu-activator {
+    width: 100%;
+}
+
+.dataextraction-employees-menu {
+    min-width: 240px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.management-employees-menu {
+    min-width: 220px;
+}

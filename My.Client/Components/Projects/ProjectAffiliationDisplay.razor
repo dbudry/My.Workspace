@@ -1,0 +1,99 @@
+@namespace My.Client.Components.Projects
+@using My.Shared.Rules
+
+@*
+    Project name with a color bar driven by ColorSource (or Settings when ColorSource is null).
+    Hover shows which org/group the color represents.
+    "No project group" / missing org color uses the same neutral gray as Projects → No Group.
+*@
+
+<div class="d-flex align-center @Class" style="@($"gap: 8px; {Style}")">
+    @if (!string.IsNullOrEmpty(resolvedColor))
+    {
+        <MudTooltip Text="@(colorLabel ?? string.Empty)" Placement="Placement.Top">
+            <div style="@($"width:6px; height:18px; background-color:{resolvedColor}; border-radius:2px; flex-shrink:0;")"></div>
+        </MudTooltip>
+    }
+
+    @{
+        var showName = !string.IsNullOrWhiteSpace(primaryName)
+            || !string.IsNullOrEmpty(NoneLabel);
+    }
+    @if (showName)
+    {
+        if (!string.IsNullOrEmpty(colorLabel))
+        {
+            <MudTooltip Text="@colorLabel" Placement="Placement.Top">
+                <MudText Typo="Typo.body2" Style="@(string.IsNullOrWhiteSpace(primaryName) ? "color: var(--mud-palette-text-secondary);" : null)">
+                    @(string.IsNullOrWhiteSpace(primaryName) ? NoneLabel : primaryName)
+                </MudText>
+            </MudTooltip>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Style="@(string.IsNullOrWhiteSpace(primaryName) ? "color: var(--mud-palette-text-secondary);" : null)">
+                @(string.IsNullOrWhiteSpace(primaryName) ? NoneLabel : primaryName)
+            </MudText>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>Bare project name (preferred). Falls back to <see cref="DisplayName"/>.</summary>
+    [Parameter] public string? ProjectName { get; set; }
+
+    /// <summary>Legacy group-prefixed display name used when bare name is empty.</summary>
+    [Parameter] public string? DisplayName { get; set; }
+
+    [Parameter] public string? OrganizationName { get; set; }
+    [Parameter] public string? OrganizationColor { get; set; }
+    [Parameter] public string? ProjectGroupName { get; set; }
+    [Parameter] public string? ProjectGroupColor { get; set; }
+
+    /// <summary>
+    /// When set (e.g. Tasks toolbar toggle), this drives the bar immediately.
+    /// Prefer this over Settings so the UI does not lag on stale GroupThenOrganization.
+    /// </summary>
+    [Parameter] public ProjectColorSource? ColorSource { get; set; }
+
+    [Parameter] public string NoneLabel { get; set; } = "None";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    [Inject] private UserSettingsService SettingsService { get; set; } = null!;
+
+    private string? primaryName;
+    private string? resolvedColor;
+    private string? colorLabel;
+
+    protected override void OnParametersSet()
+    {
+        primaryName = !string.IsNullOrWhiteSpace(ProjectName)
+            ? ProjectName.Trim()
+            : (string.IsNullOrWhiteSpace(DisplayName) ? null : DisplayName.Trim());
+
+        var source = ColorSource ?? SettingsService.ProjectColorSource;
+        resolvedColor = ProjectColorRules.Resolve(OrganizationColor, ProjectGroupColor, source);
+        colorLabel = ProjectColorRules.ResolveLabel(
+            OrganizationName, ProjectGroupName, OrganizationColor, ProjectGroupColor, source);
+
+        // Projects page paints "No Group" as neutral gray. Mirror that when the selected
+        // source has no color (no group / no org) so the bar still changes with the toggle.
+        if (string.IsNullOrEmpty(resolvedColor) && source != ProjectColorSource.None)
+        {
+            resolvedColor = ProjectColorRules.FallbackGray;
+            colorLabel = source switch
+            {
+                ProjectColorSource.ProjectGroup =>
+                    string.IsNullOrWhiteSpace(ProjectGroupName) ? "No project group" : ProjectGroupName.Trim(),
+                ProjectColorSource.Organization =>
+                    string.IsNullOrWhiteSpace(OrganizationName) ? "No organization" : OrganizationName.Trim(),
+                ProjectColorSource.GroupThenOrganization =>
+                    !string.IsNullOrWhiteSpace(ProjectGroupName) ? ProjectGroupName.Trim()
+                    : !string.IsNullOrWhiteSpace(OrganizationName) ? OrganizationName.Trim()
+                    : "No project group",
+                _ => colorLabel
+            };
+        }
+    }
+}

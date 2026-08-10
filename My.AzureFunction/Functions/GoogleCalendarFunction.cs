@@ -88,30 +88,13 @@ namespace My.Functions
         }
 
         /// <summary>
-        /// Converts Google's real-UTC moment into the user's local wall-clock and tags
-        /// it Kind=Utc — matching the convention dialog-created TrackedTasks use so
-        /// downstream <c>GoogleEventTimeRules.FormatForGoogle</c> can rebroadcast it
-        /// with the user's IANA zone without shifting the displayed time.
+        /// Stores Google's instant as true UTC (Kind=Utc). Display maps UTC → UserSettings.TimeZone;
+        /// <c>GoogleEventTimeRules.FormatForGoogle</c> converts back to wall clock + IANA zone.
+        /// No actual conversion happens here — the value already comes in as a UTC instant from
+        /// <c>CalendarEventDateRules.Parse</c>; this just guarantees the Kind is stamped correctly.
         /// </summary>
-        private static DateTime ConvertUtcToLocalWallClock(DateTime utc, string? timeZone)
-        {
-            if (string.IsNullOrEmpty(timeZone))
-                return DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-
-            try
-            {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
-                var local = TimeZoneInfo.ConvertTimeFromUtc(
-                    DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz);
-                return DateTime.SpecifyKind(local, DateTimeKind.Utc);
-            }
-            catch (TimeZoneNotFoundException)
-            {
-                // Bad TZ id — fall back to leaving the UTC value untouched. The team
-                // calendar will be off by the offset but the task still imports.
-                return DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-            }
-        }
+        private static DateTime StampAsUtc(DateTime utc) =>
+            DateTime.SpecifyKind(utc, DateTimeKind.Utc);
 
         [Function("GetGoogleCalendarAuthUrl")]
         public async Task<IActionResult> GetAuthUrlAsync(
@@ -699,8 +682,8 @@ namespace My.Functions
             // All-day stays untouched: it's date-only, no zone math.
             if (!isAllDay)
             {
-                startDate = ConvertUtcToLocalWallClock(startDate, settings.TimeZone);
-                endDate = ConvertUtcToLocalWallClock(endDate, settings.TimeZone);
+                startDate = StampAsUtc(startDate);
+                endDate = StampAsUtc(endDate);
             }
 
             var rawSummary = ev.Summary ?? string.Empty;

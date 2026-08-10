@@ -1,14 +1,22 @@
-using Microsoft.JSInterop;
 using System.Text.Json;
+using Microsoft.JSInterop;
 
 namespace My.Client.Services
 {
     /// <summary>
     /// Lightweight localStorage wrapper via JS interop.
-    /// Persists data across sessions, logout/login, and browser restarts.
+    /// Persists data across sessions, logout/login, and browser restarts
+    /// for the same origin (scheme + host + port).
     /// </summary>
     public class LocalStorageService
     {
+        private static readonly JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = null, // keep C# property names as written
+            WriteIndented = false
+        };
+
         private readonly IJSRuntime _js;
 
         public LocalStorageService(IJSRuntime js)
@@ -22,12 +30,12 @@ namespace My.Client.Services
             if (string.IsNullOrEmpty(json))
                 return default;
 
-            return JsonSerializer.Deserialize<T>(json);
+            return JsonSerializer.Deserialize<T>(json, JsonOptions);
         }
 
         public async Task SetItemAsync<T>(string key, T value)
         {
-            var json = JsonSerializer.Serialize(value);
+            var json = JsonSerializer.Serialize(value, JsonOptions);
             await _js.InvokeVoidAsync("localStorage.setItem", key, json);
         }
 

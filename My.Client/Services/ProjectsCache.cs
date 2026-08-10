@@ -43,6 +43,73 @@ namespace My.Client.Services
             return response?.Items.Select(d => new Project(d)).ToList() ?? new List<Project>();
         }
 
+        /// <summary>
+        /// Active (non-archived) projects for time-entry pickers.
+        /// Uses GET /projects with include flags off — not projectlookup, which forces
+        /// includeArchived/includeInactive and caps at 25 mixed rows. Filtering a mixed
+        /// first page client-side hides active projects that sort after inactive ones
+        /// (e.g. "IT Support" never appears until you type a search).
+        /// </summary>
+        public async Task<IReadOnlyList<Project>> LookupActiveAsync(string? search = null, int pageSize = 50)
+        {
+            var query = new ListQueryParameters
+            {
+                PageNumber = 1,
+                PageSize = pageSize,
+                Search = search,
+                SortBy = "Name",
+                IncludeArchived = false,
+                IncludeInactive = false
+            };
+
+            var client = _clientFactory.CreateClient(Constants.API.ClientName);
+            var response = await TryGetPagedAsync(client, Constants.API.Project.Get, query);
+            return response?.Items.Select(d => new Project(d)).ToList() ?? new List<Project>();
+        }
+
+        /// <summary>
+        /// Resolves a project by id when it may fall outside the first lookup page.
+        /// Manager correction dialogs must call this for InitialProjectId — otherwise a
+        /// save with an empty picker wipes the project to null.
+        /// </summary>
+        public async Task<Project?> ResolveByIdAsync(string? projectId, string? searchHint = null)
+        {
+            if (string.IsNullOrEmpty(projectId))
+                return null;
+
+            try
+            {
+                var client = _clientFactory.CreateClient(Constants.API.ClientName);
+                var byId = await client.GetFromJsonAsync<ProjectDto>(
+                    $"{Constants.API.Project.GetById}{projectId}");
+                if (byId != null)
+                    return new Project(byId);
+            }
+            catch
+            {
+                // Fall through to search-based lookup.
+            }
+
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(searchHint))
+                {
+                    var byName = await LookupAsync(search: searchHint);
+                    var match = byName.FirstOrDefault(p => p.ProjectId == projectId);
+                    if (match != null)
+                        return match;
+                }
+
+                // Last resort: scan the first page (covers small workspaces).
+                var page = await LookupAsync();
+                return page.FirstOrDefault(p => p.ProjectId == projectId);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public async Task<IReadOnlyList<Project>> LoadSharedAvailabilityAsync()
         {
             var query = new ListQueryParameters

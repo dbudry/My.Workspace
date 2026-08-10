@@ -10,7 +10,31 @@
         <PageLoader IsLoading="@isLoading">
             @if (sessionsByDay.Count == 0)
             {
-                <MudText Align="Align.Center" Class="my-4">No sessions logged yet.</MudText>
+                <div class="d-flex flex-column align-center gap-3 my-4 px-2">
+                    <MudText Align="Align.Center" Style="color: var(--mud-palette-text-secondary);">
+                        No sessions logged yet. Create a duration or start the timer to record time.
+                    </MudText>
+                    <div class="d-flex flex-wrap justify-center gap-2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   OnClick="AddSessionAsync"
+                                   Disabled="@isBusy">
+                            Create Duration
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                                   OnClick="StartTimerAsync"
+                                   Disabled="@(isBusy || string.IsNullOrEmpty(ItemProjectId))">
+                            Start timer
+                        </MudButton>
+                    </div>
+                    @if (string.IsNullOrEmpty(ItemProjectId))
+                    {
+                        <MudText Typo="Typo.caption" Align="Align.Center" Style="color: var(--mud-palette-warning);">
+                            Assign a project on the work item before starting the timer.
+                        </MudText>
+                    }
+                </div>
             }
             else
             {
@@ -25,7 +49,7 @@
                         <MudCardContent Class="pa-0">
                             <MudTable Items="@dayGroup.Value" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
                                 <HeaderContent>
-                                    <MudTh>Project</MudTh>
+                                    @* Project is on the dialog header (work item); not repeated per session. *@
                                     <MudTh>Start</MudTh>
                                     <MudTh>Stop</MudTh>
                                     <MudTh Style="width: 70px;">Duration</MudTh>
@@ -36,9 +60,6 @@
                                         var captured = context;
                                         var canEdit = !captured.IsLocked && !captured.IsRunning;
                                     }
-                                    <MudTd DataLabel="Project">
-                                        <span>@GetSessionProjectName(captured)</span>
-                                    </MudTd>
                                     <MudTd DataLabel="Start">@SettingsService.FormatDateTime(captured.StartDate)</MudTd>
                                     <MudTd DataLabel="Stop">
                                         @if (captured.IsRunning)
@@ -94,6 +115,16 @@
         </PageLoader>
     </DialogContent>
     <DialogActions>
+        @if (sessionsByDay.Count > 0)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddSessionAsync"
+                       Disabled="@isBusy"
+                       Class="mr-auto">
+                Create Duration
+            </MudButton>
+        }
         <MudButton OnClick="Close">Close</MudButton>
     </DialogActions>
 </MudDialog>

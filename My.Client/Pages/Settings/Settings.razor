@@ -56,6 +56,18 @@
                         Used to determine day boundaries for time tracking and reports.
                     </MudText>
                 </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTimePicker @bind-Time="defaultStartTime"
+                                   Label="Default start time"
+                                   AmPm="@(!use24HourTime)"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Editable="true"
+                                   Class="mb-1" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Prefill when creating a new timed task (in your time zone). Default is 8:00 AM.
+                    </MudText>
+                </MudItem>
             </MudGrid>
             <MudButton Variant="Variant.Filled" Class="mt-4" Color="Color.Primary" OnClick="SaveSettings"
                        Disabled="@isSaving">

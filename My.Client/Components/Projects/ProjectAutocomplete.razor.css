@@ -1,14 +1,30 @@
 .project-autocomplete {
     position: relative;
     width: 100%;
+    /* List is portaled via MudPopover Fixed — row height must not grow with results. */
+    overflow: visible;
+    z-index: 5;
 }
 
+.project-autocomplete-open {
+    z-index: 100;
+}
+
+/* Portaled panel (MudPopoverProvider). Width is intentional, not the grid cell. */
 .project-autocomplete-popover {
-    position: absolute;
-    left: 0;
-    right: 0;
-    z-index: 1300; /* above MudDialog content */
+    min-width: 18rem !important;
+    max-width: min(28rem, 92vw) !important;
+    z-index: 3000 !important;
     margin-top: 2px;
-    max-height: 280px;
-    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+.project-autocomplete-popover .mud-list,
+.project-autocomplete-popover .project-autocomplete-list {
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+.project-autocomplete-popover .mud-list-item {
+    min-height: 0;
 }

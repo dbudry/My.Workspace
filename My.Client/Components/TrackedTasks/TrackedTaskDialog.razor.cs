@@ -36,6 +36,10 @@ namespace My.Client.Components.TrackedTasks
         [Parameter] public bool IsAllDay { get; set; }
         [Parameter] public bool Use24HourTime { get; set; }
         [Parameter] public HttpClient HttpClient { get; set; } = null!;
+        /// <summary>
+        /// When set on Create, the entry is saved as a stopwatch session for this work item.
+        /// </summary>
+        [Parameter] public string? StopwatchItemId { get; set; }
         /// <summary>When true, read-only view is for a manager adjustment overlay (not the original).</summary>
         [Parameter] public bool IsManagerAdjustmentView { get; set; }
 
@@ -50,14 +54,23 @@ namespace My.Client.Components.TrackedTasks
         [Inject] private ISnackbar Snackbar { get; set; } = null!;
         [Inject] private ProjectsCache ProjectsCache { get; set; } = null!;
         [Inject] private AppSettingsCache AppSettingsCache { get; set; } = null!;
+        [Inject] private UserSettingsService SettingsService { get; set; } = null!;
 
         private string DialogTitle => Mode switch
         {
+            TrackedTaskDialogMode.Create when IsStopwatchSession => "Create Duration",
+            TrackedTaskDialogMode.Edit when IsStopwatchSession => "Edit Duration",
             TrackedTaskDialogMode.Create => "New Task",
             TrackedTaskDialogMode.ReadOnly when IsManagerAdjustmentView => "Manager adjusted",
             TrackedTaskDialogMode.ReadOnly => TaskName,
             _ => $"Edit - {TaskName}"
         };
+
+        /// <summary>
+        /// Session under a stopwatch work item (create or edit): name, project, and calendar day
+        /// are fixed; only start time and duration are editable.
+        /// </summary>
+        private bool IsStopwatchSession => !string.IsNullOrEmpty(StopwatchItemId);
 
         private bool ShowOriginalComparison =>
             IsManagerAdjustmentView
@@ -77,6 +90,8 @@ namespace My.Client.Components.TrackedTasks
         private string? saveError;
         private string? timeParseError;
         private double workdayHours = AllDayEntryRules.DefaultWorkdayHours;
+        /// <summary>From App Settings → Tyme → Track start time of day.</summary>
+        private bool trackTimeOfDay = TymeTimeOfDayRules.DefaultTrackTimeOfDay;
 
         private string WorkdayHoursLabel =>
             workdayHours == Math.Truncate(workdayHours) ? $"{workdayHours:0}h" : $"{workdayHours:0.##}h";
@@ -131,36 +146,8 @@ namespace My.Client.Components.TrackedTasks
         /// </list>
         /// Returns true and the parsed TimeSpan if it can make sense of the input.
         /// </summary>
-        private static bool ParseTimeText(string raw, out TimeSpan result)
-        {
-            result = TimeSpan.Zero;
-            var s = raw.Trim().ToUpperInvariant().Replace(" ", "");
-
-            string[] formats = {
-                "h:mmtt", "h:mtt", "htt",
-                "hh:mmtt", "hh:mtt", "hhtt",
-                "H:mm", "H:m", "H",
-                "HH:mm", "HH:m", "HH",
-                "h:mm", "h:m", "h",
-                "hh:mm", "hh:m", "hh"
-            };
-
-            if (DateTime.TryParseExact(s, formats, CultureInfo.InvariantCulture,
-                    DateTimeStyles.None, out var dt))
-            {
-                result = dt.TimeOfDay;
-                return true;
-            }
-
-            if (DateTime.TryParse(raw, CultureInfo.CurrentCulture,
-                    DateTimeStyles.None, out var dt2))
-            {
-                result = dt2.TimeOfDay;
-                return true;
-            }
-
-            return false;
-        }
+        private static bool ParseTimeText(string raw, out TimeSpan result) =>
+            TimeOfDayTextRules.TryParse(raw, out result);
 
         private string SpanDaysLabel
         {
@@ -181,10 +168,25 @@ namespace My.Client.Components.TrackedTasks
             editStartTime = StartDate.TimeOfDay;
             editDurationHours = (int)Duration.TotalHours;
             editDurationMinutes = Duration.Minutes;
-            editIsAllDay = IsAllDay;
-            editEndDateOnly = IsAllDay
+            // Stopwatch sessions are always timed entries under the work item.
+            editIsAllDay = IsStopwatchSession ? false : IsAllDay;
+            editEndDateOnly = editIsAllDay
                 ? (EndDate?.Date ?? StartDate.Date)
                 : null;
+
+            try
+            {
+                await SettingsService.GetSettingsAsync();
+            }
+            catch { /* zone falls back via UserTimeZoneRules */ }
+
+            try
+            {
+                trackTimeOfDay = await AppSettingsCache.GetTymeTrackTimeOfDayAsync();
+                if (!trackTimeOfDay)
+                    editStartTime = TymeTimeOfDayRules.DefaultStartTimeOfDayWhenNotTracked;
+            }
+            catch { /* keep default true */ }
 
             if (Mode != TrackedTaskDialogMode.ReadOnly)
             {
@@ -235,8 +237,8 @@ namespace My.Client.Components.TrackedTasks
         {
             try
             {
-                var results = await ProjectsCache.LookupAsync(search: value);
-                return results.Where(p => p.IsActive && !p.IsArchived);
+                // Active-only page from GET /projects — not projectlookup (mixed + cap 25).
+                return await ProjectsCache.LookupActiveAsync(search: value);
             }
             catch
             {
@@ -248,15 +250,34 @@ namespace My.Client.Components.TrackedTasks
 
         private async Task SaveAsync()
         {
-            if (string.IsNullOrWhiteSpace(editName))
+            // Strip leading/trailing whitespace before validate/save.
+            editName = WeekEntryGridRules.SanitizeTaskName(editName);
+
+            // Session create/edit: never let name/project/day drift from the work item context.
+            if (IsStopwatchSession)
             {
-                saveError = "Task name is required.";
+                editName = WeekEntryGridRules.SanitizeTaskName(TaskName);
+                editIsAllDay = false;
+                editStartDateOnly = StartDate.Date;
+            }
+
+            var nameError = WeekEntryGridRules.ValidateTaskName(editName);
+            if (nameError != null)
+            {
+                saveError = nameError;
                 return;
             }
 
-            if (!editIsAllDay && !string.IsNullOrEmpty(timeParseError))
+            if (trackTimeOfDay && !editIsAllDay && !string.IsNullOrEmpty(timeParseError))
             {
                 saveError = timeParseError;
+                return;
+            }
+
+            if (IsStopwatchSession
+                && new TimeSpan(editDurationHours, editDurationMinutes, 0) <= TimeSpan.Zero)
+            {
+                saveError = "Enter a duration greater than zero.";
                 return;
             }
 
@@ -291,9 +312,15 @@ namespace My.Client.Components.TrackedTasks
                 }
                 else
                 {
-                    startDate = (editStartDateOnly ?? StartDate.Date).Add(editStartTime ?? TimeSpan.Zero);
+                    // Wall clock in UserSettings.TimeZone → UTC for the API.
+                    // When time-of-day is not tracked, always use start of calendar day.
+                    var timeOfDay = trackTimeOfDay
+                        ? (editStartTime ?? TimeSpan.Zero)
+                        : TymeTimeOfDayRules.DefaultStartTimeOfDayWhenNotTracked;
+                    var wallStart = (editStartDateOnly ?? StartDate.Date).Add(timeOfDay);
                     duration = new TimeSpan(editDurationHours, editDurationMinutes, 0);
-                    endDate = startDate.Add(duration);
+                    startDate = SettingsService.ConvertFromUserTime(wallStart);
+                    endDate = SettingsService.ConvertFromUserTime(wallStart.Add(duration));
                 }
 
                 HttpResponseMessage response;
@@ -307,7 +334,8 @@ namespace My.Client.Components.TrackedTasks
                         Duration = duration,
                         IsAllDay = editIsAllDay,
                         EndDate = editIsAllDay ? endDate : null,
-                        ProjectId = selectedProject?.ProjectId
+                        ProjectId = selectedProject?.ProjectId,
+                        StopwatchItemId = string.IsNullOrWhiteSpace(StopwatchItemId) ? null : StopwatchItemId
                     };
                     response = await HttpClient.PostAsJsonAsync(Constants.API.TrackedTask.Create, dto);
                 }
@@ -426,6 +454,8 @@ namespace My.Client.Components.TrackedTasks
 
         private string FormatDateTime(DateTime dt)
         {
+            if (!trackTimeOfDay)
+                return dt.ToString("MM/dd/yyyy");
             return Use24HourTime
                 ? dt.ToString("MM/dd/yyyy HH:mm")
                 : dt.ToString("MM/dd/yyyy h:mm tt");

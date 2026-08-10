@@ -5,6 +5,12 @@ namespace My.Shared.Dtos.UserSettings
     public class UpdateUserSettingsDto
     {
         public bool Use24HourTime { get; set; }
+
+        /// <summary>
+        /// Default start time for new timed entries, minutes past midnight in the user's zone (0–1439).
+        /// </summary>
+        public int DefaultStartTimeMinutes { get; set; } = Rules.DefaultStartTimeRules.DefaultMinutesPastMidnight;
+
         /// <summary>IANA timezone ID (e.g. "America/New_York"). Null = not yet set.</summary>
         public string? TimeZone { get; set; }
 

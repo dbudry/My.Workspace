@@ -279,6 +279,11 @@ namespace My.Shared.Constants
             public const string TymeEmployeeTimeDisplayMode = "TymeEmployeeTimeDisplayMode";
             public const string TymeCalendarBackfillDefaultDays = "TymeCalendarBackfillDefaultDays";
             public const string TymeCalendarBackfillPromptUser = "TymeCalendarBackfillPromptUser";
+            /// <summary>
+            /// When true (default), Tyme entry UIs collect start time of day.
+            /// When false, dialogs/grids are date + duration only; calendar/stopwatch still use real times.
+            /// </summary>
+            public const string TymeTrackTimeOfDay = "TymeTrackTimeOfDay";
             public const string WorkdayHours = "WorkdayHours";
             public const string TeamAvailabilityCalendarId = "TeamAvailabilityCalendarId";
             public const string ContactTypes = "ContactTypes";

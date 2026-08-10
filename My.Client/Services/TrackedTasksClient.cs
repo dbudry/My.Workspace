@@ -15,6 +15,7 @@ namespace My.Client.Services
     public class TrackedTasksClient
     {
         private readonly IHttpClientFactory _clientFactory;
+        private readonly UserSettingsService _settings;
 
         // Coalesces identical in-flight range requests keyed by URL. On a fresh sign-in the
         // authorized page initializes twice (the auth state settles in two beats), firing two
@@ -24,9 +25,10 @@ namespace My.Client.Services
         // WASM is single-threaded, so no locking is needed around this dictionary.
         private readonly Dictionary<string, Task<List<TrackedTaskDto>>> _inFlightRange = new();
 
-        public TrackedTasksClient(IHttpClientFactory clientFactory)
+        public TrackedTasksClient(IHttpClientFactory clientFactory, UserSettingsService settings)
         {
             _clientFactory = clientFactory;
+            _settings = settings;
         }
 
         /// <summary>
@@ -95,7 +97,17 @@ namespace My.Client.Services
             // fetch that other callers are still awaiting. Each caller projects its own model
             // instances so no mutable state is shared between them.
             var dtos = await fetch.WaitAsync(cancellationToken);
-            return dtos.Select(d => new TrackedTask(d)).ToList();
+            try
+            {
+                await _settings.GetSettingsAsync();
+            }
+            catch
+            {
+                // Tests / offline: fall back to UTC via GetTimeZoneInfo when cache is empty.
+            }
+
+            var tz = _settings.GetTimeZoneInfo();
+            return dtos.Select(d => new TrackedTask(d, tz)).ToList();
         }
 
         private async Task<List<TrackedTaskDto>> FetchRangeAsync(string url)

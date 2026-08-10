@@ -315,6 +315,7 @@ namespace My.Client.Pages.Tyme
                 {
                     { x => x.ItemId, item.StopwatchItemId },
                     { x => x.ItemName, sample?.Name ?? item.Text },
+                    { x => x.ItemProjectId, sample?.ProjectId ?? item.ProjectId },
                     { x => x.ItemProjectName, item.ProjectName },
                     { x => x.DayFilter, item.StopwatchDay },
                     { x => x.HttpClient, client }
@@ -384,9 +385,9 @@ namespace My.Client.Pages.Tyme
         {
             CloseContextMenu();
 
-            // If the user clicked a bare date (month view), default to 9 AM local time
+            // Bare date (month view): use the user's default start time (Settings, default 08:00).
             var start = clickedDate.TimeOfDay == TimeSpan.Zero
-                ? clickedDate.Date.AddHours(9)
+                ? clickedDate.Date.Add(SettingsService.DefaultStartTimeOfDay)
                 : clickedDate;
 
             var parameters = new DialogParameters<TrackedTaskDialog>
@@ -508,7 +509,7 @@ namespace My.Client.Pages.Tyme
         /// </summary>
         private string GetChipColor(TaskCalendarItem item)
         {
-            // Theme warning orange so adjusted chips read as corrections.
+            // Matches AppTheme.PaletteLight.Warning (#E08E2A).
             if (item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted)
                 return "#E08E2A";
 

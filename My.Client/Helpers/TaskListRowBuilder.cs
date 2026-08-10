@@ -7,24 +7,28 @@ namespace My.Client.Helpers
 {
     public static class TaskListRowBuilder
     {
-        public static TaskListRow FromStopwatch(StopwatchItemDto item)
+        public static TaskListRow FromStopwatch(StopwatchItemDto item, TimeZoneInfo? userTimeZone = null)
         {
             var duration = item.TotalDuration;
             if (item.IsRunning && item.ActiveSessionStartDate.HasValue)
                 duration += StopwatchRules.ElapsedForActiveSession(item.ActiveSessionStartDate.Value, null);
 
+            var tz = userTimeZone ?? TimeZoneInfo.Utc;
+            var lastWorked = DateTimeWire.ToUserTime(item.LastWorkedAt, tz);
+
             return new TaskListRow
             {
                 Kind = TaskListRowKind.Stopwatch,
                 Name = item.Name,
+                ProjectName = item.Project?.Name,
                 ProjectDisplayName = ProjectDisplayHelper.FromDto(item.Project),
                 OrganizationName = item.Project?.OrganizationName,
                 OrganizationColor = item.Project?.OrganizationColor,
                 ProjectGroupName = item.Project?.ProjectGroupName,
                 ProjectGroupColor = item.Project?.ProjectGroupColor,
                 Duration = duration,
-                SortDate = item.LastWorkedAt,
-                DisplayDate = item.LastWorkedAt.ToLocalTime(),
+                SortDate = lastWorked,
+                DisplayDate = lastWorked,
                 IsRunning = item.IsRunning,
                 StopwatchItem = item
             };
@@ -35,6 +39,7 @@ namespace My.Client.Helpers
             {
                 Kind = TaskListRowKind.Manual,
                 Name = task.Name,
+                ProjectName = task.Project?.Name,
                 ProjectDisplayName = task.Project?.DisplayName,
                 OrganizationName = task.Project?.OrganizationName,
                 OrganizationColor = task.Project?.OrganizationColor,
@@ -48,21 +53,21 @@ namespace My.Client.Helpers
                 ManualTask = task
             };
 
-        public static TaskListRow? FromManagerAdjustmentOverlay(TrackedTask task)
+        public static TaskListRow? FromManagerAdjustmentOverlay(TrackedTask task, TimeZoneInfo? userTimeZone = null)
         {
             var adjustment = task.ManagerAdjustment;
             if (adjustment == null || task.AdjustmentKind is not ("Alias" or "Direct"))
                 return null;
 
             var isAlias = task.AdjustmentKind == "Alias";
-            var startLocal = adjustment.StartDate.Kind == DateTimeKind.Utc
-                ? adjustment.StartDate.ToLocalTime()
-                : adjustment.StartDate;
+            // Overlay times arrive as UTC instants from the API.
+            var startLocal = DateTimeWire.ToUserTime(adjustment.StartDate, userTimeZone ?? TimeZoneInfo.Utc);
 
             return new TaskListRow
             {
                 Kind = TaskListRowKind.Manual,
                 Name = adjustment.Name,
+                ProjectName = adjustment.ProjectName,
                 ProjectDisplayName = adjustment.ProjectName,
                 OrganizationName = adjustment.OrganizationName,
                 OrganizationColor = adjustment.OrganizationColor,
@@ -88,7 +93,8 @@ namespace My.Client.Helpers
 
         public static IEnumerable<TaskListRow> ExpandManualRows(
             TrackedTask task,
-            EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both)
+            EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both,
+            TimeZoneInfo? userTimeZone = null)
         {
             var hasAdjustment = task.ManagerAdjustment != null
                 && task.AdjustmentKind is "Alias" or "Direct";
@@ -98,10 +104,36 @@ namespace My.Client.Helpers
 
             if (EmployeeTimeDisplayModeRules.IncludeAdjustmentOverlay(displayMode, hasAdjustment))
             {
-                var overlay = FromManagerAdjustmentOverlay(task);
+                var overlay = FromManagerAdjustmentOverlay(task, userTimeZone);
                 if (overlay != null)
                     yield return overlay;
             }
+        }
+
+        /// <summary>
+        /// Rows for Tasks → Weekly: manuals (with original/adjusted display mode) plus
+        /// stopwatch sessions as editable manual-shaped rows, sorted by start then name.
+        /// </summary>
+        public static List<TaskListRow> FromWeekTasks(
+            IEnumerable<TrackedTask> tasks,
+            EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both,
+            TimeZoneInfo? userTimeZone = null)
+        {
+            var rows = new List<TaskListRow>();
+            foreach (var task in tasks
+                         .OrderBy(t => t.StartDate)
+                         .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrEmpty(task.StopwatchItemId))
+                {
+                    rows.Add(FromManual(task));
+                    continue;
+                }
+
+                rows.AddRange(ExpandManualRows(task, displayMode, userTimeZone));
+            }
+
+            return rows;
         }
     }
 }

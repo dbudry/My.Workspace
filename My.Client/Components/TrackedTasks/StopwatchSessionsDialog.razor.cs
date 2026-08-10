@@ -14,6 +14,7 @@ namespace My.Client.Components.TrackedTasks
 
         [Parameter] public string ItemId { get; set; } = null!;
         [Parameter] public string ItemName { get; set; } = "";
+        [Parameter] public string? ItemProjectId { get; set; }
         [Parameter] public string? ItemProjectName { get; set; }
         /// <summary>When set, only sessions on this calendar day are shown (e.g. from a grouped calendar chip).</summary>
         [Parameter] public DateTime? DayFilter { get; set; }
@@ -27,6 +28,7 @@ namespace My.Client.Components.TrackedTasks
         private readonly List<TrackedTask> sessions = new();
         private readonly Dictionary<string, List<TrackedTask>> sessionsByDay = new();
         private bool isLoading = true;
+        private bool isBusy;
         private bool changed;
 
         protected override async Task OnInitializedAsync()
@@ -41,8 +43,9 @@ namespace My.Client.Components.TrackedTasks
             try
             {
                 var dtos = await StopwatchItemsClient.LoadSessionsAsync(ItemId);
+                var tz = SettingsService.GetTimeZoneInfo();
                 sessions.Clear();
-                sessions.AddRange(dtos.Select(d => new TrackedTask(d)));
+                sessions.AddRange(dtos.Select(d => new TrackedTask(d, tz)));
                 GroupSessionsByDay();
             }
             catch (Exception ex)
@@ -72,6 +75,64 @@ namespace My.Client.Components.TrackedTasks
 
         private string? GetSessionProjectName(TrackedTask session)
             => ProjectDisplayHelper.FromModel(session.Project) ?? ItemProjectName;
+
+        /// <summary>Log a finished session (start + duration) against this work item.</summary>
+        private async Task AddSessionAsync()
+        {
+            await SettingsService.GetSettingsAsync();
+            var start = DateTime.Today.Add(SettingsService.DefaultStartTimeOfDay);
+
+            var parameters = new DialogParameters<TrackedTaskDialog>
+            {
+                { x => x.Mode, TrackedTaskDialogMode.Create },
+                { x => x.TaskName, ItemName },
+                { x => x.ProjectId, ItemProjectId },
+                { x => x.ProjectName, ItemProjectName },
+                { x => x.StartDate, start },
+                { x => x.Duration, TimeSpan.FromMinutes(30) },
+                { x => x.Use24HourTime, SettingsService.Use24HourTime },
+                { x => x.HttpClient, HttpClient },
+                { x => x.StopwatchItemId, ItemId }
+            };
+
+            var dialog = await DialogService.ShowAsync<TrackedTaskDialog>(
+                "Create Duration",
+                parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, BackdropClick = false });
+            var result = await dialog.Result;
+            if (result is { Canceled: false })
+            {
+                changed = true;
+                await LoadSessionsAsync();
+            }
+        }
+
+        /// <summary>Start a live timer session on this work item (requires a project).</summary>
+        private async Task StartTimerAsync()
+        {
+            if (string.IsNullOrEmpty(ItemProjectId))
+            {
+                Snackbar.Add("Assign a project on the work item before starting the timer.", Severity.Warning);
+                return;
+            }
+
+            isBusy = true;
+            try
+            {
+                await StopwatchItemsClient.StartAsync(ItemId);
+                changed = true;
+                Snackbar.Add("Timer started.", Severity.Success);
+                await LoadSessionsAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't start the timer.");
+            }
+            finally
+            {
+                isBusy = false;
+            }
+        }
 
         /// <summary>
         /// Stopwatch sessions bill by <see cref="TrackedTask.Duration"/> (rounded up to whole
@@ -105,19 +166,21 @@ namespace My.Client.Components.TrackedTasks
             {
                 { x => x.Mode, TrackedTaskDialogMode.Edit },
                 { x => x.TaskId, session.TaskId },
-                { x => x.TaskName, session.Name },
-                { x => x.ProjectId, session.ProjectId },
-                { x => x.ProjectName, projectName },
+                // Prefer work-item identity so name/project stay locked to the parent stopwatch item.
+                { x => x.TaskName, string.IsNullOrWhiteSpace(ItemName) ? session.Name : ItemName },
+                { x => x.ProjectId, string.IsNullOrEmpty(ItemProjectId) ? session.ProjectId : ItemProjectId },
+                { x => x.ProjectName, string.IsNullOrEmpty(ItemProjectName) ? projectName : ItemProjectName },
                 { x => x.StartDate, session.StartDate },
                 { x => x.EndDate, session.EndDate },
                 { x => x.Duration, GetSessionDuration(session) },
-                { x => x.IsAllDay, session.IsAllDay },
+                { x => x.IsAllDay, false },
                 { x => x.Use24HourTime, SettingsService.Use24HourTime },
-                { x => x.HttpClient, HttpClient }
+                { x => x.HttpClient, HttpClient },
+                { x => x.StopwatchItemId, ItemId }
             };
 
             var dialog = await DialogService.ShowAsync<TrackedTaskDialog>(
-                $"Edit — {session.Name}",
+                "Edit Duration",
                 parameters,
                 new DialogOptions
                 {

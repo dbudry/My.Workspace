@@ -23,11 +23,23 @@ namespace My.Tests.Components
 
             protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             {
-                Interlocked.Increment(ref CallCount);
-                await _gate.Task; // hold the response open so callers overlap
+                var path = request.RequestUri?.AbsolutePath ?? "";
+                // Only count tracked-task range loads — settings GETs are incidental to mapping.
+                if (path.Contains("trackedtask", StringComparison.OrdinalIgnoreCase)
+                    || path.Contains("task", StringComparison.OrdinalIgnoreCase))
+                {
+                    Interlocked.Increment(ref CallCount);
+                    await _gate.Task; // hold the response open so callers overlap
+                }
+
+                // Settings probe: empty object so JSON deserialize does not throw.
+                var body = path.Contains("usersettings", StringComparison.OrdinalIgnoreCase)
+                           || path.Contains("settings", StringComparison.OrdinalIgnoreCase)
+                    ? "{}"
+                    : "[]";
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("[]", System.Text.Encoding.UTF8, "application/json")
+                    Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
                 };
             }
         }
@@ -43,7 +55,23 @@ namespace My.Tests.Components
         {
             var handler = new CountingHandler();
             var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/api/") };
-            return (new TrackedTasksClient(new StubFactory(http)), handler);
+            var factory = new StubFactory(http);
+            // Settings HTTP also hits CountingHandler and fails JSON parse; client falls back to UTC.
+            var settings = new UserSettingsService(factory, new NoOpJs(), new NoOpNav());
+            return (new TrackedTasksClient(factory, settings), handler);
+        }
+
+        private sealed class NoOpJs : Microsoft.JSInterop.IJSRuntime
+        {
+            public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+                => ValueTask.FromResult(default(TValue)!);
+            public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+                => ValueTask.FromResult(default(TValue)!);
+        }
+
+        private sealed class NoOpNav : Microsoft.AspNetCore.Components.NavigationManager
+        {
+            public NoOpNav() => Initialize("http://localhost/", "http://localhost/");
         }
 
         [Fact]
