@@ -302,6 +302,8 @@ namespace My.DAL.Data.Migrations
                     UserSettingsId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     Use24HourTime = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    // 480 = 08:00 — product default for new timed Tyme entries (greenfield schema).
+                    DefaultStartTimeMinutes = table.Column<int>(type: "int", nullable: false, defaultValue: 480),
                     TimeZone = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     GoogleRefreshToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     GoogleCalendarId = table.Column<string>(type: "nvarchar(max)", nullable: true),
