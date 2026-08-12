@@ -33,9 +33,9 @@ This effort implies a larger architectural shift: **Organizations, Departments, 
 
 ## Concerns / risks
 
-- This is the first effort that introduces a true **shared / global scope** above the existing Tyme-only model. Getting the boundary right between "shared org data" and "Billing-specific" / "Tyme-specific" matters — a wrong cut here costs a lot to undo.
+- This is the first effort that introduces a true **shared / global scope** above the existing Tyme-only model. Getting the boundary right between "shared org data" and "Billing-specific" / "Tyme-specific" matters — a wrong cut here is hard to undo.
 - The Roles & Scopes pattern (Admin:Tyme etc.) will need an Admin:Billing variant — keep in line with the dynamic role enumeration rule (don't hardcode the trio).
-- Document storage adds cost and backup considerations we don't have today.
+- Document storage adds backup and retention considerations we don't have today.
 
 ## Sub-tasks
 

@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.2.1",
+    "date": "2026-08-12",
+    "changes": [
+      { "type": "Docs", "text": "Removed pricing, dollar amounts, and cost-lever guidance from self-host documentation. Operational notes about serverless auto-pause and cold starts remain without commercial framing." }
+    ]
+  },
+  {
     "version": "1.2.0",
     "date": "2026-08-12",
     "changes": [
