@@ -133,10 +133,10 @@ In Azure Portal → `func-my-workspace` → **Configuration → Application sett
 | Resource | Name | Notes |
 |---|---|---|
 | Resource group | `rg-my-workspace` | Holds everything below. |
-| Static Web App | `swa-my-workspace` | Free tier; serves the WASM client and proxies `/api/*` to the Function App. |
-| Function App | `func-my-workspace` | Consumption plan. Daily `GoogleCalendarWatchRenewalFunction` keeps calendar push channels alive. No SQL keepalive (so serverless SQL can auto-pause). |
+| Static Web App | `swa-my-workspace` | Serves the WASM client and proxies `/api/*` to the Function App. |
+| Function App | `func-my-workspace` | Consumption plan. Daily `GoogleCalendarWatchRenewalFunction` keeps calendar push channels alive. No SQL keepalive timer. |
 | Storage account | (auto-named) | Required by the Function host. |
-| SQL Server / DB | `your-sql.database.windows.net` / `MyWorkspace` | Azure AD auth in production. Prefer **serverless + auto-pause** when idle cost matters. |
+| SQL Server / DB | `your-sql.database.windows.net` / `MyWorkspace` | Azure AD auth in production. Serverless with auto-pause is supported when you want the database to sleep when idle. |
 | Application Insights | linked to the Function App | Function logs + telemetry. |
 
 The Function App's **System-Assigned Managed Identity** must be **On**
@@ -216,19 +216,9 @@ expects HTTP **401**. Other status codes mean different things:
 | 5xx | Function App didn't start cleanly. Check the host logs in Application Insights. |
 | 200 | Auth was bypassed somehow. Should never happen — investigate immediately. |
 
-## Cost notes
+## Idle / cold starts
 
-The Consumption plan is well inside the free monthly grant for typical use
-(1M executions, 400k GB-seconds). There is **no** SQL keepalive timer: Azure SQL
-**serverless** can auto-pause when idle (recommended for low-traffic self-host).
-Expect Function/SQL cold starts after idle — that is intentional.
-
-The biggest cost levers in practice are:
-
-- **SQL DTUs / vCores / serverless auto-pause** — pick based on traffic and latency.
-- **Application Insights** — sampling helps if you see ingestion costs creep.
-- **Static Web App** — Free tier is fine until you outgrow its 100 GB/month
-  bandwidth ceiling.
-
-If you ever want to eliminate cold starts entirely, the upgrade path is the
-**Premium plan with Always Ready instances** (~$13/mo for B1).
+There is **no** SQL keepalive timer. With Azure SQL **serverless** and auto-pause
+enabled, the database can sleep when idle; Function and SQL cold starts after
+idle are expected. Use provisioned SQL or Azure Functions Premium with Always
+Ready instances if you prefer to avoid cold starts.

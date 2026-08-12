@@ -330,14 +330,14 @@ TimerTrigger functions:
   keeps flowing.
 
 There is **no** SQL keepalive timer. If you host Azure SQL **serverless** with
-auto-pause, idle cost drops when the DB pauses; Function/SQL cold starts after
+auto-pause, the database may sleep when idle; Function/SQL cold starts after
 idle are expected.
 
 ## Hosting notes
 
 - Static Web App: `swa-my-workspace` in `rg-my-workspace`.
-- Function App: `func-my-workspace` in the same RG. Consumption plan; Always-On
-  is **not** used (cost).
+- Function App: `func-my-workspace` in the same RG. Consumption plan (Always-On
+  is not required).
 - SQL: `your-sql.database.windows.net`, database `MyWorkspace`. Production
   authenticates via Azure AD (`Active Directory Default`).
 - Routes / fallback configured in `My.Client/wwwroot/staticwebapp.config.json`.
