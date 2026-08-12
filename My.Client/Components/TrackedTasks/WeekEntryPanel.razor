@@ -61,15 +61,24 @@ else
                             else
                             {
                                 @* Placeholder only (no floating label) so the field lines up with day duration inputs. *@
-                                <MudTextField T="string"
-                                              Value="@row.DraftTaskName"
-                                              ValueChanged="@(v => OnDraftTaskNameChanged(row, v))"
-                                              Margin="Margin.Dense"
-                                              Variant="Variant.Outlined"
-                                              Immediate="true"
-                                              Placeholder="Task name"
-                                              Class="week-entry-draft-task-name"
-                                              Style="min-width: 11rem; max-width: 16rem;" />
+                                <div class="d-flex align-center gap-1">
+                                    <MudTextField T="string"
+                                                  Value="@row.DraftTaskName"
+                                                  ValueChanged="@(v => OnDraftTaskNameChanged(row, v))"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined"
+                                                  Immediate="true"
+                                                  Placeholder="Task name"
+                                                  Class="week-entry-draft-task-name"
+                                                  Style="min-width: 11rem; max-width: 16rem;" />
+                                    <MudTooltip Text="Remove unused row">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                       Size="Size.Small"
+                                                       Color="Color.Default"
+                                                       aria-label="Remove unused row"
+                                                       OnClick="@(() => RemoveDraftRow(row))" />
+                                    </MudTooltip>
+                                </div>
                             }
                         </td>
                         @for (var di = 0; di < row.Cells.Length; di++)

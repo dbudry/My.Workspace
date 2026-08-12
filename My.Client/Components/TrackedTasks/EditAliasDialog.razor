@@ -1,5 +1,6 @@
 @using MudBlazor
 @using My.Client.Models
+@using My.Client.Components.Projects
 @namespace My.Client.Components.TrackedTasks
 
 <MudDialog>
@@ -17,10 +18,9 @@
 
             <MudDatePicker @bind-Date="editDate" Label="Date" Margin="Margin.Dense" />
 
-            <MudAutocomplete T="Project" Value="selectedProject" ValueChanged="OnProjectChanged"
-                             Label="Project" Margin="Margin.Dense" Clearable="true"
-                             SearchFunc="SearchProjects" ToStringFunc="@(p => p?.Name ?? string.Empty)"
-                             CoerceText="false" />
+            <ProjectAutocomplete Value="selectedProject" ValueChanged="OnProjectChanged"
+                                 Label="Project" SearchFunc="SearchProjects"
+                                 PreferOpenUpward="true" />
 
             <div class="d-flex gap-2">
                 <MudNumericField T="int" @bind-Value="editHours" Label="Hours" Margin="Margin.Dense"

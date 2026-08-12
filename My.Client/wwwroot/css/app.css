@@ -149,6 +149,77 @@ h1:focus {
     width: 100%;
 }
 
+/* Stopwatch page start form: task + project (+ Start) on one row; wrap when narrow. */
+.stopwatch-start-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.stopwatch-start-name {
+    flex: 1 1 14rem;
+    min-width: min(100%, 12rem);
+    max-width: 100%;
+}
+
+.stopwatch-start-project {
+    flex: 1 1 14rem;
+    min-width: min(100%, 12rem);
+    max-width: 100%;
+}
+
+.stopwatch-start-project.project-autocomplete {
+    display: block;
+    width: 100%;
+}
+
+.stopwatch-start-button {
+    flex: 0 0 auto;
+    margin-bottom: 2px; /* optical align with dense outlined inputs */
+}
+
+/* Stopwatch work-item edit dialog: same one-row / wrap pattern. */
+.stopwatch-item-dialog-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.stopwatch-item-dialog-name,
+.stopwatch-item-dialog-project {
+    flex: 1 1 12rem;
+    min-width: min(100%, 11rem);
+    max-width: 100%;
+}
+
+.stopwatch-item-dialog-name.mud-input-control,
+.stopwatch-item-dialog-project {
+    width: 100%;
+}
+
+.stopwatch-item-dialog-project.project-autocomplete {
+    display: block;
+    width: 100%;
+}
+
+@media (max-width: 600px) {
+    .stopwatch-start-name,
+    .stopwatch-start-project,
+    .stopwatch-item-dialog-name,
+    .stopwatch-item-dialog-project {
+        flex: 1 1 100%;
+        min-width: 100%;
+    }
+
+    .stopwatch-start-button {
+        width: 100%;
+    }
+}
+
 /* Submit page My/Team picker — MudToggleGroup stretches to 100% in block layout otherwise. */
 .submit-view-toggle.mud-toggle-group,
 .submit-view-toggle.mud-button-group {
@@ -156,60 +227,7 @@ h1:focus {
     display: inline-flex;
 }
 
-.submit-view-toggle.mud-toggle-group .mud-button-root,
-.submit-view-toggle.mud-button-group .mud-button-root {
-    padding-left: 16px;
-    padding-right: 16px;
-}
-
-/* Management filter bar — Mud child components need global selectors (scoped CSS misses them). */
-.management-date-field {
-    width: 12.5rem;
-    min-width: 12.5rem;
-    flex: 0 0 auto;
-}
-
-.management-date-field .mud-input-control {
-    width: 100%;
-}
-
-.management-submission-field {
-    transform: translateY(-3px);
-}
-
-.management-submission-field .mud-toggle-group,
-.management-submission-field .mud-button-group {
-    width: auto;
-    display: inline-flex;
-}
-
-.management-submission-field .mud-button-root {
-    min-height: 40px;
-    padding-left: 16px;
-    padding-right: 16px;
-    white-space: nowrap;
-}
-
-/* Data Extraction filters — Mud child components need global selectors. */
-.dataextraction-date-field .mud-input-control {
-    margin-top: 0;
-}
-
-.dataextraction-employees-field .mud-menu,
-.dataextraction-employees-field .mud-menu-activator {
-    width: 100%;
-}
-
-.dataextraction-employees-menu {
-    min-width: 240px;
-    max-height: 280px;
-    overflow-y: auto;
-}
-
-.management-employees-menu {
-    min-width: 220px;
-}
-
+/* Tasks page toolbar: stacked rows so wrap is deliberate on mobile. */
 .tasks-toolbar {
     display: flex;
     flex-direction: column;
@@ -341,6 +359,37 @@ h1:focus {
     cursor: pointer;
 }
 
+/* Sessions dialog: keep title/actions fixed; only the day list scrolls. */
+.mud-dialog:has(.stopwatch-sessions-scroll) {
+    max-height: calc(100dvh - 32px);
+}
+
+.mud-dialog:has(.stopwatch-sessions-scroll) .mud-dialog-content {
+    overflow: hidden;
+    padding-bottom: 8px;
+}
+
+.stopwatch-sessions-scroll {
+    max-height: min(50vh, 440px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    /* Space under last day so borders/chevrons are not cut by the dialog footer. */
+    padding: 0 4px 24px 0;
+    box-sizing: border-box;
+}
+
+.stopwatch-sessions-scroll .stopwatch-sessions-day.mud-expand-panel,
+.stopwatch-sessions-scroll .mud-expand-panel {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 4px;
+    margin-bottom: 8px !important;
+}
+
+.stopwatch-sessions-scroll .mud-expand-panel:last-child {
+    margin-bottom: 8px !important;
+}
+
 /* All / Week list: stable column tracks so cells don't wander per row. */
 .tasks-list-table table {
     table-layout: fixed;
@@ -404,6 +453,7 @@ h1:focus {
     align-items: center;
     gap: 0.5rem;
     white-space: nowrap;
+    min-height: 1.5rem;
 }
 
 .tasks-list-date {
@@ -411,12 +461,20 @@ h1:focus {
     width: 4.5rem;
     min-width: 4.5rem;
     font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
 }
 
 .tasks-list-time {
     flex: 0 0 5.25rem;
-    min-width: 4.5rem;
+    width: 5.25rem;
+    min-width: 5.25rem;
     font-variant-numeric: tabular-nums;
+    box-sizing: border-box;
+}
+
+/* "All day" sits in the same track as start time (not a caption that reflows the column). */
+.tasks-list-allday {
+    color: var(--mud-palette-text-secondary);
 }
 
 /* Click-to-edit date/time: keep the same tracks as read-only (no extra padding skew). */
@@ -425,15 +483,67 @@ h1:focus {
     padding: 2px 0;
     min-height: 0;
     display: inline-flex;
+    align-items: center;
+    /* Stay inside the fixed flex track */
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .tasks-list-duration-cell {
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+    vertical-align: middle;
 }
 
 .tasks-list-duration-text {
     font-variant-numeric: tabular-nums;
+    display: inline-block;
+    min-width: 3.25rem; /* HH:MM tabular width — stopwatch & manual match */
+}
+
+/* Duration click targets: no horizontal padding so text lines up with plain spans. */
+.tasks-list-duration-cell .tasks-inline-display-duration,
+.tasks-list-duration-hit {
+    padding-left: 0;
+    padding-right: 0;
+    min-height: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+}
+
+.tasks-stopwatch-hit {
+    cursor: pointer;
+}
+
+/* Project column: zero horizontal padding so color bar starts at the same X for every row. */
+.tasks-project-cell {
+    display: flex;
+    align-items: center;
+    min-height: 1.5rem;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.tasks-project-cell-interactive {
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.tasks-project-cell-interactive:hover {
+    background: var(--mud-palette-action-default-hover);
+}
+
+/* Affiliation root is a flex row; keep it full-width inside the cell shell. */
+.tasks-project-cell > .d-flex {
+    min-width: 0;
+    width: 100%;
+}
+
+.tasks-list-table tbody td {
+    vertical-align: middle;
 }
 
 /* ---- Week / Project day grids: horizontal scroll + pencil hugs the duration field ---- */
@@ -1118,4 +1228,52 @@ tbody .week-entry-col-day {
 
 .management-employees-menu {
     min-width: 220px;
+}
+
+/* Reports filter: From + To + Project + buttons on one compact row. */
+.reports-filter-bar .mud-stack {
+    flex-wrap: nowrap;
+    width: 100%;
+}
+
+.reports-filter-bar .reports-filter-date {
+    flex: 0 0 auto;
+    width: 9.5rem;
+    max-width: 9.5rem;
+}
+
+.reports-filter-bar .reports-filter-date .mud-input-control {
+    margin-top: 0;
+}
+
+.reports-filter-bar .reports-filter-project {
+    flex: 1 1 auto;
+    min-width: 12rem;
+    /* ProjectAutocomplete defaults to width:100% of this flex cell only. */
+}
+
+.reports-filter-bar .reports-filter-project .mud-input-control {
+    margin-top: 0;
+}
+
+.reports-filter-bar .reports-filter-btn {
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+@media (max-width: 700px) {
+    .reports-filter-bar .mud-stack {
+        flex-wrap: wrap;
+    }
+
+    .reports-filter-bar .reports-filter-date {
+        width: calc(50% - 8px);
+        max-width: none;
+        flex: 1 1 calc(50% - 8px);
+    }
+
+    .reports-filter-bar .reports-filter-project {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
 }

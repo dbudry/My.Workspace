@@ -949,18 +949,33 @@ namespace My.Functions
             if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
                 return null;
 
+            // Bound this call explicitly. It's a best-effort name heal on login — it must
+            // never be able to stall ProvisionUser (and therefore the entire sign-in /
+            // dashboard load) if Google's endpoint is slow or unreachable (e.g. blocked by
+            // a local firewall/VPN). The default HttpClient has no timeout of its own.
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                req.FunctionContext.CancellationToken, timeoutCts.Token);
+
             try
             {
                 var client = _httpClientFactory.CreateClient();
                 using var request = new HttpRequestMessage(HttpMethod.Get, "https://openidconnect.googleapis.com/v1/userinfo");
                 request.Headers.TryAddWithoutValidation("Authorization", authHeader);
-                using var response = await client.SendAsync(request, req.FunctionContext.CancellationToken);
+                using var response = await client.SendAsync(request, linkedCts.Token);
                 if (!response.IsSuccessStatusCode)
                 {
                     _logger.LogDebug("Google /userinfo returned {Status}; falling back to email-local heuristic.", (int)response.StatusCode);
                     return null;
                 }
-                return await response.Content.ReadFromJsonAsync<GoogleUserInfo>(cancellationToken: req.FunctionContext.CancellationToken);
+                return await response.Content.ReadFromJsonAsync<GoogleUserInfo>(cancellationToken: linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (!req.FunctionContext.CancellationToken.IsCancellationRequested)
+            {
+                // Our 5s guard tripped, not the caller's own cancellation — this is exactly
+                // the "Google endpoint is slow/unreachable" case this timeout exists for.
+                _logger.LogWarning("Google /userinfo call timed out after 5s; falling back to email-local heuristic.");
+                return null;
             }
             catch (Exception ex)
             {

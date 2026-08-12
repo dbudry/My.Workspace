@@ -1,13 +1,28 @@
 @using My.Client.Components.Projects
 @using My.Client.Models
+@using My.Client.Services
 
 <MudDialog>
     <DialogContent>
         <DialogFormStack>
-            <MudTextField @bind-Value="name" Label="Work item" Required="true"
-                          RequiredError="Work item name is required" Variant="Variant.Outlined" />
-            <ProjectAutocomplete @bind-Value="selectedProject" Label="Project" Variant="Variant.Outlined"
-                                 Dense="false" SearchFunc="SearchProjects" />
+            @* Name + project on one row; stacks on narrow widths. *@
+            <div class="stopwatch-item-dialog-fields">
+                <MudTextField @bind-Value="name"
+                              Label="Work item"
+                              Required="true"
+                              RequiredError="Work item name is required"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Class="stopwatch-item-dialog-name" />
+                <ProjectAutocomplete @bind-Value="selectedProject"
+                                     Label="Project"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     Dense="true"
+                                     PreferOpenUpward="true"
+                                     SearchFunc="SearchProjects"
+                                     Class="stopwatch-item-dialog-project" />
+            </div>
             @if (selectedProject == null)
             {
                 <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
@@ -42,13 +57,20 @@
     [Parameter]
     public Func<string?, CancellationToken, Task<IEnumerable<Project>>> SearchProjects { get; set; } = null!;
 
+    [Inject] private ProjectsCache ProjectsCache { get; set; } = null!;
+
     private string name = "";
     private Project? selectedProject;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         name = ItemName;
-        if (!string.IsNullOrEmpty(ProjectId))
+        if (string.IsNullOrEmpty(ProjectId))
+            return;
+
+        // Prefer full project so the autocomplete shows name + affiliation like other pages.
+        selectedProject = await ProjectsCache.ResolveByIdAsync(ProjectId, ProjectName);
+        if (selectedProject == null)
         {
             selectedProject = new Project
             {

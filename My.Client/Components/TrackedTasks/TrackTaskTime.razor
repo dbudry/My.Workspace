@@ -1,14 +1,30 @@
-@* Input row to create and start a new work item *@
+@* Start form: task name + project on one row; stacks when the viewport is narrow. *@
+@using My.Client.Components.Projects
+
 <EditForm Model="@newEntryModel" OnValidSubmit="@AddAndStartEntry" OnInvalidSubmit="@HandleInvalidSubmit">
     <DataAnnotationsValidator />
-    <div class="d-flex align-center gap-3 flex-wrap my-3">
-        <MudTextField @bind-Value="newEntryModel.Name" Label="What are you working on?" Variant="Variant.Outlined"
-                      Margin="Margin.Dense" Style="min-width: 250px;" />
-        <ProjectAutocomplete @bind-Value="SelectedProject" Label="Project" Variant="Variant.Outlined"
-                             Style="min-width: 200px;" SearchFunc="SearchProjects" />
-        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary"
+    <div class="stopwatch-start-row my-3">
+        <MudTextField @bind-Value="newEntryModel.Name"
+                      Label="What are you working on?"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Class="stopwatch-start-name" />
+        <ProjectAutocomplete @bind-Value="SelectedProject"
+                             Label="Project"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             Dense="true"
+                             Placeholder="Type to search projects..."
+                             SearchFunc="SearchProjects"
+                             Class="stopwatch-start-project" />
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.PlayArrow"
-                   Disabled="@(isBusy || SelectedProject == null)">Start</MudButton>
+                   Class="stopwatch-start-button"
+                   Disabled="@(isBusy || SelectedProject == null)">
+            Start
+        </MudButton>
     </div>
     <ValidationSummary />
 </EditForm>

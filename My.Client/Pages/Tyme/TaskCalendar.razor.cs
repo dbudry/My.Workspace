@@ -394,7 +394,7 @@ namespace My.Client.Pages.Tyme
             {
                 { x => x.Mode, TrackedTaskDialogMode.Create },
                 { x => x.StartDate, start },
-                { x => x.Duration, TimeSpan.FromMinutes(30) },
+                { x => x.Duration, TimeSpan.Zero },
                 { x => x.Use24HourTime, SettingsService.Use24HourTime },
                 { x => x.HttpClient, client }
             };

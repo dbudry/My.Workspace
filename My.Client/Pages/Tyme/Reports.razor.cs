@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.JSInterop;
 using MudBlazor;
 using System.Net.Http.Json;
+using System.Text;
 using My.Client.Extensions;
 using My.Client.Models;
 using My.Client.Models.Paging;
@@ -26,6 +28,14 @@ namespace My.Client.Pages.Tyme
         private Project? selectedProject;
         private bool isLoading = true;
         private EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both;
+
+        private const int SummaryTabIndex = 0;
+        private const int DetailsTabIndex = 1;
+        private const string ActiveTabStorageKey = "reports.activeTab";
+
+        /// <summary>0 = Summary (analytics), 1 = Details (grid). Matches Management's tab layout.
+        /// Persisted per user via LocalStorage so the page reopens on whichever tab they left.</summary>
+        private int activeReportTab;
 
         private string totalTimeFormatted = "00:00";
         private string topProjectName = "None";
@@ -98,6 +108,12 @@ namespace My.Client.Pages.Tyme
         [Inject]
         private AppSettingsCache AppSettingsCache { get; set; } = null!;
 
+        [Inject]
+        private IJSRuntime JS { get; set; } = null!;
+
+        [Inject]
+        private LocalStorageService LocalStorage { get; set; } = null!;
+
         #endregion
 
         protected override async Task OnInitializedAsync()
@@ -114,6 +130,14 @@ namespace My.Client.Pages.Tyme
 
             await SettingsService.GetSettingsAsync();
             await LoadDisplayModeFromAppSettingsAsync();
+
+            try
+            {
+                var savedTab = await LocalStorage.GetItemAsync<int?>(ActiveTabStorageKey);
+                if (savedTab is SummaryTabIndex or DetailsTabIndex)
+                    activeReportTab = savedTab.Value;
+            }
+            catch { /* default to Summary */ }
 
             // Default to current month in the user's timezone
             var userToday = SettingsService.GetUserToday();
@@ -337,5 +361,50 @@ namespace My.Client.Pages.Tyme
             int hours = (ts.Days * 24) + ts.Hours;
             return $"{hours:00}:{ts.Minutes:00}";
         }
+
+        private async Task OnActiveReportTabChanged(int index)
+        {
+            activeReportTab = index;
+            try
+            {
+                await LocalStorage.SetItemAsync(ActiveTabStorageKey, activeReportTab);
+            }
+            catch { /* non-fatal — just won't be remembered next visit */ }
+        }
+
+        /// <summary>Exports the Details grid. The Download button only renders on that tab —
+        /// Summary is charts/stats, not a row export.</summary>
+        private async Task DownloadCsvAsync()
+        {
+            var sb = new StringBuilder();
+
+            sb.AppendLine("\"Date\",\"Task\",\"Project\",\"Duration\"");
+            foreach (var task in taskDetailRows)
+            {
+                sb.AppendLine(
+                    $"\"{Escape(task.StartDate.ToLocalTime().ToString("MM/dd/yyyy"))}\"," +
+                    $"\"{Escape(task.Name)}\"," +
+                    $"\"{Escape(task.Project?.DisplayName ?? task.Project?.Name ?? "None")}\"," +
+                    $"\"{Escape($"{(int)task.Duration.TotalHours:00}:{task.Duration.Minutes:00}")}\"");
+            }
+
+            await TriggerCsvDownloadAsync(sb.ToString());
+        }
+
+        private async Task TriggerCsvDownloadAsync(string csv)
+        {
+            var bytes = Encoding.UTF8.GetBytes(csv);
+            var base64 = Convert.ToBase64String(bytes);
+            var fileName = $"Reports_{dateFrom:yyyyMMdd}_{dateTo:yyyyMMdd}.csv";
+
+            await JS.InvokeVoidAsync("eval",
+                $"var a=document.createElement('a');" +
+                $"a.href='data:text/csv;base64,{base64}';" +
+                $"a.download='{fileName}';" +
+                $"document.body.appendChild(a);a.click();document.body.removeChild(a);");
+        }
+
+        private static string Escape(string? value) =>
+            value?.Replace("\"", "\"\"") ?? "";
     }
 }

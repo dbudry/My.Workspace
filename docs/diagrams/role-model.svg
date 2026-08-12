@@ -1,0 +1,83 @@
+<svg viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <style>
+    .hdr { fill:#102A43; font-size:14px; font-weight:700; }
+    .rolehdr { fill:#FFFFFF; font-size:13px; font-weight:700; }
+    .cellTitle { fill:#102A43; font-size:12.5px; font-weight:600; }
+    .cellBody { fill:#334E68; font-size:11.5px; }
+    .roleband { rx:6; }
+    .admin { fill:#B71C1C; }
+    .manager { fill:#EF6C00; }
+    .editor { fill:#00695C; }
+    .user { fill:#1565C0; }
+    .cell { fill:#FFFFFF; stroke:#CFD8DC; stroke-width:1; rx:6; }
+    .note { fill:#546E7A; font-size:11px; font-style:italic; }
+    .global { fill:#F5F0FF; stroke:#7C4DFF; stroke-width:1.5; stroke-dasharray:4,3; rx:8; }
+  </style>
+
+  <text x="20" y="26" class="hdr">Roles are scoped per module — hierarchy is User &lt; Editor &lt; Manager &lt; Admin within each scope</text>
+
+  <!-- Global admin note -->
+  <rect x="20" y="42" width="860" height="50" class="global"/>
+  <text x="34" y="61" class="cellTitle">Global "Admin" (unscoped)</text>
+  <text x="34" y="78" class="cellBody">System-level only: user provisioning, role assignment, App Settings, Logs, impersonation. Does NOT by itself unlock Tyme or Intranet — a global Admin uses "View As" to assume a scoped role and see module data.</text>
+
+  <!-- Column headers -->
+  <text x="230" y="118" text-anchor="middle" class="hdr" font-size="13">Tyme scope</text>
+  <text x="630" y="118" text-anchor="middle" class="hdr" font-size="13">Intranet scope</text>
+
+  <!-- Row: Admin -->
+  <rect x="20" y="132" width="120" height="72" class="roleband admin"/>
+  <text x="80" y="163" text-anchor="middle" class="rolehdr">Admin</text>
+  <text x="80" y="180" text-anchor="middle" class="rolehdr" font-size="10.5" font-weight="400">:Tyme / :Intranet</text>
+  <rect x="150" y="132" width="360" height="72" class="cell"/>
+  <text x="164" y="152" class="cellTitle">Full module control</text>
+  <text x="164" y="169" class="cellBody">Everything Manager can do, plus delete gates, org/department admin,</text>
+  <text x="164" y="184" class="cellBody">data extraction, workspace-wide project catalog ownership.</text>
+  <rect x="520" y="132" width="360" height="72" class="cell"/>
+  <text x="534" y="152" class="cellTitle">Full module control</text>
+  <text x="534" y="169" class="cellBody">Everything Editor can do, plus Navigation builder and</text>
+  <text x="534" y="184" class="cellBody">workspace-wide page/document administration.</text>
+
+  <!-- Row: Manager -->
+  <rect x="20" y="212" width="120" height="72" class="roleband manager"/>
+  <text x="80" y="243" text-anchor="middle" class="rolehdr">Manager</text>
+  <text x="80" y="260" text-anchor="middle" class="rolehdr" font-size="10.5" font-weight="400">:Tyme</text>
+  <rect x="150" y="212" width="360" height="72" class="cell"/>
+  <text x="164" y="232" class="cellTitle">Team oversight</text>
+  <text x="164" y="249" class="cellBody">Everything Editor can do, plus delete/archive/group management,</text>
+  <text x="164" y="264" class="cellBody">shared-availability toggle, Management (team time, corrections),</text>
+  <text x="164" y="278" class="cellBody">Availability categories, unsubmit a person's month.</text>
+  <rect x="520" y="212" width="360" height="30" class="cell"/>
+  <text x="534" y="231" class="note">(Intranet has no Manager tier — Editor is the top day-to-day role.)</text>
+
+  <!-- Row: Editor -->
+  <rect x="20" y="298" width="120" height="72" class="roleband editor"/>
+  <text x="80" y="329" text-anchor="middle" class="rolehdr">Editor</text>
+  <text x="80" y="346" text-anchor="middle" class="rolehdr" font-size="10.5" font-weight="400">:Tyme / :Intranet</text>
+  <rect x="150" y="298" width="360" height="72" class="cell"/>
+  <text x="164" y="318" class="cellTitle">Project catalog editing — narrow, by design</text>
+  <text x="164" y="335" class="cellBody">Create and edit projects only. Cannot delete/archive projects,</text>
+  <text x="164" y="350" class="cellBody">cannot manage project groups, and cannot turn on "share</text>
+  <text x="164" y="364" class="cellBody">availability with team" — that stays Manager+ (enforced server-side too).</text>
+  <rect x="520" y="298" width="360" height="72" class="cell"/>
+  <text x="534" y="318" class="cellTitle">Page &amp; document editing</text>
+  <text x="534" y="335" class="cellBody">Edit pages, publish/unpublish drafts, manage the document</text>
+  <text x="534" y="350" class="cellBody">library. Cannot edit the curated Navigation tree — that's Admin.</text>
+
+  <!-- Row: User -->
+  <rect x="20" y="378" width="120" height="72" class="roleband user"/>
+  <text x="80" y="409" text-anchor="middle" class="rolehdr">User</text>
+  <text x="80" y="426" text-anchor="middle" class="rolehdr" font-size="10.5" font-weight="400">:Tyme / :Intranet</text>
+  <rect x="150" y="378" width="360" height="72" class="cell"/>
+  <text x="164" y="398" class="cellTitle">Everyday time tracking</text>
+  <text x="164" y="415" class="cellBody">Stopwatch, Tasks, Calendar, Reports, Submit — own data only.</text>
+  <text x="164" y="430" class="cellBody">Read-only browsing of Projects and Availability categories</text>
+  <text x="164" y="444" class="cellBody">(no add/edit/inactive/archived toggles).</text>
+  <rect x="520" y="378" width="360" height="72" class="cell"/>
+  <text x="534" y="398" class="cellTitle">Everyday browsing</text>
+  <text x="534" y="415" class="cellBody">Read curated pages, search, and star favorites.</text>
+  <text x="534" y="430" class="cellBody">No edit access.</text>
+
+  <text x="20" y="480" class="note">Every role above is checked twice: hiding a control client-side is a UX courtesy, not the security boundary — the same</text>
+  <text x="20" y="496" class="note">Constants.Roles.HasScopedAccess(scope, minRole) check runs again on the server for every request (see auth-request-flow.svg).</text>
+</svg>

@@ -1,14 +1,35 @@
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">@ItemName</MudText>
-        @if (!string.IsNullOrEmpty(ItemProjectName))
-        {
-            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">@ItemProjectName</MudText>
-        }
+        <div class="d-flex align-center justify-space-between gap-2" style="width: 100%;">
+            <div style="min-width: 0;">
+                <MudText Typo="Typo.h6">@displayItemName</MudText>
+                @if (!string.IsNullOrEmpty(displayProjectName))
+                {
+                    <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">@displayProjectName</MudText>
+                }
+            </div>
+            @if (canEditWorkItem)
+            {
+                <MudTooltip Text="Edit work item name and project">
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Edit"
+                               OnClick="EditWorkItemAsync"
+                               Disabled="@isBusy">
+                        Edit
+                    </MudButton>
+                </MudTooltip>
+            }
+            else if (hasLockedSessions)
+            {
+                <MudTooltip Text="Name and project cannot change while any session is in a submitted month">
+                    <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Warning" />
+                </MudTooltip>
+            }
+        </div>
     </TitleContent>
     <DialogContent>
         <PageLoader IsLoading="@isLoading">
-            @if (sessionsByDay.Count == 0)
+            @if (sessions.Count == 0)
             {
                 <div class="d-flex flex-column align-center gap-3 my-4 px-2">
                     <MudText Align="Align.Center" Style="color: var(--mud-palette-text-secondary);">
@@ -38,84 +59,150 @@
             }
             else
             {
-                @foreach (var dayGroup in sessionsByDay)
-                {
-                    var dayTotal = dayGroup.Value.Aggregate(TimeSpan.Zero, (sum, s) => sum + GetSessionDuration(s));
+                @* One scroll host for summary + days so long histories never clip under the footer. *@
+                <div class="stopwatch-sessions-scroll">
+                    <div class="d-flex flex-wrap align-center justify-space-between gap-2 mb-2 px-1">
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            @visibleDayCount day@(visibleDayCount == 1 ? "" : "s") ·
+                            @visibleSessionCount session@(visibleSessionCount == 1 ? "" : "s") ·
+                            total @FormatDuration(visibleTotalDuration)
+                        </MudText>
+                        @if (dayGroups.Count > 1)
+                        {
+                            <div class="d-flex gap-1">
+                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ExpandAllDays" Disabled="@isBusy">
+                                    Expand all
+                                </MudButton>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="CollapseAllDays" Disabled="@isBusy">
+                                    Collapse
+                                </MudButton>
+                            </div>
+                        }
+                    </div>
 
-                    <MudCard Class="mb-3" Outlined="true">
-                        <MudCardHeader>
-                            <MudText Typo="Typo.subtitle1">@dayGroup.Key</MudText>
-                        </MudCardHeader>
-                        <MudCardContent Class="pa-0">
-                            <MudTable Items="@dayGroup.Value" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
-                                <HeaderContent>
-                                    @* Project is on the dialog header (work item); not repeated per session. *@
-                                    <MudTh>Start</MudTh>
-                                    <MudTh>Stop</MudTh>
-                                    <MudTh Style="width: 70px;">Duration</MudTh>
-                                    <MudTh Style="width: 88px; text-align: center;">Actions</MudTh>
-                                </HeaderContent>
-                                <RowTemplate>
-                                    @{
-                                        var captured = context;
-                                        var canEdit = !captured.IsLocked && !captured.IsRunning;
-                                    }
-                                    <MudTd DataLabel="Start">@SettingsService.FormatDateTime(captured.StartDate)</MudTd>
-                                    <MudTd DataLabel="Stop">
-                                        @if (captured.IsRunning)
-                                        {
-                                            <MudText Color="Color.Success" Typo="Typo.body2">Running</MudText>
-                                        }
-                                        else if (captured.EndDate.HasValue)
-                                        {
-                                            @SettingsService.FormatDateTime(GetSessionDisplayEnd(captured))
-                                        }
-                                    </MudTd>
-                                    <MudTd DataLabel="Duration">
-                                        <div class="d-flex align-center">
-                                            <span>@FormatDuration(GetSessionDuration(captured))</span>
-                                            @if (captured.IsLocked)
-                                            {
-                                                <MudTooltip Text="@($"Time for {captured.StartDate:MMM yyyy} has been submitted")">
-                                                    <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" Class="ml-1" />
-                                                </MudTooltip>
+                    @if (monthFilters.Count > 1)
+                    {
+                        <div class="d-flex flex-wrap gap-1 mb-3 px-1">
+                            <MudChip T="string"
+                                     Size="Size.Small"
+                                     Variant="@(selectedMonthKey is null ? Variant.Filled : Variant.Outlined)"
+                                     Color="Color.Primary"
+                                     OnClick="@(() => SelectMonthFilter(null))">
+                                All
+                            </MudChip>
+                            @foreach (var month in monthFilters)
+                            {
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Variant="@(selectedMonthKey == month.Key ? Variant.Filled : Variant.Outlined)"
+                                         Color="Color.Primary"
+                                         OnClick="@(() => SelectMonthFilter(month.Key))">
+                                    @month.Label · @FormatDuration(month.Total)
+                                </MudChip>
+                            }
+                        </div>
+                    }
+
+                    <MudExpansionPanels MultiExpansion="true" Elevation="0" Dense="true">
+                        @foreach (var day in dayGroups)
+                        {
+                            var dayKey = day.Key;
+                            var isExpanded = expandedDayKeys.Contains(dayKey);
+                            <MudExpansionPanel @key="dayKey"
+                                               Expanded="@isExpanded"
+                                               ExpandedChanged="@(e => OnDayExpandedChanged(dayKey, e))"
+                                               Dense="true"
+                                               HideIcon="false"
+                                               Class="stopwatch-sessions-day">
+                                <TitleContent>
+                                    <div class="d-flex align-center justify-space-between gap-2" style="width: 100%; padding-right: 8px;">
+                                        <MudText Typo="Typo.subtitle2">@day.Label</MudText>
+                                        <MudText Typo="Typo.caption" Style="font-family: monospace; color: var(--mud-palette-text-secondary); white-space: nowrap;">
+                                            @day.Sessions.Count · @FormatDuration(day.Total)
+                                        </MudText>
+                                    </div>
+                                </TitleContent>
+                                <ChildContent>
+                                    <MudTable Items="@day.Sessions" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm" Elevation="0">
+                                        <HeaderContent>
+                                            <MudTh>Start</MudTh>
+                                            <MudTh>Stop</MudTh>
+                                            <MudTh Style="width: 70px;">Duration</MudTh>
+                                            <MudTh Style="width: 96px; text-align: center;">Actions</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            @{
+                                                var captured = context;
+                                                var canEdit = !captured.IsLocked && !captured.IsRunning;
                                             }
-                                        </div>
-                                    </MudTd>
-                                    <MudTd Style="text-align: center;">
-                                        <div class="d-flex justify-center gap-1">
-                                            @if (canEdit)
-                                            {
-                                                <MudTooltip Text="Edit session">
-                                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
-                                                                   OnClick="@(() => OpenSessionEditAsync(captured))" />
-                                                </MudTooltip>
-                                                <MudTooltip Text="Delete session">
-                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                                                   OnClick="@(() => DeleteSessionAsync(captured))" />
-                                                </MudTooltip>
-                                            }
-                                            else if (captured.IsRunning)
-                                            {
-                                                <MudTooltip Text="Stop the timer before editing or deleting">
-                                                    <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Color="Color.Success" />
-                                                </MudTooltip>
-                                            }
-                                        </div>
-                                    </MudTd>
-                                </RowTemplate>
-                            </MudTable>
-                        </MudCardContent>
-                        <MudCardActions>
-                            <MudText Typo="Typo.body2" Class="ml-2">Day total: @FormatDuration(dayTotal)</MudText>
-                        </MudCardActions>
-                    </MudCard>
-                }
+                                            <MudTd DataLabel="Start">@SettingsService.FormatDateTime(captured.StartDate)</MudTd>
+                                            <MudTd DataLabel="Stop">
+                                                @if (captured.IsRunning)
+                                                {
+                                                    <MudText Color="Color.Success" Typo="Typo.body2">Running</MudText>
+                                                }
+                                                else if (captured.EndDate.HasValue)
+                                                {
+                                                    @SettingsService.FormatDateTime(GetSessionDisplayEnd(captured))
+                                                }
+                                            </MudTd>
+                                            <MudTd DataLabel="Duration">
+                                                <div class="d-flex align-center">
+                                                    <span style="font-family: monospace;">@FormatDuration(GetSessionDuration(captured))</span>
+                                                    @if (captured.IsLocked)
+                                                    {
+                                                        <MudTooltip Text="@($"Time for {captured.StartDate:MMM yyyy} has been submitted — duration is locked")">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" Class="ml-1" />
+                                                        </MudTooltip>
+                                                    }
+                                                </div>
+                                            </MudTd>
+                                            <MudTd Style="text-align: center;">
+                                                <div class="d-flex justify-center gap-1">
+                                                    @if (canEdit)
+                                                    {
+                                                        <MudTooltip Text="Edit duration">
+                                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                                                           OnClick="@(() => OpenSessionEditAsync(captured))" />
+                                                        </MudTooltip>
+                                                        <MudTooltip Text="Delete session">
+                                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                                           OnClick="@(() => DeleteSessionAsync(captured))" />
+                                                        </MudTooltip>
+                                                    }
+                                                    else if (captured.IsRunning)
+                                                    {
+                                                        <MudTooltip Text="Stop the timer before editing or deleting">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" Color="Color.Success" />
+                                                        </MudTooltip>
+                                                    }
+                                                    else if (captured.IsLocked)
+                                                    {
+                                                        <MudTooltip Text="@($"Submitted {captured.StartDate:MMM yyyy} — cannot edit")">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Color="Color.Warning" />
+                                                        </MudTooltip>
+                                                    }
+                                                </div>
+                                            </MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                </ChildContent>
+                            </MudExpansionPanel>
+                        }
+                    </MudExpansionPanels>
+
+                    @if (dayGroups.Count == 0 && selectedMonthKey is not null)
+                    {
+                        <MudText Align="Align.Center" Class="my-4" Style="color: var(--mud-palette-text-secondary);">
+                            No sessions in this month.
+                        </MudText>
+                    }
+                </div>
             }
         </PageLoader>
     </DialogContent>
     <DialogActions>
-        @if (sessionsByDay.Count > 0)
+        @if (sessions.Count > 0)
         {
             <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.Add"

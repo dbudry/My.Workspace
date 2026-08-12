@@ -35,10 +35,22 @@ var host = new HostBuilder()
                                        Environment.GetEnvironmentVariable("DefaultConnection");
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseSqlServer(connectionString, sqlOptions =>
+            {
                 sqlOptions.EnableRetryOnFailure(
                     maxRetryCount: 5,
                     maxRetryDelay: TimeSpan.FromSeconds(30),
-                    errorNumbersToAdd: null))
+                    errorNumbersToAdd: null);
+
+                // EF Core 10 changed the default translation of list.Contains(...) from a
+                // single JSON-array parameter (OPENJSON) to one scalar SQL parameter per
+                // collection item ("MultipleParameters"). Several queries here batch
+                // hundreds of TaskIds (TrackedTaskAdjustmentEnricher, StopwatchItem lookups,
+                // etc.), so that default turned routine reads into 300-600-parameter
+                // commands — flooding logs and creeping toward SQL Server's 2,100-parameter
+                // ceiling as history grows. Restore the pre-EF10 single-parameter behavior
+                // globally instead of touching every call site.
+                sqlOptions.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter);
+            })
             .ConfigureWarnings(warnings =>
                 // In local dev with background auto-migrate, ignore this so we don't treat
                 // "you should add a migration" as a fatal exception in the catch-all below.
@@ -93,6 +105,15 @@ var host = new HostBuilder()
     .ConfigureLogging(logging =>
     {
         logging.AddConsole(); // Basic console logging
+
+        // host.json / local.settings.json only filter the Functions Host's own log
+        // relay — the isolated worker process builds a separate ILoggerFactory right
+        // here, which has no category filters and defaults EF Core's SQL command
+        // logging to Information. That's why "Warning" in host.json didn't quiet the
+        // per-query parameter dumps seen locally. Mirror the same filters here so the
+        // worker's console output actually matches what host.json intends.
+        logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+        logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
     })
     .Build();
 

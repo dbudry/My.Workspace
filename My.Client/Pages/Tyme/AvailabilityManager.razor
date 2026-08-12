@@ -1,9 +1,12 @@
 @page "/tyme/availability"
-@attribute [Authorize(Policy = "Tyme:Manager:Scoped")]
+@* Open to any Tyme-scoped user (Tyme:User / Manager / Admin) — everyone tracking time needs
+   to see what availability tags (Vacation, OOO, Sick, ...) exist to log against them.
+   Add/Edit/Delete/Archive/inactive-visibility stay gated to Manager+ below via canManage. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
 
 @using My.Client.Models
 
-<PageTitle>Manage Availability</PageTitle>
+<PageTitle>Availability</PageTitle>
 
 <PageHeader Title="Availability Categories"
             Description="Projects flagged as team availability. Employees pick these when logging Vacation, OOO, Sick, or any other time off. Each entry dual-publishes a sanitized event to the workspace Team Availability calendar." />
@@ -11,17 +14,23 @@
 @* Action buttons live above the table so they don't compete with the filter row for
    horizontal space. The MudTable's own ToolBarContent keeps the filter switches and
    search field — what a manager toggles while reading the list. *@
-<MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-3">
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-               OnClick="AddCategory">Add Category</MudButton>
-</MudStack>
+@if (canManage)
+{
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="AddCategory">Add Category</MudButton>
+    </MudStack>
+}
 
 <MudTable Items="@rows" Loading="@isLoading" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true">
     <ToolBarContent>
-        <MudSwitch T="bool" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
-                   ValueChanged="@OnShowInactiveChanged" />
-        <MudSwitch T="bool" Class="ml-4" Value="showArchived" Label="View Archived" Color="Color.Secondary"
-                   ValueChanged="@OnShowArchivedChanged" />
+        @if (canManage)
+        {
+            <MudSwitch T="bool" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
+                       ValueChanged="@OnShowInactiveChanged" />
+            <MudSwitch T="bool" Class="ml-4" Value="showArchived" Label="View Archived" Color="Color.Secondary"
+                       ValueChanged="@OnShowArchivedChanged" />
+        }
         <MudSpacer />
         <MudTextField @bind-Value="searchString" Placeholder="Search" Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"
@@ -88,25 +97,28 @@
             }
         </MudTd>
         <MudTd DataLabel="Actions" Style="text-align:center;">
-            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
-                <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditCategory(context))">Edit</MudMenuItem>
-                @if (!context.IsArchived)
-                {
-                    <MudMenuItem Icon="@(context.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
-                                 OnClick="@(() => ToggleActive(context))">
-                        @(context.IsActive ? "Set inactive" : "Set active")
-                    </MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveCategory(context))">Archive</MudMenuItem>
-                }
-                else
-                {
-                    <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveCategory(context))">Unarchive</MudMenuItem>
-                }
-                @if (allowProjectDelete)
-                {
-                    <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveCategory(context))">Delete</MudMenuItem>
-                }
-            </MudMenu>
+            @if (canManage)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                    <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditCategory(context))">Edit</MudMenuItem>
+                    @if (!context.IsArchived)
+                    {
+                        <MudMenuItem Icon="@(context.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
+                                     OnClick="@(() => ToggleActive(context))">
+                            @(context.IsActive ? "Set inactive" : "Set active")
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveCategory(context))">Archive</MudMenuItem>
+                    }
+                    else
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveCategory(context))">Unarchive</MudMenuItem>
+                    }
+                    @if (allowProjectDelete)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveCategory(context))">Delete</MudMenuItem>
+                    }
+                </MudMenu>
+            }
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>

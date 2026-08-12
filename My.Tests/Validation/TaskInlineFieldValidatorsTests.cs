@@ -54,10 +54,10 @@ public class TaskInlineFieldValidatorsTests
     }
 
     [Fact]
-    public void Duration_rejects_over_24_hours()
+    public void Duration_clamps_over_storage_max_to_valid_value()
     {
         var result = _duration.Validate(new TaskDurationText { Value = "25:00" });
-        // Normalize clamps to 24:00 which is valid and > 0.
+        // Normalize clamps to 23:59 which is valid and > 0.
         Assert.True(result.IsValid);
     }
 

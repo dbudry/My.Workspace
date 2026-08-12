@@ -47,15 +47,16 @@
                                 </span>
                             </MudNavLink>
 
-                            @* Projects and Organizations are visible to any Tyme user — they need
-                               to know what projects/orgs exist when picking one on the Stopwatch
-                               or Tasks page. The page itself shows actions only to managers.
-                               Management stays manager-only since it surfaces other users' time. *@
+                            @* Projects, Organizations, and Availability are visible to any Tyme user —
+                               they need to know what projects/orgs/availability tags exist when
+                               picking one on the Stopwatch or Tasks page. Each page shows mutation
+                               actions only to managers. Management stays manager-only since it
+                               surfaces other users' time. *@
                             <MudNavLink Href="tyme/organizations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business">Organizations</MudNavLink>
                             <MudNavLink Href="tyme/projects" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Folder">Projects</MudNavLink>
+                            <MudNavLink Href="tyme/availability" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BeachAccess">Availability</MudNavLink>
                             <ScopedAuthorizeView Scope="Tyme" MinimumRole="Manager" ScopedOnly="true">
                                 <Authorized>
-                                    <MudNavLink Href="tyme/availability" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BeachAccess">Availability</MudNavLink>
                                     <MudNavLink Href="tyme/management" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.SupervisorAccount">Management</MudNavLink>
                                 </Authorized>
                             </ScopedAuthorizeView>

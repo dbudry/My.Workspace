@@ -24,6 +24,7 @@ concurrency:
 
 env:
   CSPROJ_PATH: My.Client/My.Client.csproj
+  CHANGELOG_PATH: My.Client/wwwroot/data/changelog.json
 
 jobs:
   # ---------- master only: must bump client version ----------
@@ -73,6 +74,39 @@ jobs:
           fi
 
           echo "Version bump valid: $BASE_V → $HEAD_V"
+
+      # In-app Versions page (/versions) reads this file — require a matching top entry.
+      - name: Require a changelog.json entry for this version
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_V="${{ steps.compare.outputs.head_version }}"
+
+          if [[ ! -f "$CHANGELOG_PATH" ]]; then
+            echo "::error file=${CHANGELOG_PATH}::Changelog file is missing."; exit 1
+          fi
+
+          TOP_V=$(python3 -c "import json; d=json.load(open('$CHANGELOG_PATH')); print(d[0]['version'] if d else '')")
+
+          echo "csproj <Version>:        $HEAD_V"
+          echo "changelog.json top entry: ${TOP_V:-<none>}"
+
+          if [[ "$TOP_V" != "$HEAD_V" ]]; then
+            echo "::error file=${CHANGELOG_PATH}::changelog.json's first entry (${TOP_V:-none}) does not match <Version> (${HEAD_V}) in ${CSPROJ_PATH}. Add a new entry to the top of changelog.json for v${HEAD_V}."
+            exit 1
+          fi
+
+          python3 -c "
+          import json
+          d = json.load(open('$CHANGELOG_PATH'))
+          entry = d[0]
+          if not isinstance(entry.get('changes'), list):
+              raise SystemExit('changelog.json top entry is missing a changes array')
+          for c in entry['changes']:
+              if not c.get('type') or not c.get('text'):
+                  raise SystemExit('changelog.json has a change entry missing type or text')
+          print('changelog.json entry for v' + entry['version'] + ' is well-formed (' + str(len(entry['changes'])) + ' change(s)).')
+          "
 
   # ---------- all PRs ----------
   build:

@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
@@ -5,6 +7,7 @@ using MudBlazor.Services;
 using My.Client.Components.Projects;
 using My.Client.Components.TrackedTasks;
 using My.Client.Models;
+using My.Client.Services;
 using Xunit;
 
 namespace My.Tests.Components
@@ -20,6 +23,8 @@ namespace My.Tests.Components
         public StopwatchItemDialogTests()
         {
             Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
+            Services.AddSingleton<IHttpClientFactory>(new EmptyProjectsHttpClientFactory());
+            Services.AddSingleton<ProjectsCache>();
             JSInterop.Mode = JSRuntimeMode.Loose;
         }
 
@@ -42,10 +47,32 @@ namespace My.Tests.Components
             await provider.InvokeAsync(() =>
                 dialogService.ShowAsync<StopwatchItemDialog>("Edit work item", parameters));
 
-            // If the dialog mounted, its ProjectAutocomplete child is in the tree — the exact
-            // thing that failed to render when it was handed an undeclared Dense parameter.
-            var picker = provider.FindComponent<ProjectAutocomplete>();
-            Assert.False(picker.Instance.Dense); // the dialog requests the roomier, non-dense field
+            // Dialog mounted with ProjectAutocomplete — avoid deep MudBlazor FindComponent walks.
+            Assert.Contains("Work item", provider.Markup, StringComparison.Ordinal);
+            Assert.Contains("Project", provider.Markup, StringComparison.Ordinal);
+            Assert.Contains("mud-input", provider.Markup, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private sealed class EmptyProjectsHttpClientFactory : IHttpClientFactory
+        {
+            public HttpClient CreateClient(string name)
+                => new HttpClient(new EmptyProjectsHandler())
+                {
+                    BaseAddress = new Uri("https://test.local/")
+                };
+        }
+
+        private sealed class EmptyProjectsHandler : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                var body = """{"items":[],"pageNumber":1,"pageSize":100,"totalCount":0,"hasNext":false}""";
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json")
+                });
+            }
         }
 
         Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;

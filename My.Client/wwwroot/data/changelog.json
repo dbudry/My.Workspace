@@ -1,0 +1,40 @@
+[
+  {
+    "version": "1.2.0",
+    "date": "2026-08-12",
+    "changes": [
+      { "type": "Added", "text": "Tasks list pages through full history (no 10,000-row cap)." },
+      { "type": "Added", "text": "Week view supports multiple in-progress draft rows at once." },
+      { "type": "Added", "text": "Google Calendar disconnect/reconnect; Pull missed events checks every [tag] in an event title." },
+      { "type": "Added", "text": "App version at the bottom of the left nav, with a \"New\" badge when a new version is first seen." },
+      { "type": "Added", "text": "Versions page listing release notes (linked from the nav version)." },
+      { "type": "Added", "text": "Editor:Tyme role: create and edit projects, without sharing availability with team (Manager+)." },
+      { "type": "Added", "text": "Submit page: early submission for the current (or future) month when time is already entered." },
+      { "type": "Changed", "text": "Duration storage limits enforced consistently across manual entry and timer completion." },
+      { "type": "Changed", "text": "Reports page has a dedicated filter row." },
+      { "type": "Fixed", "text": "Stopwatch sessions UX, project autocomplete (infinite scroll / open upward), work-item lock when any session is submitted." },
+      { "type": "Fixed", "text": "Task list column alignment; all-day duration uses a tooltip instead of a conflicting icon." },
+      { "type": "Fixed", "text": "Sidebar stray horizontal scrollbar next to the version number." },
+      { "type": "Fixed", "text": "Quieted noisy EF Core SQL command logging in the Function worker." },
+      { "type": "Fixed", "text": "Removed the SQL keepalive timer that blocked serverless database auto-pause." },
+      { "type": "Docs", "text": "Changelog process documented for developers; CI can gate version bumps on changelog entries." }
+    ]
+  },
+  {
+    "version": "1.1.0",
+    "date": "2026-08-10",
+    "changes": [
+      { "type": "Added", "text": "Tasks All / Week / Project views with week entry grids and duration UX." },
+      { "type": "Added", "text": "User default start time (08:00) and workspace TymeTrackTimeOfDay setting." },
+      { "type": "Added", "text": "Stopwatch session create-duration flow and browser Tasks page preferences." },
+      { "type": "Fixed", "text": "Time of day parsing for bare hour+meridiem (e.g. 9P) and HH:mm:ss under any culture." }
+    ]
+  },
+  {
+    "version": "1.0.0",
+    "date": "2026-07-28",
+    "changes": [
+      { "type": "Added", "text": "Initial public My.Workspace product baseline." }
+    ]
+  }
+]

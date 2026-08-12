@@ -67,6 +67,26 @@ namespace My.Functions
         }
 
         /// <summary>
+        /// Every month the current user could submit right now: has tracked time, not
+        /// already submitted. Unlike <see cref="GetOverdueAsync"/> this is NOT restricted
+        /// to months that have already ended — it's what populates the Submit page's own
+        /// list, so a user who pre-entered next month's vacation and wants to lock it in
+        /// before going on leave can see and submit it early. The nav badge / dashboard
+        /// "overdue" alerts intentionally keep using GetOverdueAsync above and are
+        /// unaffected by this.
+        /// </summary>
+        [Function("GetEligibleTimeSubmissions")]
+        public async Task<IActionResult> GetEligibleAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/eligible")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+
+            var eligible = await ComputeEligibleForSubmissionAsync(userId);
+            return new OkObjectResult(eligible);
+        }
+
+        /// <summary>
         /// Manager team view: one row per (user × month) for users in the caller's scope
         /// where the user has tracked time in that past month, with submitted/unsubmitted
         /// status. Optional query string filters: ?status=submitted|unsubmitted|all (default
@@ -186,6 +206,18 @@ namespace My.Functions
                 .FirstOrDefaultAsync(s => s.UserId == userId && s.Year == body!.Year && s.Month == body.Month);
             if (existing != null)
                 return new BadRequestObjectResult("This month has already been submitted.");
+
+            // Early submission (current or future month) is allowed, but only for a month
+            // the user has actually entered time in — e.g. pre-entered vacation before
+            // going on leave. Without this, CreateTimeSubmissionDtoValidator no longer
+            // blocks the current/future month at the shape layer, so this is the only
+            // thing stopping a submission for a month with nothing in it.
+            var monthStart = new DateTime(body!.Year, body.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+            var hasTrackedTime = await _dbContext.TrackedTasks
+                .AnyAsync(t => t.UserId == userId && t.StartDate >= monthStart && t.StartDate <= monthEnd);
+            if (!hasTrackedTime)
+                return new BadRequestObjectResult("No tracked time for that month yet — nothing to submit.");
 
             var nowUtc = DateTime.UtcNow;
             var entity = new TimeSubmission
@@ -477,6 +509,45 @@ namespace My.Functions
                 .Where(m => !submittedSet.Contains((m.Year, m.Month)))
                 .OrderBy(m => m.Year).ThenBy(m => m.Month)
                 .Select(m => new OverdueMonthDto { Year = m.Year, Month = m.Month })
+                .ToList();
+        }
+
+        /// <summary>
+        /// Same shape as <see cref="ComputeOverdueAsync"/> but with no "month must already
+        /// be over" restriction — every month the user has tracked time in and hasn't
+        /// submitted, past, current, or future. <see cref="EligibleMonthDto.IsEarly"/>
+        /// flags the ones that haven't ended yet, purely for UI labeling.
+        /// </summary>
+        private async Task<List<EligibleMonthDto>> ComputeEligibleForSubmissionAsync(string userId)
+        {
+            var nowUtc = DateTime.UtcNow;
+
+            var taskMonths = await _dbContext.TrackedTasks
+                .Where(t => t.UserId == userId)
+                .Select(t => new { t.StartDate.Year, t.StartDate.Month })
+                .Distinct()
+                .ToListAsync();
+
+            if (taskMonths.Count == 0) return new List<EligibleMonthDto>();
+
+            var submitted = await _dbContext.TimeSubmissions
+                .Where(s => s.UserId == userId)
+                .Select(s => new { s.Year, s.Month })
+                .ToListAsync();
+
+            var submittedSet = submitted
+                .Select(x => (x.Year, x.Month))
+                .ToHashSet();
+
+            return taskMonths
+                .Where(m => !submittedSet.Contains((m.Year, m.Month)))
+                .OrderBy(m => m.Year).ThenBy(m => m.Month)
+                .Select(m => new EligibleMonthDto
+                {
+                    Year = m.Year,
+                    Month = m.Month,
+                    IsEarly = TimeSubmissionRules.IsEarlySubmission(m.Year, m.Month, nowUtc)
+                })
                 .ToList();
         }
     }

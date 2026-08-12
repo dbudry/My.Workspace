@@ -323,22 +323,21 @@ module roles.
 
 ## Background jobs
 
-Two TimerTrigger functions:
+TimerTrigger functions:
 
 - **`GoogleCalendarWatchRenewalFunction`** — daily at 06:00 UTC. Renews any
   Google push channel that expires within 96 hours so the inbound calendar sync
   keeps flowing.
-- **`KeepaliveFunction`** — every 5 minutes. Warms the Consumption-plan
-  instance (well inside the ~20-min idle deallocation window) and runs a
-  lightweight SQL `CanConnectAsync` so the connection path is not ice-cold
-  after idle. Function executions sit inside the free monthly grant; SQL ping
-  cost is negligible on provisioned Azure SQL (see DEPLOYMENT.md cost notes).
+
+There is **no** SQL keepalive timer. If you host Azure SQL **serverless** with
+auto-pause, idle cost drops when the DB pauses; Function/SQL cold starts after
+idle are expected.
 
 ## Hosting notes
 
 - Static Web App: `swa-my-workspace` in `rg-my-workspace`.
 - Function App: `func-my-workspace` in the same RG. Consumption plan; Always-On
-  is **not** used (cost) — the keepalive timer compensates.
+  is **not** used (cost).
 - SQL: `your-sql.database.windows.net`, database `MyWorkspace`. Production
   authenticates via Azure AD (`Active Directory Default`).
 - Routes / fallback configured in `My.Client/wwwroot/staticwebapp.config.json`.

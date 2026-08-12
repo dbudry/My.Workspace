@@ -14,5 +14,11 @@ namespace My.Shared.Dtos.StopwatchItem
         public DateTime? ActiveSessionStartDate { get; set; }
         public DateTime LastWorkedAt { get; set; }
         public DateTime CreatedAt { get; set; }
+
+        /// <summary>
+        /// True when any session falls in a submitted (locked) month. Name/project on the work
+        /// item cannot change while this is true; unlocked sessions can still edit duration.
+        /// </summary>
+        public bool HasLockedSessions { get; set; }
     }
 }

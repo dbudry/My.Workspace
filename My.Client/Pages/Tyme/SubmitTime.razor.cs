@@ -26,11 +26,11 @@ namespace My.Client.Pages.Tyme
 
         private string pageDescription => canManage switch
         {
-            false => "Mark a completed month's work as final. Once a month is submitted, its tasks are locked from edits.",
+            false => "Mark a month's work as final. Once a month is submitted, its tasks are locked from edits. You can submit the current or a future month early if you've already entered time for it — handy before going on leave.",
             true when _managerView == "team" =>
                 "Review and manage team submissions. Filter by status, employee, or month. Unsubmit a row when an employee needs to correct their time.",
             _ =>
-                "Mark your own completed months as final. Switch to Team above to review or unsubmit employee months."
+                "Mark your own months as final — including early, if you've entered time ahead of when it's due. Switch to Team above to review or unsubmit employee months."
         };
 
         [CascadingParameter]
@@ -110,13 +110,19 @@ namespace My.Client.Pages.Tyme
             try
             {
                 var submissionsTask = client.GetFromJsonAsync<List<TimeSubmissionDto>>(Constants.API.TimeSubmission.Get);
-                // Shared cache: publishes to nav badge without a second overdue GET.
+                // Eligible = everything submittable right now, including the current/future
+                // month (early submission) — this is what populates "Your months" below.
+                var eligibleTask = client.GetFromJsonAsync<List<EligibleMonthDto>>(Constants.API.TimeSubmission.GetEligible);
+                // Separate, unchanged: shared "overdue" cache that drives the nav badge and
+                // dashboard alert. Refreshed here too (in parallel) purely to keep it warm
+                // for this session — its result is intentionally NOT used to build rows,
+                // so overdue-only alert semantics never change.
                 var overdueTask = SubmissionEvents.RefreshAsync();
 
-                await Task.WhenAll(submissionsTask, overdueTask);
+                await Task.WhenAll(submissionsTask, eligibleTask, overdueTask);
 
                 var submissions = submissionsTask.Result ?? new List<TimeSubmissionDto>();
-                var overdue = overdueTask.Result.ToList();
+                var eligible = eligibleTask.Result ?? new List<EligibleMonthDto>();
 
                 var seen = new HashSet<(int Y, int M)>();
                 var combined = new List<MonthRow>();
@@ -133,10 +139,10 @@ namespace My.Client.Pages.Tyme
                             TimeSubmissionId = s.TimeSubmissionId
                         });
                 }
-                foreach (var o in overdue)
+                foreach (var e in eligible)
                 {
-                    if (seen.Add((o.Year, o.Month)))
-                        combined.Add(new MonthRow { Year = o.Year, Month = o.Month, IsSubmitted = false });
+                    if (seen.Add((e.Year, e.Month)))
+                        combined.Add(new MonthRow { Year = e.Year, Month = e.Month, IsSubmitted = false, IsEarly = e.IsEarly });
                 }
 
                 rows = combined
@@ -183,6 +189,8 @@ namespace My.Client.Pages.Tyme
             public bool IsSubmitted { get; set; }
             public DateTime? SubmittedAt { get; set; }
             public string? TimeSubmissionId { get; set; }
+            /// <summary>True when this month hasn't ended yet — labels the row as an early submission.</summary>
+            public bool IsEarly { get; set; }
         }
     }
 }

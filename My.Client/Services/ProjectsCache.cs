@@ -44,18 +44,21 @@ namespace My.Client.Services
         }
 
         /// <summary>
-        /// Active (non-archived) projects for time-entry pickers.
-        /// Uses GET /projects with include flags off — not projectlookup, which forces
-        /// includeArchived/includeInactive and caps at 25 mixed rows. Filtering a mixed
-        /// first page client-side hides active projects that sort after inactive ones
-        /// (e.g. "IT Support" never appears until you type a search).
+        /// One page of active (non-archived, active) projects for time-entry pickers.
+        /// Used by ProjectAutocomplete infinite scroll. Does not use projectlookup
+        /// (mixed archived/inactive, capped at 25).
         /// </summary>
-        public async Task<IReadOnlyList<Project>> LookupActiveAsync(string? search = null, int pageSize = 50)
+        public async Task<(IReadOnlyList<Project> Items, bool HasNext)> LookupActivePageAsync(
+            string? search = null,
+            int pageNumber = 1,
+            int pageSize = ListQueryParameters.MaxPageSize)
         {
             var query = new ListQueryParameters
             {
-                PageNumber = 1,
-                PageSize = pageSize,
+                PageNumber = pageNumber < 1 ? 1 : pageNumber,
+                PageSize = pageSize < 1
+                    ? ListQueryParameters.MaxPageSize
+                    : Math.Min(pageSize, ListQueryParameters.MaxPageSize),
                 Search = search,
                 SortBy = "Name",
                 IncludeArchived = false,
@@ -64,7 +67,37 @@ namespace My.Client.Services
 
             var client = _clientFactory.CreateClient(Constants.API.ClientName);
             var response = await TryGetPagedAsync(client, Constants.API.Project.Get, query);
-            return response?.Items.Select(d => new Project(d)).ToList() ?? new List<Project>();
+            if (response?.Items == null)
+                return (Array.Empty<Project>(), false);
+
+            var items = response.Items.Select(d => new Project(d)).ToList();
+            return (items, response.HasNext);
+        }
+
+        /// <summary>
+        /// All active projects (pages until complete). Prefer
+        /// <see cref="LookupActivePageAsync"/> for UI pickers with infinite scroll.
+        /// </summary>
+        public async Task<IReadOnlyList<Project>> LookupActiveAsync(string? search = null, int pageSize = ListQueryParameters.MaxPageSize)
+        {
+            var all = new List<Project>();
+            var pageNumber = 1;
+            const int maxPages = 200;
+
+            while (pageNumber <= maxPages)
+            {
+                var (items, hasNext) = await LookupActivePageAsync(search, pageNumber, pageSize);
+                if (items.Count == 0)
+                    break;
+
+                all.AddRange(items);
+                if (!hasNext)
+                    break;
+
+                pageNumber++;
+            }
+
+            return all;
         }
 
         /// <summary>

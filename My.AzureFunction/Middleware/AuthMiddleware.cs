@@ -197,7 +197,10 @@ namespace My.Functions
             await next(context);
         }
 
-        private static void ApplyImpersonation(ClaimsIdentity identity, Microsoft.Azure.Functions.Worker.Http.HttpRequestData req)
+        // internal (not private) so My.Tests can exercise the impersonation role-shape
+        // filtering directly — this is the exact logic that silently dropped Editor:Tyme
+        // when the allowlist in IsValidRoleShape was missing it (see IsValidRoleShape).
+        internal static void ApplyImpersonation(ClaimsIdentity identity, Microsoft.Azure.Functions.Worker.Http.HttpRequestData req)
         {
             if (!req.Headers.TryGetValues("X-Impersonate-Role", out var values)) return;
 
@@ -221,16 +224,18 @@ namespace My.Functions
                 identity.AddClaim(new Claim(ClaimTypes.Role, role));
         }
 
-        private static bool IsValidRoleShape(string value)
+        internal static bool IsValidRoleShape(string value)
         {
-            // Accepted forms: "Admin", "Manager", "User", or "<base>:<scope>" where base is one
-            // of those three and scope is alphanumeric/underscore. Defends against the header
-            // being used to inject arbitrary role strings even though the caller is a real Admin.
+            // Accepted forms: "Admin", "Manager", "Editor", "User", or "<base>:<scope>" where
+            // base is one of those four and scope is alphanumeric/underscore. Defends against
+            // the header being used to inject arbitrary role strings even though the caller is
+            // a real Admin.
             var parts = value.Split(':');
             if (parts.Length is 0 or > 2) return false;
             var baseRole = parts[0];
             if (baseRole != Constants.Roles.Admin
                 && baseRole != Constants.Roles.Manager
+                && baseRole != Constants.Roles.Editor
                 && baseRole != Constants.Roles.User) return false;
             if (parts.Length == 1) return true;
             var scope = parts[1];

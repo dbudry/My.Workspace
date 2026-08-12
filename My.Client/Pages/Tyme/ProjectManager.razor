@@ -14,13 +14,17 @@
 @* Action buttons live above the table so they don't compete with the filter row for
    horizontal space. The MudTable's own ToolBarContent keeps the filters and search —
    what a manager toggles while reading the list. *@
-@if (canManage)
+@if (canManage || canEditProjects)
 {
     <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-3">
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NoteAdd"
                    OnClick="AddProject">Add Project</MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="AddProjectGroup">Add Group</MudButton>
+        @* Project groups are a Manager+ concern, not part of Editor's create/edit scope. *@
+        @if (canManage)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddProjectGroup">Add Group</MudButton>
+        }
     </MudStack>
 }
 
@@ -35,7 +39,7 @@
         @* Inactive/Archived toggles are manager tools — regular users only care about the
            active set they can pick projects from on Stopwatch. Hiding these for non-managers
            also means the cache-side filter stays at "active only" for them. *@
-        @if (canManage)
+        @if (canManage || canEditProjects)
         {
             <MudSwitch T="bool" Class="ml-4" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
                        ValueChanged="@OnShowInactiveChanged" />
@@ -159,25 +163,30 @@
                 }
             </MudTd>
             <MudTd DataLabel="Actions" Style="text-align:center;">
-                @if (canManage)
+                @if (canManage || canEditProjects)
                 {
                     <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
                         <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditProject(project))">Edit</MudMenuItem>
-                        @if (!project.IsArchived)
+                        @* Set active/inactive, archive, and delete stay Manager+ — Editor's
+                           scope is create/edit only, and the API 403s these for Editor anyway. *@
+                        @if (canManage)
                         {
-                            <MudMenuItem Icon="@(project.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
-                                         OnClick="@(() => ToggleActiveProject(project))">
-                                @(project.IsActive ? "Set inactive" : "Set active")
-                            </MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveProject(project))">Archive</MudMenuItem>
-                        }
-                        else
-                        {
-                            <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveProject(project))">Unarchive</MudMenuItem>
-                        }
-                        @if (allowProjectDelete)
-                        {
-                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveProject(project))">Delete</MudMenuItem>
+                            @if (!project.IsArchived)
+                            {
+                                <MudMenuItem Icon="@(project.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
+                                             OnClick="@(() => ToggleActiveProject(project))">
+                                    @(project.IsActive ? "Set inactive" : "Set active")
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Archive" OnClick="@(() => ArchiveProject(project))">Archive</MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Unarchive" OnClick="@(() => ArchiveProject(project))">Unarchive</MudMenuItem>
+                            }
+                            @if (allowProjectDelete)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveProject(project))">Delete</MudMenuItem>
+                            }
                         }
                     </MudMenu>
                 }

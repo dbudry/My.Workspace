@@ -134,10 +134,10 @@ In Azure Portal → `func-my-workspace` → **Configuration → Application sett
 |---|---|---|
 | Resource group | `rg-my-workspace` | Holds everything below. |
 | Static Web App | `swa-my-workspace` | Free tier; serves the WASM client and proxies `/api/*` to the Function App. |
-| Function App | `func-my-workspace` | Consumption plan. The `KeepaliveFunction` timer fires every 5 min to avoid host cold starts and pings SQL connectivity; the daily `GoogleCalendarWatchRenewalFunction` keeps push channels alive. |
+| Function App | `func-my-workspace` | Consumption plan. Daily `GoogleCalendarWatchRenewalFunction` keeps calendar push channels alive. No SQL keepalive (so serverless SQL can auto-pause). |
 | Storage account | (auto-named) | Required by the Function host. |
-| SQL Server / DB | `your-sql.database.windows.net` / `MyWorkspace` | Azure AD auth in production. |
-| Application Insights | linked to the Function App | Function logs + telemetry. The keepalive function logs at Debug level — bump the `Logging:LogLevel:My.Functions.KeepaliveFunction` setting if you want to see the pings. |
+| SQL Server / DB | `your-sql.database.windows.net` / `MyWorkspace` | Azure AD auth in production. Prefer **serverless + auto-pause** when idle cost matters. |
+| Application Insights | linked to the Function App | Function logs + telemetry. |
 
 The Function App's **System-Assigned Managed Identity** must be **On**
 (Function App → Identity → System assigned) and is granted:
@@ -219,33 +219,16 @@ expects HTTP **401**. Other status codes mean different things:
 ## Cost notes
 
 The Consumption plan is well inside the free monthly grant for typical use
-(1M executions, 400k GB-seconds). The keepalive timer adds ~8,640 executions/month
-which is <1% of the grant.
-
-### Keepalive SQL ping cost
-
-`KeepaliveFunction` runs every **5 minutes** and issues a single
-`Database.CanConnectAsync()` against Azure SQL (in addition to waking the
-Function worker). Rough monthly volume: **~8,640 pings**.
-
-| SQL SKU | Effect of the ping | Expected cost impact |
-|---|---|---|
-| **Provisioned** (DTU / vCore) — production `MyWorkspace` today | Negligible connection check; DB is already billed 24/7 | **≈ $0 extra** (fraction of a DTU-second per ping) |
-| **Serverless** (auto-pause enabled) | Pings **prevent auto-pause**, so you pay minimum vCores continuously | Can be **material** (you lose the paused discount) — avoid if you rely on pause savings |
-| **Serverless** (auto-pause disabled) | Same as provisioned for billing | Ping cost still negligible |
-
-On the current provisioned Azure SQL setup, the SQL keep-warm path is effectively free.
-Do **not** switch production to serverless-with-auto-pause if you want this keepalive
-to keep the DB warm — the ping would fight the pause and erase the savings.
+(1M executions, 400k GB-seconds). There is **no** SQL keepalive timer: Azure SQL
+**serverless** can auto-pause when idle (recommended for low-traffic self-host).
+Expect Function/SQL cold starts after idle — that is intentional.
 
 The biggest cost levers in practice are:
 
-- **SQL DTUs / vCores** — pick the size based on observed query latency.
+- **SQL DTUs / vCores / serverless auto-pause** — pick based on traffic and latency.
 - **Application Insights** — sampling helps if you see ingestion costs creep.
 - **Static Web App** — Free tier is fine until you outgrow its 100 GB/month
   bandwidth ceiling.
 
 If you ever want to eliminate cold starts entirely, the upgrade path is the
-**Premium plan with Always Ready instances** (~$13/mo for B1). The keepalive
-timer becomes redundant for the Function host in that case (SQL ping may still
-help connection-pool warmth on provisioned SQL).
+**Premium plan with Always Ready instances** (~$13/mo for B1).

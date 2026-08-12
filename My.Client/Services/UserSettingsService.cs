@@ -212,34 +212,82 @@ namespace My.Client.Services
         }
 
         /// <summary>
+        /// Browser flag that blocks auto Google connect on next dashboard load.
+        /// Cleared on logout, disconnect, and when the user starts connect again.
+        /// </summary>
+        public const string GoogleAutoConnectAttemptedKey = "googleAutoConnectAttempted";
+
+        /// <summary>
         /// Starts the Google Calendar + Drive connect flow (the same one used from Settings).
         /// This is the mechanism that makes the integration "automatic" after OIDC login for route 2.
         /// Optionally stores a return URL so that after the consent callback + backfill we can
         /// send the user back to where they were (e.g. dashboard or editor) instead of leaving them on /settings.
+        /// Throws on failure so Settings can show the error (no silent no-op).
         /// </summary>
         public async Task InitiateGoogleConnectAsync(string? returnUrlAfterConnect = null)
         {
+            if (!string.IsNullOrWhiteSpace(returnUrlAfterConnect))
+            {
+                await _js.InvokeVoidAsync("localStorage.setItem", "postGoogleConnectReturnUrl", returnUrlAfterConnect);
+            }
+
+            var client = _clientFactory.CreateClient(Constants.API.ClientName);
+            var settingsRedirect = $"{_navigation.BaseUri.TrimEnd('/')}/settings";
+            var url =
+                $"{Constants.API.GoogleCalendar.GetAuthUrl}?redirectUri={Uri.EscapeDataString(settingsRedirect)}";
+
+            HttpResponseMessage response;
             try
             {
-                if (!string.IsNullOrWhiteSpace(returnUrlAfterConnect))
-                {
-                    await _js.InvokeVoidAsync("localStorage.setItem", "postGoogleConnectReturnUrl", returnUrlAfterConnect);
-                }
-
-                var client = _clientFactory.CreateClient(Constants.API.ClientName);
-                var settingsRedirect = $"{_navigation.BaseUri.TrimEnd('/')}/settings";
-                var resp = await client.GetFromJsonAsync<AuthUrlResponse>(
-                    $"{Constants.API.GoogleCalendar.GetAuthUrl}?redirectUri={Uri.EscapeDataString(settingsRedirect)}");
-
-                if (resp != null && !string.IsNullOrWhiteSpace(resp.Url))
-                {
-                    _navigation.NavigateTo(resp.Url, forceLoad: true);
-                }
+                response = await client.GetAsync(url);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Let the caller surface a message if desired. Silent failure here is acceptable
-                // because the user can still go to Settings manually.
+                throw new InvalidOperationException(
+                    "Couldn't reach the server to start Google connect. Try again in a moment.", ex);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                var detail = string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase : body.Trim();
+                throw new InvalidOperationException(
+                    $"Couldn't start Google connect ({(int)response.StatusCode}). {detail}".Trim());
+            }
+
+            AuthUrlResponse? resp;
+            try
+            {
+                resp = await response.Content.ReadFromJsonAsync<AuthUrlResponse>();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Server returned an unexpected response when starting Google connect.", ex);
+            }
+
+            if (resp == null || string.IsNullOrWhiteSpace(resp.Url))
+            {
+                throw new InvalidOperationException(
+                    "Server did not return a Google sign-in URL. Calendar/Drive may not be configured.");
+            }
+
+            _navigation.NavigateTo(resp.Url, forceLoad: true);
+        }
+
+        /// <summary>
+        /// Clears the browser flag set after a connect attempt or successful connection so
+        /// disconnect → connect (and auto-connect after sign-in) can run again.
+        /// </summary>
+        public async Task ClearGoogleAutoConnectAttemptedAsync()
+        {
+            try
+            {
+                await _js.InvokeVoidAsync("localStorage.removeItem", GoogleAutoConnectAttemptedKey);
+            }
+            catch
+            {
+                // JS unavailable (tests / prerender) — ignore.
             }
         }
 

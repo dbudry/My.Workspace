@@ -5,12 +5,18 @@ using My.DAL.Models;
 namespace My.Functions.Helpers
 {
     /// <summary>
-    /// Loads all tracked tasks in a date window in one database round-trip (split includes),
-    /// avoiding per-page COUNT + SKIP queries that calendar/reports used to trigger.
+    /// Loads tracked tasks in a date window in one round-trip (split includes).
+    /// Calendar/reports use this with a bounded window — not the unified Tasks pager
+    /// (that uses <see cref="ITaskListManualStore"/> + <see cref="My.Shared.Rules.TaskListRules"/>).
     /// </summary>
     internal static class TrackedTaskRangeQuery
     {
-        internal const int MaxRows = 10_000;
+        /// <summary>
+        /// Safety only when the caller omits a date window. Date-bounded loads are uncapped
+        /// so multi-year history inside a requested range is not silently truncated.
+        /// </summary>
+        internal const int UnboundedMaxRows = 50_000;
+
         private const string IncludeGraph = "Project.ProjectGroup,Project.Organization";
 
         internal static async Task<List<TrackedTask>> LoadAsync(
@@ -30,7 +36,11 @@ namespace My.Functions.Helpers
 
             query = query.AsSplitQuery().OrderByDescending(t => t.StartDate);
 
-            return await query.Take(MaxRows).ToListAsync(ct);
+            // Bounded window: return everything in range (true paging is the tasklist path).
+            if (from.HasValue && to.HasValue)
+                return await query.ToListAsync(ct);
+
+            return await query.Take(UnboundedMaxRows).ToListAsync(ct);
         }
     }
 }

@@ -188,7 +188,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         }
     }
 
-    /// <summary>Called from Tasks toolbar New Task in Week → Day mode.</summary>
+    /// <summary>Called from Tasks toolbar New Task in Week → Day mode. Multiple drafts allowed.</summary>
     public void RequestAddDraftRow()
     {
         if (isLoading)
@@ -197,13 +197,26 @@ public partial class WeekDayAcrossGrid : IDisposable
             return;
         }
 
-        if (rows.Any(r => r.ShowDraftEditors))
-        {
-            Snackbar.Add("Finish the draft row (project, task name, and hours) before adding another.", Severity.Info);
+        rows.Add(BuildDraftRow());
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Removes an unused draft row (no saved days / no duration persisted). Does not hit the API.
+    /// </summary>
+    private void RemoveDraftRow(RowVm row)
+    {
+        if (!row.ShowDraftEditors)
             return;
+
+        foreach (var cell in row.Cells)
+        {
+            cell.DebounceCts?.Cancel();
+            cell.DebounceCts?.Dispose();
+            cell.DebounceCts = null;
         }
 
-        rows.Add(BuildDraftRow());
+        rows.Remove(row);
         StateHasChanged();
     }
 
@@ -774,7 +787,7 @@ public partial class WeekDayAcrossGrid : IDisposable
                 return;
 
             var createStart = cell.Date.Date.Add(defaultStartTime);
-            var createDuration = TimeSpan.FromMinutes(30);
+            var createDuration = TimeSpan.Zero;
             if (WeekEntryGridRules.TryParseDayDurationText(cell.DurationText, out var typed)
                 && typed > TimeSpan.Zero)
                 createDuration = typed;

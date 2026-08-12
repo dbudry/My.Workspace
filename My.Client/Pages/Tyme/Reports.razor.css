@@ -1,0 +1,22 @@
+.report-tabs-shell {
+    position: relative;
+}
+
+.report-tabs-shell ::deep(.mud-tabs-toolbar) {
+    min-height: 48px;
+}
+
+.report-tabs-shell--actions ::deep(.mud-tabs-toolbar) {
+    padding-right: 160px;
+}
+
+.report-tabs-actions {
+    position: absolute;
+    top: 0;
+    right: 8px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 48px;
+}

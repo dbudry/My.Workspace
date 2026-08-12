@@ -90,7 +90,7 @@
         // will re-evaluate whether Calendar+Drive consent is needed (route 2 behavior).
         try
         {
-            await JS.InvokeVoidAsync("localStorage.removeItem", "googleAutoConnectAttempted");
+            await JS.InvokeVoidAsync("localStorage.removeItem", UserSettingsService.GoogleAutoConnectAttemptedKey);
             await JS.InvokeVoidAsync("localStorage.removeItem", "postGoogleConnectReturnUrl");
         }
         catch { }

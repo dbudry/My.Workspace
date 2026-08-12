@@ -274,11 +274,19 @@ namespace My.Client.Components.TrackedTasks
                 return;
             }
 
-            if (IsStopwatchSession
-                && new TimeSpan(editDurationHours, editDurationMinutes, 0) <= TimeSpan.Zero)
+            // Zero-duration + storage-limit checks for timed entries — see
+            // DurationStorageRules.ValidateForFinalize. Applies to both Create and Edit so a
+            // task can't be edited back down to zero either. All-day entries are exempt (their
+            // duration is derived from workday hours, not this field).
+            if (!editIsAllDay)
             {
-                saveError = "Enter a duration greater than zero.";
-                return;
+                var timed = new TimeSpan(editDurationHours, editDurationMinutes, 0);
+                var durationError = DurationStorageRules.ValidateForFinalize(timed, editIsAllDay);
+                if (durationError != null)
+                {
+                    saveError = durationError;
+                    return;
+                }
             }
 
             isBusy = true;
@@ -309,6 +317,15 @@ namespace My.Client.Components.TrackedTasks
                     startDate = DateTime.SpecifyKind(startDay, DateTimeKind.Utc);
                     endDate = DateTime.SpecifyKind(endDay, DateTimeKind.Utc);
                     duration = AllDayEntryRules.DurationFor(startDay, endDay, workdayHours);
+                    // Multi-day all-day can exceed SQL time; block in UI instead of API 500.
+                    var allDayDurationError = DurationStorageRules.ValidateForStorage(duration);
+                    if (allDayDurationError != null)
+                    {
+                        saveError =
+                            "All-day span is too long to store as a single entry. Use a shorter date range or log each day separately.";
+                        isBusy = false;
+                        return;
+                    }
                 }
                 else
                 {

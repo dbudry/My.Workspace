@@ -66,18 +66,21 @@
                     </MudText>
                 </DialogFormGroup>
 
-                <DialogFormGroup>
-                    <MudSwitch T="bool" Value="Model.IsSharedAvailability" Label="Share availability with team"
-                               Color="Color.Primary"
-                               ValueChanged="OnSharedAvailabilityChanged" />
-                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                        When on, time logged against this project also writes a sanitized
-                        "[&lt;Name&gt;] &lt;Project&gt;" event to the workspace Team Availability calendar
-                        (e.g. Vacation, OOO). Task names and details stay private.
-                    </MudText>
-                </DialogFormGroup>
+                @if (CanManageSharedAvailability)
+                {
+                    <DialogFormGroup>
+                        <MudSwitch T="bool" Value="Model.IsSharedAvailability" Label="Share availability with team"
+                                   Color="Color.Primary"
+                                   ValueChanged="OnSharedAvailabilityChanged" />
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            When on, time logged against this project also writes a sanitized
+                            "[&lt;Name&gt;] &lt;Project&gt;" event to the workspace Team Availability calendar
+                            (e.g. Vacation, OOO). Task names and details stay private.
+                        </MudText>
+                    </DialogFormGroup>
+                }
 
-                @if (Model.IsSharedAvailability)
+                @if (Model.IsSharedAvailability && CanManageSharedAvailability)
                 {
                     <MudTextField @bind-Value="Model.TeamDisplayName" For="@(() => Model.TeamDisplayName)"
                                   Label="Team calendar display name (optional)"
@@ -101,6 +104,15 @@
     [Parameter] public List<ProjectGroup> Groups { get; set; } = new();
     [Parameter] public List<Organization> Organizations { get; set; } = new();
     [Parameter] public string SubmitLabel { get; set; } = "Save";
+
+    /// <summary>
+    /// Manager+ only. Editor:Tyme can create/edit projects but shared-availability
+    /// publishing (writes to the workspace Team Availability calendar) is a team-visibility
+    /// decision reserved for Manager+ — see ProjectFunction.CreateProjectAsync/UpdateProjectAsync
+    /// for the matching server-side enforcement. Defaults true so any other future caller of
+    /// this dialog isn't silently locked out without opting in.
+    /// </summary>
+    [Parameter] public bool CanManageSharedAvailability { get; set; } = true;
 
     private MudForm? form;
 

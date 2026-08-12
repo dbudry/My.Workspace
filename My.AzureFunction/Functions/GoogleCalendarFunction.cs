@@ -791,26 +791,39 @@ namespace My.Functions
         /// routes to a single project regardless of which user owns the calendar. If the
         /// tag is present but doesn't resolve, returns null projectId and leaves the tag
         /// in place so the user can see what they typed.
+        ///
+        /// A title can carry more than one bracketed token (e.g. "[admin] [itsup] Flight
+        /// out" — a personal label plus the real project tag). We check every bracketed
+        /// token left-to-right and use the first one that matches an active project,
+        /// instead of only ever looking at the first bracket. Otherwise a non-project
+        /// label placed before the real tag silently kills the import as "unresolved"
+        /// even though a valid tag is right next to it.
         /// </summary>
         private async Task<(string? projectId, string cleanedSummary, TagHandling handling)> ResolveSlugTagAsync(string summary, string userId)
         {
-            var match = SlugTagPattern.Match(summary);
-            if (!match.Success)
+            var matches = SlugTagPattern.Matches(summary);
+            if (matches.Count == 0)
                 return (null, summary.Trim(), TagHandling.NoTag);
 
-            var projectSlug = match.Groups[1].Value.ToLowerInvariant();
+            foreach (Match match in matches)
+            {
+                var projectSlug = match.Groups[1].Value.ToLowerInvariant();
 
-            var candidates = await projectRepository.Get(
-                p => p.Slug == projectSlug
-                     && !p.IsArchived
-                     && p.IsActive);
-            var project = candidates.FirstOrDefault();
+                var candidates = await projectRepository.Get(
+                    p => p.Slug == projectSlug
+                         && !p.IsArchived
+                         && p.IsActive);
+                var project = candidates.FirstOrDefault();
 
-            if (project == null)
-                return (null, summary.Trim(), TagHandling.UnresolvedTag);
+                if (project != null)
+                {
+                    var cleaned = SlugTagPattern.Replace(summary, string.Empty).Trim();
+                    return (project.ProjectId, cleaned, TagHandling.MatchedTag);
+                }
+            }
 
-            var cleaned = SlugTagPattern.Replace(summary, string.Empty).Trim();
-            return (project.ProjectId, cleaned, TagHandling.MatchedTag);
+            // None of the bracketed tokens resolved to an active project.
+            return (null, summary.Trim(), TagHandling.UnresolvedTag);
         }
 
         private async Task TryStartWatchAsync(UserSettings settings, HttpRequestData req)
