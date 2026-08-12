@@ -1,0 +1,106 @@
+<svg viewBox="0 0 900 660" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/>
+    </marker>
+    <marker id="arrowDashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#90A4AE"/>
+    </marker>
+  </defs>
+
+  <style>
+    .box { fill:#FFFFFF; stroke:#1976D2; stroke-width:2; rx:8; }
+    .sidebox { fill:#F5F7FA; stroke:#90A4AE; stroke-width:1.5; stroke-dasharray:4,3; rx:8; }
+    .outcome401 { fill:#FDECEA; stroke:#C62828; stroke-width:2; rx:8; }
+    .outcome403 { fill:#FFF3E0; stroke:#E65100; stroke-width:2; rx:8; }
+    .outcome200 { fill:#E8F5E9; stroke:#2E7D32; stroke-width:2; rx:8; }
+    .title { font-weight:600; font-size:13px; fill:#102A43; }
+    .sub { font-size:11.5px; fill:#334E68; }
+    .sidetitle { font-weight:600; font-size:11.5px; fill:#455A64; }
+    .arrow { stroke:#546E7A; stroke-width:1.75; fill:none; marker-end:url(#arrow); }
+    .arrowDashed { stroke:#90A4AE; stroke-width:1.5; fill:none; stroke-dasharray:5,4; marker-end:url(#arrowDashed); }
+    .heading { font-size:16px; font-weight:700; fill:#102A43; }
+  </style>
+
+  <text x="300" y="24" class="heading" text-anchor="middle">Every API call re-checks identity and role — the client never decides access alone</text>
+
+  <!-- N1 -->
+  <rect x="300" y="45" width="300" height="46" class="box"/>
+  <text x="450" y="63" text-anchor="middle" class="title">Browser sends the request</text>
+  <text x="450" y="79" text-anchor="middle" class="sub">Authorization: Bearer &lt;Google token&gt;</text>
+
+  <!-- N2 -->
+  <rect x="300" y="120" width="300" height="52" class="box"/>
+  <text x="450" y="140" text-anchor="middle" class="title">AuthMiddleware validates the token</text>
+  <text x="450" y="156" text-anchor="middle" class="sub">local JWT check first, else Google tokeninfo (cached)</text>
+
+  <!-- S1 -->
+  <rect x="650" y="120" width="220" height="52" class="sidebox"/>
+  <text x="760" y="140" text-anchor="middle" class="sidetitle">GoogleIdentityRules</text>
+  <text x="760" y="156" text-anchor="middle" class="sub">only verified @profitpt.com identities pass</text>
+
+  <!-- N3 -->
+  <rect x="300" y="202" width="300" height="52" class="box"/>
+  <text x="450" y="222" text-anchor="middle" class="title">Look up ApplicationUser + roles</text>
+  <text x="450" y="238" text-anchor="middle" class="sub">role list cached 60s per user (IMemoryCache)</text>
+
+  <!-- S2 -->
+  <rect x="650" y="202" width="220" height="52" class="sidebox"/>
+  <text x="760" y="220" text-anchor="middle" class="sidetitle">Admin-forced sign-out check</text>
+  <text x="760" y="236" text-anchor="middle" class="sub">OidcSessionInvalidatedAt &gt; LastSignInAt → identity dropped</text>
+
+  <!-- N4 -->
+  <rect x="300" y="284" width="300" height="52" class="box"/>
+  <text x="450" y="304" text-anchor="middle" class="title">Attach role claims to the request</text>
+  <text x="450" y="320" text-anchor="middle" class="sub">one ClaimTypes.Role per assigned role</text>
+
+  <!-- S3 -->
+  <rect x="650" y="278" width="220" height="64" class="sidebox"/>
+  <text x="760" y="296" text-anchor="middle" class="sidetitle">Impersonation ("View As")</text>
+  <text x="760" y="311" text-anchor="middle" class="sub">global Admin only — X-Impersonate-Role</text>
+  <text x="760" y="326" text-anchor="middle" class="sub">swaps the claim set before auth runs</text>
+
+  <!-- N5 -->
+  <rect x="300" y="366" width="300" height="52" class="box"/>
+  <text x="450" y="386" text-anchor="middle" class="title">AuthGates.RequireScoped(Tyme)</text>
+  <text x="450" y="402" text-anchor="middle" class="sub">Constants.Roles.HasScopedAccess(scope, minRole)</text>
+
+  <!-- Outcomes -->
+  <rect x="90" y="452" width="190" height="54" class="outcome401"/>
+  <text x="185" y="472" text-anchor="middle" class="title">401 Unauthorized</text>
+  <text x="185" y="489" text-anchor="middle" class="sub">no valid UserId claim</text>
+
+  <rect x="355" y="452" width="190" height="54" class="outcome403"/>
+  <text x="450" y="472" text-anchor="middle" class="title">403 Forbidden</text>
+  <text x="450" y="489" text-anchor="middle" class="sub">signed in, role too low for this endpoint</text>
+
+  <rect x="620" y="452" width="190" height="54" class="outcome200"/>
+  <text x="715" y="472" text-anchor="middle" class="title">Request proceeds</text>
+  <text x="715" y="489" text-anchor="middle" class="sub">function runs, fresh DbContext per call</text>
+
+  <!-- N7 -->
+  <rect x="300" y="540" width="300" height="52" class="box"/>
+  <text x="450" y="560" text-anchor="middle" class="title">Response to the browser</text>
+  <text x="450" y="576" text-anchor="middle" class="sub">generic error message — full detail stays in server logs</text>
+
+  <!-- main pipeline arrows -->
+  <line x1="450" y1="91" x2="450" y2="118" class="arrow"/>
+  <line x1="450" y1="172" x2="450" y2="200" class="arrow"/>
+  <line x1="450" y1="254" x2="450" y2="282" class="arrow"/>
+  <line x1="450" y1="336" x2="450" y2="364" class="arrow"/>
+
+  <!-- fan out to outcomes -->
+  <line x1="380" y1="418" x2="220" y2="450" class="arrow"/>
+  <line x1="450" y1="418" x2="450" y2="450" class="arrow"/>
+  <line x1="520" y1="418" x2="680" y2="450" class="arrow"/>
+
+  <!-- converge to response -->
+  <line x1="185" y1="506" x2="400" y2="538" class="arrow"/>
+  <line x1="450" y1="506" x2="450" y2="538" class="arrow"/>
+  <line x1="715" y1="506" x2="500" y2="538" class="arrow"/>
+
+  <!-- side branches -->
+  <line x1="600" y1="146" x2="648" y2="146" class="arrowDashed"/>
+  <line x1="600" y1="228" x2="648" y2="228" class="arrowDashed"/>
+  <line x1="600" y1="308" x2="648" y2="310" class="arrowDashed"/>
+</svg>

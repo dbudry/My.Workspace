@@ -27,6 +27,11 @@ namespace My.Client.Pages.Tyme
         private bool showInactive;
         private bool allowProjectDelete;
         private string searchString = string.Empty;
+        // The page itself is open to any Tyme-scoped user (so everyone can see what
+        // availability tags exist to log time off against). Add/Edit/Delete/Archive and the
+        // inactive/archived visibility toggles stay gated to Manager+/Admin — same split as
+        // ProjectManager's canManage.
+        private bool canManage;
 
         private HttpClient client = null!;
 
@@ -54,6 +59,9 @@ namespace My.Client.Pages.Tyme
                 Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
                 return;
             }
+
+            canManage = authState.User.IsInRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme))
+                     || authState.User.IsInRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme));
 
             client = ClientFactory.CreateClient(Constants.API.ClientName);
             SetPageTitle?.Invoke("Availability");

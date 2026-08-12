@@ -89,7 +89,11 @@ namespace My.Functions
                     .ToListAsync();
 
             var sessionsByItem = sessions.GroupBy(t => t.StopwatchItemId!).ToDictionary(g => g.Key, g => g.ToList());
-            var dtos = paged.Select(i => ToListDto(i, sessionsByItem.GetValueOrDefault(i.StopwatchItemId) ?? new List<TrackedTask>())).ToList();
+            var submitted = await GetSubmittedMonthsAsync(userId);
+            var dtos = paged.Select(i => ToListDto(
+                i,
+                sessionsByItem.GetValueOrDefault(i.StopwatchItemId) ?? new List<TrackedTask>(),
+                submitted)).ToList();
 
             return new OkObjectResult(new PagedResponse<StopwatchItemDto>
             {
@@ -134,7 +138,7 @@ namespace My.Functions
                 i => i.StopwatchItemId == item.StopwatchItemId,
                 includeProperties: "Project.ProjectGroup,Project.Organization")).First();
 
-            return new OkObjectResult(ToListDto(loaded, new List<TrackedTask>()));
+            return new OkObjectResult(ToListDto(loaded, new List<TrackedTask>(), new HashSet<(int, int)>()));
         }
 
         [Function("CreateAndStartStopwatchItem")]
@@ -189,27 +193,40 @@ namespace My.Functions
             var item = await FindOwnedItemAsync(dto.StopwatchItemId, userId);
             if (item == null) return new NotFoundObjectResult("Stopwatch item not found.");
 
-            item.Name = dto.Name.Trim();
+            var sessions = await dbContext.TrackedTasks
+                .Where(t => t.StopwatchItemId == dto.StopwatchItemId)
+                .ToListAsync();
+            var submitted = await GetSubmittedMonthsAsync(userId);
+            var hasLockedSession = sessions.Any(s => !SubmissionRules.Evaluate(
+                SubmissionRules.Operation.Edit,
+                submitted.Contains((s.StartDate.Year, s.StartDate.Month))).IsAllowed);
+            if (hasLockedSession)
+            {
+                return new BadRequestObjectResult(
+                    "Cannot change work item name or project while any session is in a submitted month. You can still edit duration on unlocked sessions.");
+            }
+
+            var name = dto.Name.Trim();
+            item.Name = name;
             item.ProjectId = dto.ProjectId;
             await itemRepository.Update(item);
 
-            var active = await dbContext.TrackedTasks
-                .FirstOrDefaultAsync(t => t.StopwatchItemId == dto.StopwatchItemId && t.EndDate == null);
-            if (active != null)
+            // Propagate identity to every session (none are locked if we got here).
+            foreach (var session in sessions)
             {
-                active.Name = item.Name;
-                active.ProjectId = dto.ProjectId;
-                await taskRepository.Update(active);
+                session.Name = name;
+                session.ProjectId = dto.ProjectId;
+                await taskRepository.Update(session);
             }
 
             var loaded = (await itemRepository.Get(
                 i => i.StopwatchItemId == dto.StopwatchItemId,
                 includeProperties: "Project.ProjectGroup,Project.Organization")).First();
-            var sessions = await dbContext.TrackedTasks.AsNoTracking()
+            var sessionsReload = await dbContext.TrackedTasks.AsNoTracking()
                 .Where(t => t.StopwatchItemId == dto.StopwatchItemId)
                 .ToListAsync();
 
-            return new OkObjectResult(ToListDto(loaded, sessions));
+            return new OkObjectResult(ToListDto(loaded, sessionsReload, submitted));
         }
 
         [Function("StartStopwatchItem")]
@@ -280,8 +297,9 @@ namespace My.Functions
             var sessions = await dbContext.TrackedTasks.AsNoTracking()
                 .Where(t => t.StopwatchItemId == id)
                 .ToListAsync();
+            var submittedAfterStart = await GetSubmittedMonthsAsync(userId);
 
-            return new OkObjectResult(ToListDto(loaded, sessions));
+            return new OkObjectResult(ToListDto(loaded, sessions, submittedAfterStart));
         }
 
         [Function("StopStopwatchItem")]
@@ -312,8 +330,9 @@ namespace My.Functions
             var sessions = await dbContext.TrackedTasks.AsNoTracking()
                 .Where(t => t.StopwatchItemId == id)
                 .ToListAsync();
+            var submittedAfterStop = await GetSubmittedMonthsAsync(userId);
 
-            return new OkObjectResult(ToListDto(loaded, sessions));
+            return new OkObjectResult(ToListDto(loaded, sessions, submittedAfterStop));
         }
 
         [Function("GetStopwatchItemSessions")]
@@ -392,12 +411,17 @@ namespace My.Functions
             };
         }
 
-        private StopwatchItemDto ToListDto(StopwatchItem item, List<TrackedTask> sessions)
+        private StopwatchItemDto ToListDto(
+            StopwatchItem item,
+            List<TrackedTask> sessions,
+            HashSet<(int Year, int Month)> submittedMonths)
         {
             var active = sessions.FirstOrDefault(t => t.EndDate == null);
             var completedTotal = sessions
                 .Where(t => t.EndDate != null)
                 .Aggregate(TimeSpan.Zero, (sum, t) => sum + t.Duration);
+            var hasLocked = sessions.Any(s =>
+                submittedMonths.Contains((s.StartDate.Year, s.StartDate.Month)));
 
             return new StopwatchItemDto
             {
@@ -410,7 +434,8 @@ namespace My.Functions
                 ActiveSessionId = active?.TaskId,
                 ActiveSessionStartDate = active?.StartDate,
                 LastWorkedAt = item.LastWorkedAt,
-                CreatedAt = item.CreatedAt
+                CreatedAt = item.CreatedAt,
+                HasLockedSessions = hasLocked
             };
         }
 

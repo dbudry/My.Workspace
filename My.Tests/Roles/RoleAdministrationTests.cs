@@ -263,18 +263,22 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void IsAssignableRole_rejects_Editor_Tyme()
+    public void IsAssignableRole_accepts_Editor_Tyme()
     {
+        // Editor:Tyme grants project create/edit only (see ProjectFunction Create/UpdateProject
+        // and ProjectManager.razor's canEditProjects) — no delete/archive/group management or
+        // team surfaces, so it's now offered alongside Manager:Tyme / Admin:Tyme.
         var editorTyme = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme);
 
-        Assert.False(Constants.Roles.IsAssignableRole(editorTyme));
-        Assert.False(Constants.Roles.CanAssignRole(PrincipalWithRoles(Constants.Roles.Admin), editorTyme));
+        Assert.True(Constants.Roles.IsAssignableRole(editorTyme));
+        Assert.True(Constants.Roles.CanAssignRole(PrincipalWithRoles(Constants.Roles.Admin), editorTyme));
     }
 
     [Fact]
-    public void IsAssignableRole_accepts_tyme_user_manager_admin()
+    public void IsAssignableRole_accepts_tyme_user_editor_manager_admin()
     {
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Tyme)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme)));
     }

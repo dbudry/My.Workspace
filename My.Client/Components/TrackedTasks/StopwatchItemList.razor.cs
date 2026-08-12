@@ -231,11 +231,9 @@ namespace My.Client.Components.TrackedTasks
                 });
         }
 
+        /// <summary>Same as Tasks: full active-project lookup (not stopwatch recent-only).</summary>
         private async Task<IEnumerable<Project>> SearchProjects(string? value, CancellationToken token)
         {
-            if (string.IsNullOrWhiteSpace(value))
-                return RecentProjectSuggestions.FromStopwatchItems(items);
-
             try
             {
                 return await ProjectsCache.LookupActiveAsync(search: value);
@@ -249,6 +247,14 @@ namespace My.Client.Components.TrackedTasks
 
         private async Task OpenEditItemAsync(StopwatchItemDto item)
         {
+            if (item.HasLockedSessions)
+            {
+                Snackbar.Add(
+                    "Name and project cannot change while any session is in a submitted month. Open sessions to edit unlocked durations.",
+                    Severity.Warning);
+                return;
+            }
+
             var parameters = new DialogParameters<StopwatchItemDialog>
             {
                 { x => x.ItemId, item.StopwatchItemId },

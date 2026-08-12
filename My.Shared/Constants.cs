@@ -72,11 +72,12 @@ namespace My.Shared.Constants
             public static IReadOnlyList<string> Assignable() => new[]
             {
                 Admin,
-                // Tyme: User (track time), Manager (team reports/availability), Admin (orgs/projects).
-                // Editor:Tyme is intentionally omitted — no Tyme surface gates on Editor; it would
-                // behave like User:Tyme and only adds picker noise (same rationale as Manager:Intranet).
+                // Tyme: User (track time), Editor (create/edit projects only — no delete/archive/
+                // group management, no team surfaces), Manager (team reports/availability + full
+                // project admin), Admin (orgs/projects).
                 Scoped(Admin, Scopes.Tyme),
                 Scoped(Manager, Scopes.Tyme),
+                Scoped(Editor, Scopes.Tyme),
                 Scoped(User, Scopes.Tyme),
                 // Intranet scope (for the company knowledge base / mini site + Drive attachments).
                 // For a small company (~20 people) with no approval workflows, we only expose
@@ -582,6 +583,10 @@ namespace My.Shared.Constants
 
                 /// <summary>GET — current user's overdue (unsubmitted, prior, has-tracked-time) months.</summary>
                 public const string GetOverdue = $"{Api}/overdue";
+
+                /// <summary>GET — current user's submittable months: unsubmitted, has-tracked-time,
+                /// including the current/future months (early submission). See EligibleMonthDto.</summary>
+                public const string GetEligible = $"{Api}/eligible";
 
                 /// <summary>GET — Manager:Tyme+ team view: per-(user × month) row with status.
                 /// Optional query: ?status=submitted|unsubmitted|all, ?userId=, ?year=, ?month=.</summary>

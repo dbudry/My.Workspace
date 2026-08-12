@@ -115,7 +115,7 @@ namespace My.Client.Components.TrackedTasks
 
         /// <summary>True when New Task should be enabled on the page toolbar.</summary>
         public bool CanAddTaskRow =>
-            selectedProject != null && !HasIncompleteDraftRow && !isLoading;
+            selectedProject != null && !isLoading;
 
         protected override async Task OnInitializedAsync()
         {
@@ -266,7 +266,7 @@ namespace My.Client.Components.TrackedTasks
                 }
 
                 var createStart = cell.Date.Date.Add(defaultStartTime);
-                var createDuration = TimeSpan.FromMinutes(30);
+                var createDuration = TimeSpan.Zero;
                 if (WeekEntryGridRules.TryParseDayDurationText(cell.DurationText, out var typed)
                     && typed > TimeSpan.Zero)
                     createDuration = typed;
@@ -549,13 +549,6 @@ namespace My.Client.Components.TrackedTasks
                 Status = CellSaveStatus.Idle
             };
 
-        /// <summary>
-        /// True when a row exists that has not saved any day yet (no TaskId on any cell).
-        /// Blocks stacking multiple empty drafts via New Task.
-        /// </summary>
-        private bool HasIncompleteDraftRow =>
-            taskRows.Any(r => !r.HasPersistedData);
-
         private void AddTaskRow()
         {
             if (selectedProject == null)
@@ -570,14 +563,27 @@ namespace My.Client.Components.TrackedTasks
                 return;
             }
 
-            // One unfinished row at a time: name and/or hours must be saved before another draft.
-            if (HasIncompleteDraftRow)
-            {
-                Snackbar.Add("Finish the draft row (task name + hours) before adding another.", Severity.Info);
+            // Multiple draft rows allowed; nothing is saved until a day has duration > 0.
+            taskRows.Add(BuildDraftRow());
+            _ = NotifyProjectSelectionChangedAsync();
+        }
+
+        /// <summary>
+        /// Removes an unused draft row (no saved days). Local only — nothing was persisted.
+        /// </summary>
+        private void RemoveDraftRow(TaskRow row)
+        {
+            if (row.HasPersistedData)
                 return;
+
+            foreach (var cell in row.Cells)
+            {
+                cell.DebounceCts?.Cancel();
+                cell.DebounceCts?.Dispose();
+                cell.DebounceCts = null;
             }
 
-            taskRows.Add(BuildDraftRow());
+            taskRows.Remove(row);
             _ = NotifyProjectSelectionChangedAsync();
         }
 

@@ -3,10 +3,8 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using MudBlazor;
 using My.Client.Extensions;
-using My.Client.Helpers;
 using My.Client.Models;
 using My.Client.Services;
-using My.Shared.Dtos.Paging;
 using My.Shared.Dtos.StopwatchItem;
 
 namespace My.Client.Components.TrackedTasks
@@ -16,7 +14,6 @@ namespace My.Client.Components.TrackedTasks
         private Project? SelectedProject { get; set; }
         private TrackedTask newEntryModel = new();
         private bool isBusy;
-        private IReadOnlyList<Project> recentProjects = Array.Empty<Project>();
 
         [Parameter]
         public EventCallback<StopwatchItemDto> OnWorkItemStarted { get; set; }
@@ -24,11 +21,6 @@ namespace My.Client.Components.TrackedTasks
         [Inject] private ISnackbar Snackbar { get; set; } = null!;
         [Inject] private ProjectsCache ProjectsCache { get; set; } = null!;
         [Inject] private StopwatchItemsClient StopwatchItemsClient { get; set; } = null!;
-
-        protected override async Task OnInitializedAsync()
-        {
-            await LoadRecentProjectsAsync();
-        }
 
         private async Task AddAndStartEntry()
         {
@@ -53,7 +45,6 @@ namespace My.Client.Components.TrackedTasks
                 SelectedProject = null;
 
                 Snackbar.Add("Work item started", Severity.Success);
-                await LoadRecentProjectsAsync();
                 await OnWorkItemStarted.InvokeAsync(item);
             }
             catch (AccessTokenNotAvailableException ex)
@@ -70,35 +61,12 @@ namespace My.Client.Components.TrackedTasks
             }
         }
 
-        private async Task LoadRecentProjectsAsync()
-        {
-            try
-            {
-                var paged = await StopwatchItemsClient.LoadPageAsync(new ListQueryParameters
-                {
-                    PageNumber = 1,
-                    PageSize = 50,
-                    SortBy = "LastWorkedAt",
-                    SortDescending = true
-                });
-                recentProjects = RecentProjectSuggestions.FromStopwatchItems(paged.Items);
-            }
-            catch (AccessTokenNotAvailableException ex)
-            {
-                ex.Redirect();
-                recentProjects = Array.Empty<Project>();
-            }
-            catch
-            {
-                recentProjects = Array.Empty<Project>();
-            }
-        }
-
+        /// <summary>
+        /// Same as Tasks: active projects via <see cref="ProjectsCache.LookupActiveAsync"/>.
+        /// Empty search returns the first page so click-to-open shows a full list.
+        /// </summary>
         private async Task<IEnumerable<Project>> SearchProjects(string? value, CancellationToken token)
         {
-            if (string.IsNullOrWhiteSpace(value))
-                return recentProjects;
-
             try
             {
                 return await ProjectsCache.LookupActiveAsync(search: value);

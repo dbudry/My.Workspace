@@ -1,15 +1,17 @@
 @namespace My.Client.Components.Projects
 @using My.Client.Helpers
 @using My.Client.Models
+@using My.Client.Services
+@using My.Shared.Dtos.Paging
 @implements IDisposable
+@inject ProjectsCache ProjectsCache
+@inject IJSRuntime Js
 
 @*
-    Project picker that owns its text state.
-
-    MudAutocomplete (MudBlazor 9) repeatedly rewrites/reselects input text after
-    SearchFunc re-renders, so calendar New/Edit only accepted one character at a
-    time. This control uses MudTextField + popover list instead so typing is
-    normal free text and selection only happens when the user picks a row.
+    Project picker with free-text field + popover list.
+    Active projects load one page at a time; scroll to the bottom loads the next page.
+    Typing filters via server search (still paged). SearchFunc is optional and unused for
+    paging — pickers share ProjectsCache.LookupActivePageAsync (active, non-archived only).
 *@
 
 <div class="project-autocomplete @Class @(_open ? "project-autocomplete-open" : null)" style="@Style" @onfocusin="OnFocusIn">
@@ -31,28 +33,29 @@
                   OnBlur="OnBlur"
                   OnKeyDown="OnKeyDown" />
 
-    @* Fixed MudPopover portals above the table so overflow:auto / row height on
-       MudTable cannot clip the list. RelativeWidth=Ignore so the menu is not
-       limited to the narrow inline grid column (input can stay compact). *@
+    @* Do not set MaxHeight on MudPopover — that steals scroll from our inner list.
+       PreferOpenUpward: use in dialogs so the list is not clipped by the bottom of the screen. *@
     <MudPopover Open="_open"
                 Fixed="true"
                 Paper="true"
                 Elevation="8"
-                MaxHeight="360"
                 RelativeWidth="DropdownWidth.Ignore"
                 OverflowBehavior="OverflowBehavior.FlipOnOpen"
-                AnchorOrigin="Origin.BottomLeft"
-                TransformOrigin="Origin.TopLeft"
-                Class="project-autocomplete-popover"
+                AnchorOrigin="@(PreferOpenUpward ? Origin.TopLeft : Origin.BottomLeft)"
+                TransformOrigin="@(PreferOpenUpward ? Origin.BottomLeft : Origin.TopLeft)"
+                Class="@($"project-autocomplete-popover{(PreferOpenUpward ? " project-autocomplete-popover-up" : "")}")"
                 Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
-        <div @onmousedown:preventDefault="true">
-            @if (_loading)
+        <div @ref="_scrollEl"
+             @onmousedown:preventDefault="true"
+             class="project-autocomplete-scroll"
+             @onscroll="OnListScrollAsync">
+            @if (_loading && _results.Count == 0)
             {
                 <div class="pa-3 d-flex justify-center">
                     <MudProgressCircular Size="Size.Small" Indeterminate="true" />
                 </div>
             }
-            else if (_results.Count == 0)
+            else if (_results.Count == 0 && !_loading)
             {
                 <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
                     No matching projects. Try a different name or slug.
@@ -92,6 +95,26 @@
                         </MudListItem>
                     }
                 </MudList>
+                @if (_loadingMore)
+                {
+                    <div class="pa-2 d-flex justify-center">
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    </div>
+                }
+                else if (_hasMore)
+                {
+                    <div class="px-2 pb-2 pt-1 d-flex flex-column align-center gap-1">
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                   FullWidth="true"
+                                   OnClick="LoadMoreAsync"
+                                   Disabled="@_loadingMore">
+                            Load more projects
+                        </MudButton>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Or scroll to load more
+                        </MudText>
+                    </div>
+                }
             }
         </div>
     </MudPopover>
@@ -100,7 +123,10 @@
 @code {
     [Parameter] public Project? Value { get; set; }
     [Parameter] public EventCallback<Project?> ValueChanged { get; set; }
-    [Parameter] public Func<string?, CancellationToken, Task<IEnumerable<Project>>> SearchFunc { get; set; } = null!;
+
+    /// <summary>Optional; retained for call-site compatibility. Paging always uses ProjectsCache.</summary>
+    [Parameter] public Func<string?, CancellationToken, Task<IEnumerable<Project>>>? SearchFunc { get; set; }
+
     [Parameter] public string Label { get; set; } = "Project";
     [Parameter] public string Placeholder { get; set; } = "Type to search projects…";
     [Parameter] public Variant Variant { get; set; } = Variant.Text;
@@ -108,45 +134,37 @@
     [Parameter] public bool Dense { get; set; } = true;
     [Parameter] public string? Style { get; set; }
     [Parameter] public string? Class { get; set; }
-
-    /// <summary>
-    /// When true, focus the search field on first render (e.g. Tasks list click-to-edit)
-    /// so a single click opens the editor and activates the input.
-    /// </summary>
     [Parameter] public bool AutoFocus { get; set; }
-
-    /// <summary>
-    /// When true (default for dialogs), typing free text clears the bound <see cref="Value"/>
-    /// so parent code does not re-push DisplayName over keystrokes.
-    /// When false (inline table rows that auto-save), typing only searches — parent is notified
-    /// on Select/Clear only. Otherwise each keystroke would save ProjectId = null.
-    /// </summary>
     [Parameter] public bool ClearValueWhileTyping { get; set; } = true;
-
-    /// <summary>
-    /// Fires when the field is dismissed without a new selection (blur outside / Escape).
-    /// Used by Tasks inline edit to leave edit mode and show the read-only project label again.
-    /// </summary>
     [Parameter] public EventCallback Dismissed { get; set; }
 
+    /// <summary>
+    /// When true, open the list above the field (dialogs near the bottom of the viewport).
+    /// FlipOnOpen still applies if there is no room above.
+    /// </summary>
+    [Parameter] public bool PreferOpenUpward { get; set; }
+
     private MudTextField<string>? _textField;
+    private ElementReference _scrollEl;
     private bool _autoFocusApplied;
     private string _text = string.Empty;
     private string? _syncedValueId;
-    /// <summary>True while the user has edited text without picking a result yet.</summary>
     private bool _textDirty;
     private bool _open;
     private bool _loading;
+    private bool _loadingMore;
     private bool _suppressBlurClose;
     private int _highlightIndex = -1;
     private List<Project> _results = new();
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _debounceCts;
 
+    private int _pageNumber;
+    private bool _hasMore;
+    private string _activeQuery = string.Empty;
+
     protected override void OnParametersSet()
     {
-        // Sync external Value → text only when the selected project identity changes,
-        // never while the user is mid-typing (that was the multi-letter wipe).
         var id = Value?.ProjectId;
         if (_textDirty)
             return;
@@ -165,17 +183,14 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Mud AutoFocus can miss when the field is swapped in via click-to-edit.
-        // Force focus once so the first click both opens the editor and activates it.
         if (!_autoFocusApplied && AutoFocus && _textField is not null)
         {
             _autoFocusApplied = true;
             try
             {
                 await _textField.FocusAsync();
-                // Open browse list immediately (same as OnFocusIn) so the user can pick without a second click.
                 if (!_open)
-                    await SearchAsync(string.Empty, CancellationToken.None);
+                    await ResetAndSearchAsync(string.Empty, CancellationToken.None);
             }
             catch
             {
@@ -189,8 +204,6 @@
         _text = value ?? string.Empty;
         _textDirty = true;
 
-        // Dialog mode: drop bound Project so DisplayName is not re-synced over keystrokes.
-        // Inline auto-save mode: do NOT notify parent (would wipe ProjectId on every letter).
         if (ClearValueWhileTyping
             && Value is not null
             && !string.Equals(_text, Value.DisplayName, StringComparison.Ordinal)
@@ -213,8 +226,7 @@
         try
         {
             await Task.Delay(200, token);
-            // Use current field text for filter while typing.
-            await SearchAsync(_text, token);
+            await ResetAndSearchAsync(_text, token);
         }
         catch (OperationCanceledException)
         {
@@ -222,52 +234,29 @@
         }
     }
 
-    /// <param name="query">
-    /// Search term passed to <see cref="SearchFunc"/>. Pass empty/null to browse the first page
-    /// of projects — do not pass the currently selected project's name on focus, or the list
-    /// only returns that one match.
-    /// </param>
-    private async Task SearchAsync(string? query, CancellationToken outerToken)
+    private async Task ResetAndSearchAsync(string? query, CancellationToken outerToken)
     {
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _searchCts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
         var token = _searchCts.Token;
 
+        _activeQuery = query?.Trim() ?? string.Empty;
+        _pageNumber = 0;
+        _hasMore = false;
+        _results = new List<Project>();
         _loading = true;
+        _loadingMore = false;
         _open = true;
         StateHasChanged();
 
         try
         {
-            var found = SearchFunc is null
-                ? Enumerable.Empty<Project>()
-                : await SearchFunc(query, token);
-            if (token.IsCancellationRequested) return;
-
-            _results = found?.Take(25).ToList() ?? new List<Project>();
-            // Prefer highlighting the currently selected project when browsing the full list.
-            _highlightIndex = 0;
-            if (Value is not null && _results.Count > 0)
-            {
-                var selectedIdx = _results.FindIndex(p =>
-                    string.Equals(p.ProjectId, Value.ProjectId, StringComparison.Ordinal));
-                if (selectedIdx >= 0)
-                    _highlightIndex = selectedIdx;
-            }
-            else if (_results.Count == 0)
-            {
-                _highlightIndex = -1;
-            }
+            await LoadNextPageAsync(token, replace: true);
         }
         catch (OperationCanceledException)
         {
             return;
-        }
-        catch
-        {
-            _results = new List<Project>();
-            _highlightIndex = -1;
         }
         finally
         {
@@ -279,6 +268,94 @@
         }
     }
 
+    private async Task LoadNextPageAsync(CancellationToken token, bool replace)
+    {
+        var nextPage = _pageNumber + 1;
+        var pageSize = ListQueryParameters.MaxPageSize;
+        var (items, hasNext) = await ProjectsCache.LookupActivePageAsync(
+            search: string.IsNullOrWhiteSpace(_activeQuery) ? null : _activeQuery,
+            pageNumber: nextPage,
+            pageSize: pageSize);
+
+        if (token.IsCancellationRequested)
+            return;
+
+        if (replace)
+            _results = items.ToList();
+        else
+            AppendUnique(items);
+
+        _pageNumber = nextPage;
+        _hasMore = hasNext;
+
+        _highlightIndex = 0;
+        if (Value is not null && _results.Count > 0)
+        {
+            var selectedIdx = _results.FindIndex(p =>
+                string.Equals(p.ProjectId, Value.ProjectId, StringComparison.Ordinal));
+            if (selectedIdx >= 0)
+                _highlightIndex = selectedIdx;
+        }
+        else if (_results.Count == 0)
+        {
+            _highlightIndex = -1;
+        }
+    }
+
+    private void AppendUnique(IReadOnlyList<Project> items)
+    {
+        var existing = new HashSet<string>(_results.Select(p => p.ProjectId), StringComparer.Ordinal);
+        foreach (var p in items)
+        {
+            if (existing.Add(p.ProjectId))
+                _results.Add(p);
+        }
+    }
+
+    private async Task OnListScrollAsync()
+    {
+        if (!_hasMore || _loadingMore || _loading)
+            return;
+
+        var nearBottom = false;
+        try
+        {
+            nearBottom = await Js.InvokeAsync<bool>(
+                "projectAutocomplete.isNearBottom", _scrollEl, 80);
+        }
+        catch
+        {
+            // Fall through — button "Load more" still works without JS.
+            return;
+        }
+
+        if (nearBottom)
+            await LoadMoreAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (!_hasMore || _loadingMore || _loading)
+            return;
+
+        _loadingMore = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var token = _searchCts?.Token ?? CancellationToken.None;
+            await LoadNextPageAsync(token, replace: false);
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        finally
+        {
+            _loadingMore = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private async Task SelectAsync(Project project)
     {
         _suppressBlurClose = true;
@@ -287,6 +364,7 @@
         _textDirty = false;
         _open = false;
         _results = new List<Project>();
+        _hasMore = false;
         await ValueChanged.InvokeAsync(project);
         _suppressBlurClose = false;
     }
@@ -298,24 +376,21 @@
         _textDirty = false;
         _open = false;
         _results = new List<Project>();
+        _hasMore = false;
         await ValueChanged.InvokeAsync(null);
     }
 
     private async Task OnFocusIn()
     {
-        // Browse list on open: empty query returns the first page of projects.
-        // Searching with the selected project's name only returns that one row —
-        // which is what looked broken in the Tasks inline picker.
         if (!_open)
         {
             _debounceCts?.Cancel();
-            await SearchAsync(string.Empty, CancellationToken.None);
+            await ResetAndSearchAsync(string.Empty, CancellationToken.None);
         }
     }
 
     private async Task OnBlur()
     {
-        // Delay so list item click can run before we close.
         await Task.Delay(150);
         if (_suppressBlurClose) return;
         await DismissEditorAsync();
@@ -325,7 +400,6 @@
     {
         _open = false;
 
-        // Inline mode: abandon uncommitted search text and restore the bound project label.
         if (!ClearValueWhileTyping && _textDirty && Value is not null)
         {
             _text = Value.DisplayName ?? Value.Name ?? string.Empty;
@@ -354,8 +428,7 @@
 
         if (!_open && (e.Key is "ArrowDown" or "Enter"))
         {
-            // Same as focus: open the browse list, not a filter on the current label.
-            await SearchAsync(string.Empty, CancellationToken.None);
+            await ResetAndSearchAsync(string.Empty, CancellationToken.None);
             return;
         }
 
@@ -364,6 +437,8 @@
         if (e.Key == "ArrowDown")
         {
             _highlightIndex = Math.Min(_results.Count - 1, _highlightIndex + 1);
+            if (_highlightIndex >= _results.Count - 3 && _hasMore && !_loadingMore)
+                await LoadMoreAsync();
             StateHasChanged();
         }
         else if (e.Key == "ArrowUp")
@@ -379,8 +454,6 @@
 
     public void Dispose()
     {
-        // Ensure portaled Fixed popover is not left open when the host unmounts
-        // (view switch while inline project edit was active).
         _open = false;
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();

@@ -15,6 +15,7 @@ using My.DAL.Repository;
 using My.Functions.Authorization;
 using My.Functions.Helpers;
 using My.Shared.Validation;
+using My.Shared.Rules;
 
 namespace My.Functions
 {
@@ -155,9 +156,9 @@ namespace My.Functions
         public async Task<IActionResult> CreateProjectAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "projects")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Mutation requires Manager+ — GET endpoints stay open to any Tyme user so
-            // regular users can browse projects in the picker without being able to edit.
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Create requires Editor+ (Editor, Manager, or Admin) — GET endpoints stay open to
+            // any Tyme user so regular users can browse projects in the picker without editing.
+            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var (project, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, createValidator);
             if (validationError != null)
@@ -174,6 +175,17 @@ namespace My.Functions
             project.Slug = SlugRules.Normalize(project.Slug);
             if (project.Slug != null && !await IsSlugUniqueAsync(project.Slug, excludeProjectId: null))
                 return new BadRequestObjectResult($"Slug \"{project.Slug}\" is already in use by another project.");
+
+            // Shared-availability publishing is a team-visibility decision (writes to the
+            // workspace Team Availability calendar), reserved for Manager+ even though
+            // Editor:Tyme can otherwise create/edit projects. The dialog hides this toggle
+            // for Editors, but enforce it here too in case of a direct API call. Rule is
+            // pure/testable — see ProjectPermissionRules.
+            if (!ProjectPermissionRules.CanSetSharedAvailability(
+                    project.IsSharedAvailability,
+                    currentIsSharedAvailability: false,
+                    callerHasManagerAccess: Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager)))
+                return new StatusCodeResult(403);
 
             if (project.IsSharedAvailability)
                 project.IsBillable = false;
@@ -251,7 +263,8 @@ namespace My.Functions
         public async Task<IActionResult> UpdateProjectAsync([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "projects")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Update requires Editor+ — see CreateProject for the same rationale.
+            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var (project, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, updateValidator);
             if (validationError != null)
@@ -292,6 +305,16 @@ namespace My.Functions
                 return new BadRequestObjectResult(
                     "This project's slug is locked because tracked time on it has been synced to Google Calendar. " +
                     "Changing the tag now would orphan those events. Disconnect Google Calendar (or delete the synced tasks) before renaming.");
+
+            // Same Manager+ restriction as CreateProject — Editor:Tyme can edit everything
+            // else about a project, but flipping shared-availability on or off is a
+            // Manager-only decision (see CreateProject for rationale). Only reject when the
+            // Editor is actually trying to change it; leaving it untouched is fine.
+            if (!ProjectPermissionRules.CanSetSharedAvailability(
+                    project.IsSharedAvailability,
+                    currentIsSharedAvailability: foundProject.IsSharedAvailability,
+                    callerHasManagerAccess: Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager)))
+                return new StatusCodeResult(403);
 
             if (project.IsSharedAvailability)
                 project.IsBillable = false;

@@ -1,0 +1,122 @@
+@page "/versions"
+@attribute [Authorize]
+@using My.Client.Services
+@inject HttpClient Http
+@inject AppVersionService AppVersion
+
+<PageTitle>Versions — My Workspace</PageTitle>
+
+<PageHeader Title="Versions"
+            Description="What's changed in each release, newest first." />
+
+@if (_loadFailed)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+        Couldn't load the version history right now. Try refreshing the page.
+    </MudAlert>
+}
+else if (_versions is null)
+{
+    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mb-2" />
+}
+else
+{
+    <MudExpansionPanels MultiExpansion="true" Elevation="1">
+        @foreach (var v in _versions)
+        {
+            var isCurrent = string.Equals(v.Version, AppVersion.CurrentVersion, StringComparison.OrdinalIgnoreCase);
+            <MudExpansionPanel Expanded="@(isCurrent || _versions.IndexOf(v) == 0)">
+                <TitleContent>
+                    <div class="d-flex align-center gap-2 flex-wrap">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">v@(v.Version)</MudText>
+                        @if (!string.IsNullOrEmpty(v.Date))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Default">@FormatDate(v.Date)</MudText>
+                        }
+                        @if (isCurrent)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">Current</MudChip>
+                        }
+                    </div>
+                </TitleContent>
+                <ChildContent>
+                    @if (v.Changes.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Default">Internal-only release — no user-facing changes.</MudText>
+                    }
+                    else
+                    {
+                        <MudStack Spacing="2">
+                            @foreach (var change in v.Changes)
+                            {
+                                <div class="d-flex align-start gap-2 version-change-row">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                             Color="@ColorFor(change.Type)" Class="version-type-chip">@change.Type</MudChip>
+                                    <MudText Typo="Typo.body2">@change.Text</MudText>
+                                </div>
+                            }
+                        </MudStack>
+                    }
+                </ChildContent>
+            </MudExpansionPanel>
+        }
+    </MudExpansionPanels>
+}
+
+<style>
+    .version-type-chip {
+        min-width: 4.5rem;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .version-change-row {
+        align-items: flex-start;
+    }
+</style>
+
+@code {
+    private sealed class VersionEntryDto
+    {
+        public string Version { get; set; } = string.Empty;
+        public string Date { get; set; } = string.Empty;
+        public List<ChangeEntryDto> Changes { get; set; } = new();
+    }
+
+    private sealed class ChangeEntryDto
+    {
+        public string Type { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+
+    private List<VersionEntryDto>? _versions;
+    private bool _loadFailed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Static file shipped alongside the app (My.Client/wwwroot/data/changelog.json),
+            // not an API call — same origin, no auth header needed. Update this file whenever
+            // <Version> in My.Client.csproj is bumped; the PR pipeline checks the two stay
+            // in sync (see .github/workflows/pr.yml, "Version bump" job).
+            _versions = await Http.GetFromJsonAsync<List<VersionEntryDto>>("data/changelog.json");
+        }
+        catch
+        {
+            _loadFailed = true;
+        }
+    }
+
+    private static string FormatDate(string isoDate) =>
+        DateTime.TryParse(isoDate, out var d) ? d.ToString("MMM d, yyyy") : isoDate;
+
+    private static Color ColorFor(string changeType) => changeType switch
+    {
+        "Added" => Color.Success,
+        "Fixed" => Color.Info,
+        "Security" => Color.Warning,
+        "Docs" => Color.Secondary,
+        _ => Color.Default,
+    };
+}

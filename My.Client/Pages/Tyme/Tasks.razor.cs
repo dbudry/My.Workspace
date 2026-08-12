@@ -1101,7 +1101,7 @@ namespace My.Client.Pages.Tyme
             {
                 { x => x.Mode, TrackedTaskDialogMode.Create },
                 { x => x.StartDate, start },
-                { x => x.Duration, TimeSpan.FromMinutes(30) },
+                { x => x.Duration, TimeSpan.Zero },
                 { x => x.Use24HourTime, SettingsService.Use24HourTime },
                 { x => x.HttpClient, client }
             };
@@ -1144,6 +1144,14 @@ namespace My.Client.Pages.Tyme
         /// </summary>
         private async Task DeleteStopwatchItemAsync(StopwatchItemDto item)
         {
+            if (item.HasLockedSessions)
+            {
+                Snackbar.Add(
+                    "Cannot delete: one or more sessions are in a submitted month.",
+                    Severity.Warning);
+                return;
+            }
+
             var result = await DialogService.ShowMessageBoxAsync(
                 "Delete work item",
                 $"Delete \"{item.Name}\" and all of its logged sessions? This can't be undone.",

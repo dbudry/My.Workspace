@@ -159,8 +159,11 @@ public static class WeekEntryGridRules
         return new TimeSpan((int)duration.TotalHours, duration.Minutes, 0);
     }
 
-    /// <summary>Maximum duration for a single day cell (one full day).</summary>
-    public static readonly TimeSpan MaxDayDuration = TimeSpan.FromHours(24);
+    /// <summary>
+    /// Maximum duration for a single day cell. Capped below 24h so it fits SQL <c>time</c>
+    /// (see <see cref="DurationStorageRules.MaxStoredDuration"/>).
+    /// </summary>
+    public static readonly TimeSpan MaxDayDuration = DurationStorageRules.MaxStoredDuration;
 
     /// <summary>Mud PatternMask shape for day cells: two hour digits, colon, two minute digits.</summary>
     public const string DayDurationMaskPattern = "00:00";
@@ -177,7 +180,7 @@ public static class WeekEntryGridRules
     }
 
     /// <summary>
-    /// Formats a day-cell duration as <c>HH:MM</c> (e.g. 08:00, 24:00). Empty when zero.
+    /// Formats a day-cell duration as <c>HH:MM</c> (e.g. 08:00, 23:59). Empty when zero.
     /// </summary>
     public static string FormatDayDurationInput(TimeSpan duration)
     {
@@ -292,10 +295,12 @@ public static class WeekEntryGridRules
         if (minutes > 59) minutes = 59;
         if (minutes < 0) minutes = 0;
         if (hours < 0) hours = 0;
-        if (hours > 24 || (hours == 24 && minutes > 0))
+        // Cap at MaxStoredDuration (23:59) so normalized text never promises a non-storable value.
+        if (hours > DurationStorageRules.MaxHoursComponent
+            || (hours == DurationStorageRules.MaxHoursComponent && minutes > DurationStorageRules.MaxStoredDuration.Minutes))
         {
-            hours = 24;
-            minutes = 0;
+            hours = DurationStorageRules.MaxHoursComponent;
+            minutes = DurationStorageRules.MaxStoredDuration.Minutes;
         }
 
         return $"{hours:D2}:{minutes:D2}";
@@ -303,7 +308,7 @@ public static class WeekEntryGridRules
 
     /// <summary>
     /// Parses a day-cell duration while typing. Accepts empty (zero) and complete
-    /// <c>H:MM</c> / <c>HH:MM</c> up to 24:00. Partials (e.g. <c>8</c>, <c>08:3</c>) return false
+    /// <c>H:MM</c> / <c>HH:MM</c> up to 23:59. Partials (e.g. <c>8</c>, <c>08:3</c>) return false
     /// so autosave can wait — use <see cref="TryCommitDayDurationText"/> on blur/commit.
     /// </summary>
     public static bool TryParseDayDurationText(string? raw, out TimeSpan duration)
@@ -335,7 +340,7 @@ public static class WeekEntryGridRules
     ///   <item><c>4:</c> → 4 hours</item>
     ///   <item><c>4:3</c> → 4 hours 3 minutes</item>
     /// </list>
-    /// Empty → zero (success). Values over 24:00 fail (callers should normalize first).
+    /// Empty → zero (success). Values over 23:59 fail (callers should normalize first).
     /// </summary>
     public static bool TryCommitDayDurationText(string? raw, out TimeSpan duration)
     {
@@ -385,10 +390,11 @@ public static class WeekEntryGridRules
         duration = TimeSpan.Zero;
         if (hours < 0 || minutes < 0 || minutes > 59)
             return false;
-        if (hours > 24 || (hours == 24 && minutes > 0))
+        // Must fit SQL time storage (max 23:59). 24:00 used to parse then crash on insert.
+        if (hours > DurationStorageRules.MaxHoursComponent)
             return false;
         duration = DurationFromParts(hours, minutes);
-        return true;
+        return DurationStorageRules.IsWithinStorageLimit(duration);
     }
 
     /// <summary>

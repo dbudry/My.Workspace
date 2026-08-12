@@ -411,7 +411,7 @@ else
                Class="@(isStopwatch ? "tasks-stopwatch-row-cell" : null)">
             @if (canEdit && task != null && tid != null && IsEditing(tid, "project"))
             {
-                <div class="d-flex align-center" style="gap: 8px; min-width: 10rem;">
+                <div class="d-flex align-center tasks-project-cell" style="gap: 8px; min-width: 10rem;">
                     <ProjectAffiliationDisplay ProjectName="@null"
                                                DisplayName="@null"
                                                OrganizationName="@orgName"
@@ -436,10 +436,11 @@ else
             }
             else if (canEdit && task != null && tid != null)
             {
-                <div class="tasks-inline-display"
+                <div class="tasks-project-cell tasks-project-cell-interactive"
                      @onclick="@(() => BeginInlineEdit(tid, "project"))"
                      @ondblclick="@(() => BeginInlineEdit(tid, "project"))">
-                    <ProjectAffiliationDisplay ProjectName="@displayProjectName"
+                    <ProjectAffiliationDisplay @key="@($"{displayProjectName}|{projectColorSource}")"
+                                               ProjectName="@displayProjectName"
                                                DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
                                                OrganizationName="@orgName"
                                                OrganizationColor="@orgColor"
@@ -450,11 +451,11 @@ else
             }
             else if (isStopwatch)
             {
-                <div class="tasks-inline-display"
+                <div class="tasks-project-cell tasks-project-cell-interactive"
                      title="Edit sessions"
                      @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
                      @onclick:stopPropagation="true">
-                    <ProjectAffiliationDisplay @key="@($"{displayName}|{projectColorSource}")"
+                    <ProjectAffiliationDisplay @key="@($"{displayProjectName}|{projectColorSource}|sw")"
                                                ProjectName="@displayProjectName"
                                                DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
                                                OrganizationName="@orgName"
@@ -466,14 +467,16 @@ else
             }
             else
             {
-                <ProjectAffiliationDisplay @key="@($"{displayName}|{projectColorSource}")"
-                                           ProjectName="@displayProjectName"
-                                           DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
-                                           OrganizationName="@orgName"
-                                           OrganizationColor="@orgColor"
-                                           ProjectGroupName="@groupName"
-                                           ProjectGroupColor="@groupColor"
-                                           ColorSource="@projectColorSource" />
+                <div class="tasks-project-cell">
+                    <ProjectAffiliationDisplay @key="@($"{displayProjectName}|{projectColorSource}")"
+                                               ProjectName="@displayProjectName"
+                                               DisplayName="@(project?.DisplayName ?? context.ProjectDisplayName)"
+                                               OrganizationName="@orgName"
+                                               OrganizationColor="@orgColor"
+                                               ProjectGroupName="@groupName"
+                                               ProjectGroupColor="@groupColor"
+                                               ColorSource="@projectColorSource" />
+                </div>
             }
         </MudTd>
         <MudTd DataLabel="@(trackTimeOfDay ? "Date / Start" : "Date")" @onclick:stopPropagation="@stopCellBubble"
@@ -505,8 +508,7 @@ else
 
                     @if (context.IsAllDay)
                     {
-                        <MudText Typo="Typo.caption" Class="tasks-inline-allday-label"
-                                 Style="color: var(--mud-palette-text-secondary);">All day</MudText>
+                        <span class="tasks-list-time tasks-list-allday">All day</span>
                     }
                     else if (trackTimeOfDay && IsEditing(tid, "time"))
                     {
@@ -537,7 +539,8 @@ else
             }
             else if (isStopwatch)
             {
-                <div class="tasks-inline-display tasks-inline-date-time"
+                @* Same date/time tracks as manual rows (no outer tasks-inline-display padding). *@
+                <div class="tasks-inline-date-time tasks-stopwatch-hit"
                      title="Edit sessions"
                      @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
                      @onclick:stopPropagation="true">
@@ -550,22 +553,21 @@ else
             }
             else if (context.IsAllDay)
             {
-                <div class="tasks-inline-date-time tasks-inline-date-time-readonly">
+                <div class="tasks-inline-date-time">
                     <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
-                    <MudText Typo="Typo.caption" Class="tasks-inline-allday-label"
-                             Style="color: var(--mud-palette-text-secondary);">All day</MudText>
+                    <span class="tasks-list-time tasks-list-allday">All day</span>
                 </div>
             }
             else if (trackTimeOfDay)
             {
-                <div class="tasks-inline-date-time tasks-inline-date-time-readonly">
+                <div class="tasks-inline-date-time">
                     <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
                     <span class="tasks-list-time">@FormatStartTime(displayDate)</span>
                 </div>
             }
             else
             {
-                <div class="tasks-inline-date-time tasks-inline-date-time-readonly">
+                <div class="tasks-inline-date-time">
                     <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
                 </div>
             }
@@ -595,43 +597,47 @@ else
                 <div class="tasks-inline-display tasks-inline-display-duration"
                      @onclick="@(() => BeginInlineEdit(tid, "duration"))"
                      @ondblclick="@(() => BeginInlineEdit(tid, "duration"))">
-                    @FormatRowDuration(context)
+                    <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
                 </div>
             }
             else if (isStopwatch)
             {
                 @* Total is sum of sessions — open sessions dialog to change duration. *@
-                <div class="tasks-inline-display tasks-inline-display-duration"
+                <div class="tasks-list-duration-hit tasks-stopwatch-hit"
                      title="Edit sessions to change duration"
                      @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
                      @onclick:stopPropagation="true">
                     <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
                 </div>
             }
+            else if (context.IsAllDay)
+            {
+                <MudTooltip Text="All Day">
+                    <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
+                </MudTooltip>
+            }
             else
             {
                 <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
-                @if (context.IsAllDay)
-                {
-                    <MudTooltip Text="All-day entry — duration is workday hours × calendar days">
-                        <MudIcon Icon="@Icons.Material.Filled.BeachAccess" Size="Size.Small" Class="ml-1"
-                                 Style="color: var(--mud-palette-text-secondary);" />
-                    </MudTooltip>
-                }
             }
         </MudTd>
         <MudTd DataLabel="Actions" Style="text-align:center;" @onclick:stopPropagation="true">
             @if (isStopwatch)
             {
+                var sw = context.StopwatchItem!;
                 <div class="d-flex justify-center align-center" style="gap: 0;">
-                    @* No pencil — open sessions via duration/name click or the list icon. *@
-                    <MudTooltip Text="Sessions (create duration, start/stop)">
+                    <MudTooltip Text="Sessions — durations, create duration; name/project when unlocked">
                         <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
-                                       OnClick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))" />
+                                       OnClick="@(() => OpenStopwatchSessionsAsync(sw))" />
                     </MudTooltip>
-                    <MudTooltip Text="Delete work item and all sessions">
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                       OnClick="@(() => DeleteStopwatchItemAsync(context.StopwatchItem!))" />
+                    <MudTooltip Text="@(sw.HasLockedSessions
+                        ? "Cannot delete: one or more sessions are in a submitted month"
+                        : "Delete work item and all sessions")">
+                        <span>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                           Disabled="@sw.HasLockedSessions"
+                                           OnClick="@(() => DeleteStopwatchItemAsync(sw))" />
+                        </span>
                     </MudTooltip>
                 </div>
             }

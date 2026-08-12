@@ -1,5 +1,6 @@
 @using MudBlazor
 @using My.Client.Models
+@using My.Shared.Rules
 @namespace My.Client.Components.TrackedTasks
 
 <MudDialog @onkeydown="HandleKeyDown">
@@ -106,15 +107,7 @@
             <DialogFormStack>
                 @if (IsStopwatchSession)
                 {
-                    @* Work item identity + calendar day are fixed; only time-of-day and duration. *@
-                    <MudTextField Value="@editName" Label="Task Name" Margin="Margin.Dense" ReadOnly="true"
-                                  Variant="Variant.Outlined" Disabled="true" />
-                    <MudTextField Value="@(selectedProject?.DisplayName ?? selectedProject?.Name ?? ProjectName ?? "")"
-                                  Label="Project" Margin="Margin.Dense" ReadOnly="true"
-                                  Variant="Variant.Outlined" Disabled="true" />
-                    <MudTextField Value="@(editStartDateOnly?.ToString("M/d/yyyy") ?? "")"
-                                  Label="Date" Margin="Margin.Dense" ReadOnly="true"
-                                  Variant="Variant.Outlined" Disabled="true" />
+                    @* Name, project, and calendar day are fixed on the work item — only show what the user can change. *@
                     @if (trackTimeOfDay)
                     {
                         <MudTextField @bind-Value="EditStartTimeText" Label="Start Time" Margin="Margin.Dense"
@@ -124,7 +117,8 @@
                     }
                     <div class="d-flex gap-2">
                         <MudNumericField T="int" @bind-Value="editDurationHours" Label="Hours" Margin="Margin.Dense"
-                                         Min="0" Max="99" Style="width: 100px;" />
+                                         Min="0" Max="@DurationStorageRules.MaxHoursComponent" Style="width: 100px;"
+                                         AutoFocus="@(!trackTimeOfDay)" />
                         <MudNumericField T="int" @bind-Value="editDurationMinutes" Label="Minutes" Margin="Margin.Dense"
                                          Min="0" Max="59" Style="width: 100px;" />
                     </div>
@@ -135,7 +129,8 @@
                                   Immediate="true" AutoFocus="true" />
 
                     <ProjectAutocomplete Value="selectedProject" ValueChanged="OnProjectChanged"
-                                         Label="Project" SearchFunc="SearchProjects" />
+                                         Label="Project" SearchFunc="SearchProjects"
+                                         PreferOpenUpward="true" />
 
                     <MudSwitch T="bool" Value="editIsAllDay" Label="All Day" Color="Color.Primary"
                                ValueChanged="OnAllDayChanged" />
@@ -165,8 +160,10 @@
                                           Immediate="false" />
                         }
                         <div class="d-flex gap-2">
-                            <MudNumericField T="int" @bind-Value="editDurationHours" Label="Hours" Margin="Margin.Dense" Min="0" Max="99" Style="width: 100px;" />
-                            <MudNumericField T="int" @bind-Value="editDurationMinutes" Label="Minutes" Margin="Margin.Dense" Min="0" Max="59" Style="width: 100px;" />
+                            <MudNumericField T="int" @bind-Value="editDurationHours" Label="Hours" Margin="Margin.Dense"
+                                             Min="0" Max="@DurationStorageRules.MaxHoursComponent" Style="width: 100px;" />
+                            <MudNumericField T="int" @bind-Value="editDurationMinutes" Label="Minutes" Margin="Margin.Dense"
+                                             Min="0" Max="59" Style="width: 100px;" />
                         </div>
                     }
                 }

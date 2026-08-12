@@ -370,9 +370,9 @@ public class WeekEntryGridRulesTests
     [InlineData("", "")]
     [InlineData("8:aa", "8")]
     [InlineData("8:00", "08:00")]
-    [InlineData("24:00", "24:00")]
-    [InlineData("24:01", "24:00")]
-    [InlineData("25:00", "24:00")]
+    [InlineData("24:00", "23:59")]
+    [InlineData("24:01", "23:59")]
+    [InlineData("25:00", "23:59")]
     [InlineData("08:99", "08:59")]
     [InlineData("abc", "")]
     [InlineData("7", "7")]
@@ -404,7 +404,8 @@ public class WeekEntryGridRulesTests
     [InlineData("8:00", true, 8, 0)]
     [InlineData("08:00", true, 8, 0)]
     [InlineData("00:45", true, 0, 45)]
-    [InlineData("24:00", true, 24, 0)]
+    [InlineData("23:59", true, 23, 59)]
+    [InlineData("24:00", false, 0, 0)]
     [InlineData("24:01", false, 0, 0)]
     [InlineData("25:00", false, 0, 0)]
     [InlineData("08:99", false, 0, 0)]
@@ -412,7 +413,7 @@ public class WeekEntryGridRulesTests
     [InlineData("08:3", false, 0, 0)]
     [InlineData("8:aa", false, 0, 0)]
     [InlineData("2.5", false, 0, 0)]
-    public void TryParseDayDurationText_hhmm_max_24(
+    public void TryParseDayDurationText_hhmm_max_storage(
         string? raw, bool ok, int hours, int minutes)
     {
         var success = WeekEntryGridRules.TryParseDayDurationText(raw, out var d);
@@ -426,7 +427,7 @@ public class WeekEntryGridRulesTests
     {
         Assert.Equal("", WeekEntryGridRules.FormatDayDurationInput(TimeSpan.Zero));
         Assert.Equal("02:30", WeekEntryGridRules.FormatDayDurationInput(TimeSpan.FromHours(2.5)));
-        Assert.Equal("24:00", WeekEntryGridRules.FormatDayDurationInput(TimeSpan.FromHours(30)));
+        Assert.Equal("23:59", WeekEntryGridRules.FormatDayDurationInput(TimeSpan.FromHours(30)));
         Assert.True(WeekEntryGridRules.TryParseDayDurationText("08:00", out var d));
         Assert.Equal("08:00", WeekEntryGridRules.FormatDayDurationInput(d));
     }
@@ -437,7 +438,8 @@ public class WeekEntryGridRulesTests
     [InlineData("4:", true, 4, 0)]
     [InlineData("4:3", true, 4, 3)]
     [InlineData("04:30", true, 4, 30)]
-    [InlineData("24:00", true, 24, 0)]
+    [InlineData("23:59", true, 23, 59)]
+    [InlineData("24:00", false, 0, 0)]
     [InlineData("25", false, 0, 0)]
     [InlineData("", true, 0, 0)]
     public void TryCommitDayDurationText_accepts_bare_hours(

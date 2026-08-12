@@ -13,10 +13,9 @@ using My.Shared.Rules;
 namespace My.Functions
 {
     /// <summary>
-    /// Backs the unified Tasks page: merges the user's stopwatch work items and manual tracked
-    /// tasks, then sorts, filters, and pages them server-side so the client makes one request per
-    /// page instead of pulling every row. Lives on its own top-level route so it can't collide
-    /// with trackedtasks/{id}.
+    /// Backs the unified Tasks page: merges stopwatch work items and manuals, then pages
+    /// without loading full history. Manuals come from <see cref="ITaskListManualStore"/>
+    /// (EF today; Azure Table later); merge math is pure <see cref="TaskListRules"/>.
     /// </summary>
     public class TaskListFunctions
     {
@@ -37,42 +36,52 @@ namespace My.Functions
             if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
 
             var query = HttpListQueryParser.ParseListQuery(req);
+            var pageNumber = query.PageNumber < 1 ? 1 : query.PageNumber;
+            var pageSize = query.EffectivePageSize;
+            var prefixLen = TaskListRules.RequiredManualPrefixLength(pageNumber, pageSize);
 
-            // Manual entries (exclude stopwatch sessions) — one capped round-trip, not per-page loops.
-            var manualTasks = await TrackedTaskRangeQuery.LoadAsync(
-                dbContext, userId, from: null, to: null, search: null, excludeStopwatchSessions: true);
-            var submitted = await GetSubmittedMonthsAsync(userId);
-            var manualDtos = manualTasks.Select(t =>
-            {
-                var dto = mapper.TrackedTaskToDto(t);
-                dto.IsMonthSubmitted = submitted.Contains((t.StartDate.Year, t.StartDate.Month));
-                return dto;
-            }).ToList();
+            var store = new EfTaskListManualStore(dbContext, mapper);
+
+            // Count + ordered prefix only — never Take(10000) of the user's full career.
+            var totalManuals = await store.CountAsync(userId, query.Search);
+            var manualDtos = (await store.GetOrderedPrefixAsync(
+                userId,
+                query.Search,
+                query.SortBy,
+                query.SortDescending,
+                prefixLen)).ToList();
 
             if (manualDtos.Count > 0)
             {
-                var taskIds = manualTasks.Select(t => t.TaskId).ToList();
+                var taskIds = manualDtos.Select(t => t.TaskId).ToList();
                 var adjustmentContext = await TrackedTaskAdjustmentEnricher.LoadForTasksAsync(dbContext, taskIds);
+                // Re-load entities only if enricher needs them — we already have DTOs; enrich by id.
                 for (var i = 0; i < manualDtos.Count; i++)
                 {
-                    adjustmentContext.Aliases.TryGetValue(manualTasks[i].TaskId, out var alias);
-                    adjustmentContext.Audits.TryGetValue(manualTasks[i].TaskId, out var audit);
+                    var id = manualDtos[i].TaskId;
+                    adjustmentContext.Aliases.TryGetValue(id, out var alias);
+                    adjustmentContext.Audits.TryGetValue(id, out var audit);
                     TrackedTaskAdjustmentEnricher.ApplyEmployeeView(
                         manualDtos[i], alias, audit, adjustmentContext, mapper);
                 }
+
+                var submitted = await GetSubmittedMonthsAsync(userId);
+                foreach (var dto in manualDtos)
+                    dto.IsMonthSubmitted = submitted.Contains((dto.StartDate.Year, dto.StartDate.Month));
             }
 
-            // Stopwatch work items are few (one per work item) — load all and compute their totals.
+            // Stopwatch work items are few (one row per work item) — load all for this user.
             var stopwatchDtos = await LoadStopwatchDtosAsync(userId);
 
-            var page = TaskListRules.BuildPage(
+            var page = TaskListRules.BuildPageFromManualPrefix(
                 stopwatchDtos,
                 manualDtos,
+                totalMatchingManuals: totalManuals,
                 search: query.Search,
                 sortBy: query.SortBy,
                 sortDescending: query.SortDescending,
-                pageNumber: query.PageNumber,
-                pageSize: query.PageSize,
+                pageNumber: pageNumber,
+                pageSize: pageSize,
                 nowUtc: DateTime.UtcNow);
 
             return new OkObjectResult(page);
@@ -102,20 +111,27 @@ namespace My.Functions
                 .Where(t => t.StopwatchItemId != null && itemIds.Contains(t.StopwatchItemId))
                 .ToListAsync();
             var byItem = sessions.GroupBy(t => t.StopwatchItemId!).ToDictionary(g => g.Key, g => g.ToList());
+            var submitted = await GetSubmittedMonthsAsync(userId);
 
             return items
-                .Select(i => ToStopwatchDto(i, byItem.GetValueOrDefault(i.StopwatchItemId) ?? new List<TrackedTask>()))
+                .Select(i => ToStopwatchDto(
+                    i,
+                    byItem.GetValueOrDefault(i.StopwatchItemId) ?? new List<TrackedTask>(),
+                    submitted))
                 .ToList();
         }
 
-        // Mirrors StopwatchItemFunction.ToListDto: total is the sum of completed session durations,
-        // running is whether an open (EndDate == null) session exists.
-        private StopwatchItemDto ToStopwatchDto(StopwatchItem item, List<TrackedTask> sessions)
+        private StopwatchItemDto ToStopwatchDto(
+            StopwatchItem item,
+            List<TrackedTask> sessions,
+            HashSet<(int Year, int Month)> submittedMonths)
         {
             var active = sessions.FirstOrDefault(t => t.EndDate == null);
             var completedTotal = sessions
                 .Where(t => t.EndDate != null)
                 .Aggregate(TimeSpan.Zero, (sum, t) => sum + t.Duration);
+            var hasLocked = sessions.Any(s =>
+                submittedMonths.Contains((s.StartDate.Year, s.StartDate.Month)));
 
             return new StopwatchItemDto
             {
@@ -128,7 +144,8 @@ namespace My.Functions
                 ActiveSessionId = active?.TaskId,
                 ActiveSessionStartDate = active?.StartDate,
                 LastWorkedAt = item.LastWorkedAt,
-                CreatedAt = item.CreatedAt
+                CreatedAt = item.CreatedAt,
+                HasLockedSessions = hasLocked
             };
         }
     }

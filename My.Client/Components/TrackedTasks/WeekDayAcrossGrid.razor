@@ -60,14 +60,23 @@ else
                                                              Margin="Margin.Dense"
                                                              Variant="Variant.Outlined"
                                                              Class="week-entry-draft-project" />
-                                        <MudTextField T="string"
-                                                      Value="@row.DraftTaskName"
-                                                      ValueChanged="@(v => OnDraftTaskNameChanged(row, v))"
-                                                      Margin="Margin.Dense"
-                                                      Variant="Variant.Outlined"
-                                                      Immediate="true"
-                                                      Placeholder="Task name"
-                                                      Class="week-entry-draft-task-name" />
+                                        <div class="d-flex align-center gap-1">
+                                            <MudTextField T="string"
+                                                          Value="@row.DraftTaskName"
+                                                          ValueChanged="@(v => OnDraftTaskNameChanged(row, v))"
+                                                          Margin="Margin.Dense"
+                                                          Variant="Variant.Outlined"
+                                                          Immediate="true"
+                                                          Placeholder="Task name"
+                                                          Class="week-entry-draft-task-name" />
+                                            <MudTooltip Text="Remove unused row">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                               Size="Size.Small"
+                                                               Color="Color.Default"
+                                                               aria-label="Remove unused row"
+                                                               OnClick="@(() => RemoveDraftRow(row))" />
+                                            </MudTooltip>
+                                        </div>
                                     </div>
                                 }
                                 else

@@ -99,6 +99,51 @@
     width: 260px;
     flex-shrink: 0;
     overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar ::deep .nav-scrollable {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* Setting only overflow-y forces overflow-x to compute as "auto" too (CSS
+       overflow spec), which gave this element its own horizontal scrollbar the
+       moment any nav content was a pixel wider than the sidebar. Pin it. */
+    overflow-x: hidden;
+}
+
+.sidebar-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    border-top: 1px solid var(--mud-palette-divider);
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.sidebar-footer:hover {
+    background-color: color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+    text-decoration: none;
+}
+
+.sidebar-footer:hover .app-version {
+    color: var(--mud-palette-text-primary);
+}
+
+.app-version {
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.sidebar-footer ::deep .new-version-chip {
+    height: 1.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
 }
 
 main {

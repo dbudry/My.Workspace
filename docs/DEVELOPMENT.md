@@ -415,3 +415,10 @@ The convention so far:
   and merged via PR into `development`.
 - The production deploy pipeline includes a smoke test step; if it fails, the deploy is
   considered broken even if the build succeeded.
+
+## Changelog (in-app Versions page)
+
+Release notes live in `My.Client/wwwroot/data/changelog.json`. When you bump
+`My.Client/My.Client.csproj` `<Version>` for a master promotion, add a matching
+**top** entry in that file (same version string, non-empty `changes` array).
+PRs to `master` fail CI if the top changelog version does not match.

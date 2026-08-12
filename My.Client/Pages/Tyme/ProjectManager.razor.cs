@@ -27,10 +27,15 @@ namespace My.Client.Pages.Tyme
         bool showArchived = false;
         bool showInactive = false;
         bool allowProjectDelete = false;
-        // Whether the *current user* is allowed to create/edit/delete projects + groups.
-        // The page is open to any user with a Tyme-scoped role for read-only viewing;
-        // mutations are gated. Global-only Admins are blocked before the component loads.
+        // Whether the *current user* is allowed to create/edit/delete projects + groups
+        // (Manager:Tyme / Admin:Tyme). The page is open to any user with a Tyme-scoped role
+        // for read-only viewing; mutations are gated. Global-only Admins are blocked before
+        // the component loads.
         bool canManage = false;
+        // Editor:Tyme (and anyone canManage already covers): create/edit projects only —
+        // no delete, archive, set active/inactive, or project-group management. Those stay
+        // gated on canManage so the UI never shows an action the API will 403 on.
+        bool canEditProjects = false;
 
         private const string GroupByStorageKey = "projects.groupBy";
 
@@ -96,9 +101,14 @@ namespace My.Client.Pages.Tyme
             canManage = user.IsInRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme))
                      || user.IsInRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme));
 
+            // Editor:Tyme gets project create/edit only. canManage (Manager+) already implies
+            // this, so an Editor is anyone who clears the Editor bar but not the Manager one.
+            canEditProjects = canManage
+                || Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.Editor);
+
             client = ClientFactory.CreateClient(Constants.API.ClientName);
 
-            SetPageTitle?.Invoke(canManage ? "Manage Projects" : "Projects");
+            SetPageTitle?.Invoke(canManage || canEditProjects ? "Manage Projects" : "Projects");
 
             // Restore the grouping mode the user last picked (defaults to Organization).
             var savedGroupBy = await LocalStorage.GetItemAsync<string>(GroupByStorageKey);
@@ -416,7 +426,8 @@ namespace My.Client.Pages.Tyme
                 { x => x.Model, model },
                 { x => x.Groups, projectGroupsList },
                 { x => x.Organizations, organizationsList },
-                { x => x.SubmitLabel, "Create" }
+                { x => x.SubmitLabel, "Create" },
+                { x => x.CanManageSharedAvailability, canManage }
             };
 
             var dialog = await DialogService.ShowAsync<ProjectDialog>("New Project", parameters,
@@ -483,7 +494,8 @@ namespace My.Client.Pages.Tyme
                 { x => x.Model, model },
                 { x => x.Groups, projectGroupsList },
                 { x => x.Organizations, organizationsList },
-                { x => x.SubmitLabel, "Save" }
+                { x => x.SubmitLabel, "Save" },
+                { x => x.CanManageSharedAvailability, canManage }
             };
 
             var dialog = await DialogService.ShowAsync<ProjectDialog>("Edit Project", parameters,

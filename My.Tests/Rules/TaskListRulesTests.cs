@@ -135,6 +135,62 @@ namespace My.Tests.Rules
             Assert.Empty(page.Items);
         }
 
+        [Fact]
+        public void RequiredManualPrefixLength_is_offset_plus_page_size_not_a_history_cap()
+        {
+            Assert.Equal(50, TaskListRules.RequiredManualPrefixLength(1, 50));
+            Assert.Equal(100, TaskListRules.RequiredManualPrefixLength(2, 50));
+            Assert.Equal(250, TaskListRules.RequiredManualPrefixLength(5, 50));
+        }
+
+        [Fact]
+        public void BuildPageFromManualPrefix_matches_full_BuildPage_for_deep_pages()
+        {
+            // 200 manuals + 2 stopwatch rows interleaved by date — prefix path must match full merge.
+            var manuals = Enumerable.Range(1, 200)
+                .Select(i => Manual($"M{i:000}", new DateTime(2001, 1, 1).AddDays(i), TimeSpan.FromHours(1)))
+                .ToArray();
+            var stopwatch = new[]
+            {
+                Stopwatch("SW-old", new DateTime(2001, 1, 1).AddDays(50), TimeSpan.FromHours(2)),
+                Stopwatch("SW-new", new DateTime(2001, 6, 1), TimeSpan.FromHours(3)),
+            };
+
+            var full = TaskListRules.BuildPage(stopwatch, manuals, null, TaskListRules.SortDate,
+                sortDescending: true, pageNumber: 3, pageSize: 25, Now);
+
+            var prefixLen = TaskListRules.RequiredManualPrefixLength(3, 25);
+            // Manuals already date-desc (newest first) matches default sort.
+            var manualPrefix = manuals.OrderByDescending(m => m.StartDate).ThenBy(m => m.Name).Take(prefixLen).ToArray();
+
+            var fromPrefix = TaskListRules.BuildPageFromManualPrefix(
+                stopwatch, manualPrefix, totalMatchingManuals: manuals.Length,
+                search: null, sortBy: TaskListRules.SortDate, sortDescending: true,
+                pageNumber: 3, pageSize: 25, nowUtc: Now);
+
+            Assert.Equal(full.TotalCount, fromPrefix.TotalCount);
+            Assert.Equal(full.Items.Select(NameOf), fromPrefix.Items.Select(NameOf));
+        }
+
+        [Fact]
+        public void BuildPageFromManualPrefix_total_includes_manuals_beyond_the_prefix()
+        {
+            var manuals = Enumerable.Range(1, 500)
+                .Select(i => Manual($"T{i:000}", new DateTime(2010, 1, 1).AddDays(i), TimeSpan.FromHours(1)))
+                .ToArray();
+            var prefix = manuals.OrderByDescending(m => m.StartDate).Take(50).ToArray();
+
+            var page = TaskListRules.BuildPageFromManualPrefix(
+                Array.Empty<StopwatchItemDto>(), prefix, totalMatchingManuals: 500,
+                search: null, sortBy: TaskListRules.SortDate, sortDescending: true,
+                pageNumber: 1, pageSize: 50, nowUtc: Now);
+
+            Assert.Equal(500, page.TotalCount);
+            Assert.Equal(10, page.TotalPages);
+            Assert.True(page.HasNext);
+            Assert.Equal(50, page.Items.Count());
+        }
+
         private static string NameOf(Shared.Dtos.TaskList.TaskListRowDto row) =>
             row.IsStopwatch ? row.StopwatchItem!.Name : row.ManualTask!.Name;
 

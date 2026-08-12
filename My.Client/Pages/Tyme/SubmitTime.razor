@@ -31,8 +31,8 @@
             @if (rows.Count == 0)
             {
                 <EmptyState Icon="@Icons.Material.Outlined.AccessTime"
-                            Title="No completed months yet"
-                            Message="Once you've tracked time in a calendar month and that month has ended, it will appear here." />
+                            Title="Nothing to submit yet"
+                            Message="Once you've tracked time in a month, it will appear here — including the current month, if you want to submit early." />
             }
             else
             {
@@ -56,6 +56,14 @@
                                 <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">
                                     Not submitted
                                 </MudChip>
+                                @if (context.IsEarly)
+                                {
+                                    <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Outlined"
+                                             Icon="@Icons.Material.Filled.FastForward" Class="ml-1"
+                                             title="This month hasn't ended yet — submitting now locks it in early.">
+                                        Early
+                                    </MudChip>
+                                }
                             }
                         </MudTd>
                         <MudTd DataLabel="Actions" Style="text-align:right;">
@@ -68,7 +76,7 @@
                                            StartIcon="@Icons.Material.Filled.Send"
                                            OnClick="@(() => SubmitAsync(context))"
                                            Disabled="@(busyKey == $"{context.Year}-{context.Month}")">
-                                    Submit
+                                    Submit@(context.IsEarly ? " early" : "")
                                 </MudButton>
                             }
                         </MudTd>

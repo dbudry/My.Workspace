@@ -473,6 +473,10 @@ namespace My.Functions
                 newTrackedTask.EndDate = null;
             }
 
+            // Last line of defense: SQL time cannot store ≥24h (was a 500 / SqlDbType.Time overflow).
+            if (DurationStorageRules.ValidateForStorage(newTrackedTask.Duration) is { } durationStorageError)
+                return new BadRequestObjectResult(durationStorageError);
+
             newTrackedTask.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, newTrackedTask.ProjectId);
 
             await taskRepository.Insert(newTrackedTask);
@@ -665,6 +669,10 @@ namespace My.Functions
                 // Active task — save accumulated duration without setting EndDate
                 foundTrackedTask.Duration = trackedTask.Duration.Value;
             }
+
+            // Same storage limit as create — never let SQL time overflow become a 500.
+            if (DurationStorageRules.ValidateForStorage(foundTrackedTask.Duration) is { } updateDurationError)
+                return new BadRequestObjectResult(updateDurationError);
 
             foundTrackedTask.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, foundTrackedTask.ProjectId);
 

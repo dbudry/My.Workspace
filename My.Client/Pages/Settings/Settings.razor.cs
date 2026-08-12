@@ -167,16 +167,17 @@ namespace My.Client.Pages.Settings
             googleError = null;
             try
             {
-                // Delegate to the shared service implementation. This is the same flow
-                // that is triggered automatically after login for new users (route 2).
-                // We pass the settings page as a reasonable return target if this was a manual reconnect.
+                // Same OAuth flow as post-login auto-connect. Navigates away on success;
+                // failures used to be swallowed — surface them so reconnect is not a silent no-op.
                 await SettingsService.InitiateGoogleConnectAsync(Navigation.Uri);
             }
             catch (Exception ex)
             {
                 googleError = ex.Message;
+                Snackbar.Add(ex.Message, Severity.Error);
+                isGoogleBusy = false;
             }
-            isGoogleBusy = false;
+            // On success NavigateTo(forceLoad) tears the page down; only reset busy on failure.
         }
 
         private async Task DisconnectGoogle()
@@ -197,9 +198,15 @@ namespace My.Client.Pages.Settings
                 if (!resp.IsSuccessStatusCode)
                 {
                     googleError = await resp.Content.ReadAsStringAsync();
+                    if (string.IsNullOrWhiteSpace(googleError))
+                        googleError = "Couldn't disconnect Google Calendar.";
+                    Snackbar.Add(googleError, Severity.Error);
                 }
                 else
                 {
+                    // So the next Connect / auto-connect is not blocked by a stale browser flag.
+                    await SettingsService.ClearGoogleAutoConnectAttemptedAsync();
+                    SettingsService.InvalidateCache();
                     Snackbar.Add("Disconnected from Google Calendar.", Severity.Success);
                     await LoadSettings();
                 }
@@ -207,6 +214,7 @@ namespace My.Client.Pages.Settings
             catch (Exception ex)
             {
                 googleError = ex.Message;
+                Snackbar.Add(ex.Message, Severity.Error);
             }
             isGoogleBusy = false;
         }

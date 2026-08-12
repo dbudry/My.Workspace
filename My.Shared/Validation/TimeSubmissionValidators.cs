@@ -13,15 +13,13 @@ namespace My.Shared.Validation
             RuleFor(x => x.Year)
                 .InclusiveBetween(2000, 9999).WithMessage("Invalid Year/Month.");
 
-            RuleFor(x => x)
-                .Must(dto =>
-                {
-                    var nowUtc = DateTime.UtcNow;
-                    var currentMonthStart = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                    var requested = new DateTime(dto.Year, dto.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                    return requested < currentMonthStart;
-                })
-                .WithMessage("Cannot submit the current or a future month — only completed months.");
+            // Deliberately no "must be a past month" rule here. Early submission of the
+            // current or a future month is allowed (e.g. pre-entering vacation before
+            // going on leave) as long as the user has tracked time in that month — that
+            // check needs the DbContext, so it lives in TimeSubmissionFunction.CreateAsync
+            // as a business rule, not here in shape validation. See
+            // My.Shared/Rules/TimeSubmissionRules.cs for the pure "is this an early
+            // submission" classification used to label the month for the user.
         }
     }
 }
