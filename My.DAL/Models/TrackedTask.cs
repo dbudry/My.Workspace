@@ -3,7 +3,10 @@ namespace My.DAL.Models
     public class TrackedTask
     {
         public string TaskId { get; set; } = null!;
-        public string Name { get; set; } = null!;
+        /// <summary>
+        /// Free-text Details ("What are you working on"). Optional — empty string when omitted.
+        /// </summary>
+        public string Details { get; set; } = "";
         public TimeSpan Duration { get; set; }
         public DateTime StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -29,8 +32,10 @@ namespace My.DAL.Models
         /// <summary>
         /// When true, this entry covers full calendar days (Vacation/OOO style); StartDate
         /// is the first day at 00:00 in the user's zone and EndDate is the last day at 23:59.
-        /// Duration is derived at save time as <c>WorkdayHours × calendar-day-span</c> so
-        /// existing reports keep working without pulling each task's flag.
+        /// Duration is the elapsed work time. Timed entries stay under 24h and map to
+        /// SQL <c>time</c> (so 13:17:30 is stored exactly). All-day totals of 24h or more
+        /// are derived from StartDate/EndDate × workday hours at read time — <c>time</c>
+        /// cannot store 24:00.
         /// </summary>
         public bool IsAllDay { get; set; }
 

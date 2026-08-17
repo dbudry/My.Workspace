@@ -136,7 +136,7 @@ namespace My.Functions
             var name = principal.FindFirstValue(ClaimTypes.Name);
 
             if (string.IsNullOrEmpty(googleSub) || string.IsNullOrEmpty(email))
-                return new UnauthorizedResult();
+                return ProvisionDenied(401, ProvisionFailureRules.CodeUnauthorized, email);
 
             var allowedDomains = await AuthDomainSettingsLoader.ResolveAsync(_dbContext, _cache);
             if (!GoogleIdentityRules.IsAllowedEmail(email, allowedDomains))
@@ -145,7 +145,7 @@ namespace My.Functions
                     "Provision rejected for {Email}: email domain not allowed (policy={Policy}).",
                     email,
                     string.IsNullOrWhiteSpace(allowedDomains) ? "(not configured — complete setup wizard)" : allowedDomains);
-                return new StatusCodeResult(403);
+                return ProvisionDenied(403, ProvisionFailureRules.CodeEmailNotAllowed, email);
             }
 
             // Check if this user already exists
@@ -156,7 +156,7 @@ namespace My.Functions
                 if (!existingUser.IsActive || existingUser.IsArchived)
                 {
                     _logger.LogWarning("Inactive/archived user {Email} attempted login.", email);
-                    return new StatusCodeResult(403);
+                    return ProvisionDenied(403, ProvisionFailureRules.CodeInactiveOrArchived, email);
                 }
 
                 // Heal stale FirstName/LastName when the stored values look auto-generated
@@ -235,7 +235,7 @@ namespace My.Functions
                 if (!result.Succeeded)
                 {
                     _logger.LogError("Failed to create admin user: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
-                    return new StatusCodeResult(500);
+                    return ProvisionDenied(500, ProvisionFailureRules.CodeServerError, email);
                 }
 
                 var bootstrapRoles = new[]
@@ -274,7 +274,23 @@ namespace My.Functions
 
             // User doesn't exist and they're not the first — must be pre-created by admin
             _logger.LogWarning("Unauthorized login attempt from {Email} — user not provisioned by admin.", email);
-            return new StatusCodeResult(403);
+            return ProvisionDenied(403, ProvisionFailureRules.CodeNotProvisioned, email);
+        }
+
+        /// <summary>
+        /// Returns a status code with a JSON body the SPA can show on the dashboard.
+        /// Empty 403s previously left only a generic cold-start message with no detail.
+        /// </summary>
+        private static ObjectResult ProvisionDenied(int statusCode, string code, string? email)
+        {
+            return new ObjectResult(new ProvisionErrorDto
+            {
+                Code = code,
+                Message = ProvisionFailureRules.MessageFor(code)
+            })
+            {
+                StatusCode = statusCode
+            };
         }
 
         /// <summary>

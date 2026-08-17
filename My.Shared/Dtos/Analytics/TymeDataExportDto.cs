@@ -68,7 +68,7 @@ public sealed class ProjectExportRow
 public sealed class TrackedTaskExportRow
 {
     public string TaskId { get; set; } = null!;
-    public string Name { get; set; } = null!;
+    public string Details { get; set; } = null!;
     public double DurationSeconds { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime? EndDate { get; set; }
@@ -90,7 +90,7 @@ public sealed class TrackedTaskAliasExportRow
 {
     public string TrackedTaskAliasId { get; set; } = null!;
     public string TaskId { get; set; } = null!;
-    public string Name { get; set; } = null!;
+    public string Details { get; set; } = null!;
     public DateTime StartDate { get; set; }
     public double DurationSeconds { get; set; }
     public string? ProjectId { get; set; }
@@ -106,12 +106,12 @@ public sealed class TrackedTaskCorrectionAuditExportRow
     public string TaskId { get; set; } = null!;
     public string CorrectedByUserId { get; set; } = null!;
     public DateTime CorrectedAtUtc { get; set; }
-    public string PreviousName { get; set; } = null!;
+    public string PreviousDetails { get; set; } = null!;
     public DateTime PreviousStartDate { get; set; }
     public double PreviousDurationSeconds { get; set; }
     public string? PreviousProjectId { get; set; }
     public bool PreviousIsBillable { get; set; }
-    public string NewName { get; set; } = null!;
+    public string NewDetails { get; set; } = null!;
     public DateTime NewStartDate { get; set; }
     public double NewDurationSeconds { get; set; }
     public string? NewProjectId { get; set; }

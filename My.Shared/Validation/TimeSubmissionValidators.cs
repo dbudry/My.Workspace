@@ -22,4 +22,19 @@ namespace My.Shared.Validation
             // submission" classification used to label the month for the user.
         }
     }
+
+    public class CreateManagerTimeSubmissionDtoValidator : AbstractValidator<CreateManagerTimeSubmissionDto>
+    {
+        public CreateManagerTimeSubmissionDtoValidator()
+        {
+            RuleFor(x => x.UserId)
+                .NotEmpty().WithMessage("Employee is required.");
+
+            RuleFor(x => x.Month)
+                .InclusiveBetween(1, 12).WithMessage("Invalid Year/Month.");
+
+            RuleFor(x => x.Year)
+                .InclusiveBetween(2000, 9999).WithMessage("Invalid Year/Month.");
+        }
+    }
 }

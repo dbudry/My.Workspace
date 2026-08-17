@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using MudBlazor;
 using My.Client.Extensions;
 using My.Client.Models;
@@ -38,6 +39,8 @@ namespace My.Client.Components.TrackedTasks
             public CellSaveStatus Status { get; set; }
             public string? DurationError { get; set; }
             public string? ErrorMessage { get; set; }
+            public string? HintTooltip { get; set; }
+            public bool IsMultiple { get; set; }
             public CancellationTokenSource? DebounceCts { get; set; }
             public int SaveGeneration { get; set; }
             public bool IsReadOnly => IsSubmitted;
@@ -54,8 +57,8 @@ namespace My.Client.Components.TrackedTasks
 
             public string? ResolvedTaskName =>
                 HasPersistedData
-                    ? WeekEntryGridRules.NormalizeTaskNameKey(SelectedTaskName)
-                    : WeekEntryGridRules.NormalizeTaskNameKey(DraftTaskName);
+                    ? WeekEntryGridRules.NormalizeTaskDetailsKey(SelectedTaskName)
+                    : WeekEntryGridRules.NormalizeTaskDetailsKey(DraftTaskName);
         }
 
         [Parameter] public EventCallback EntriesChanged { get; set; }
@@ -78,6 +81,23 @@ namespace My.Client.Components.TrackedTasks
         /// so the Tasks toolbar can keep its Project picker and New Task in sync.
         /// </summary>
         [Parameter] public EventCallback ProjectSelectionChanged { get; set; }
+
+        /// <summary>Filters visible rows by Details. Draft rows stay visible.</summary>
+        [Parameter] public string? Search { get; set; }
+
+        private IEnumerable<TaskRow> VisibleTaskRows
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(Search))
+                    return taskRows;
+
+                return taskRows.Where(r =>
+                    !r.HasPersistedData
+                    || WeekEntryGridRules.MatchesEntrySearch(
+                        Search, r.SelectedTaskName, r.DraftTaskName));
+            }
+        }
 
         [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
         [Inject] private TrackedTasksClient TrackedTasksClient { get; set; } = null!;
@@ -258,7 +278,7 @@ namespace My.Client.Components.TrackedTasks
                 if (cell.IsReadOnly || selectedProject == null)
                     return;
 
-                var taskName = WeekEntryGridRules.SanitizeTaskName(row.ResolvedTaskName);
+                var taskName = WeekEntryGridRules.SanitizeTaskDetails(row.ResolvedTaskName);
                 if (string.IsNullOrEmpty(taskName))
                 {
                     Snackbar.Add("Enter a task name on the row first.", Severity.Warning);
@@ -313,7 +333,7 @@ namespace My.Client.Components.TrackedTasks
             {
                 { x => x.Mode, mode },
                 { x => x.TaskId, task.TaskId },
-                { x => x.TaskName, task.Name },
+                { x => x.TaskName, task.Details },
                 { x => x.ProjectId, task.ProjectId },
                 { x => x.ProjectName, task.Project?.DisplayName },
                 { x => x.StartDate, task.StartDate },
@@ -325,7 +345,7 @@ namespace My.Client.Components.TrackedTasks
             };
 
             var dialog = await DialogService.ShowAsync<TrackedTaskDialog>(
-                task.Name,
+                task.Details,
                 parameters,
                 new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
             var result = await dialog.Result;
@@ -481,7 +501,7 @@ namespace My.Client.Components.TrackedTasks
             {
                 var day = visibleDays[i];
                 var isSubmitted = WeekEntryGridRules.IsDaySubmitted(day, submittedList);
-                var bind = WeekEntryGridRules.BindDayForTaskName(slices, projectId, taskName, day);
+                var bind = WeekEntryGridRules.BindDayForTaskDetails(slices, projectId, taskName, day);
 
                 if (bind.Kind == WeekEntryGridRules.DayBindKind.Single && bind.TaskId != null)
                 {
@@ -505,7 +525,9 @@ namespace My.Client.Components.TrackedTasks
                         IsSubmitted = true,
                         DurationText = WeekEntryGridRules.FormatDayDurationInput(bind.TotalManualDuration),
                         SavedDuration = bind.TotalManualDuration,
-                        ErrorMessage = "Multiple — edit in All",
+                        ErrorMessage = "Multiple",
+                        HintTooltip = "More than one time entry on this day. Open List view to edit them one at a time.",
+                        IsMultiple = true,
                         Status = CellSaveStatus.Idle
                     };
                 }
@@ -601,7 +623,7 @@ namespace My.Client.Components.TrackedTasks
         }
 
         private static WeekEntryGridRules.WeekEntryTaskSlice ToSlice(TrackedTask t) =>
-            new(t.TaskId, t.Name, t.ProjectId, t.StartDate, t.Duration, t.IsAllDay, t.StopwatchItemId);
+            new(t.TaskId, t.Details, t.ProjectId, t.StartDate, t.Duration, t.IsAllDay, t.StopwatchItemId, t.EndDate);
 
         private string RowTotalLabel(TaskRow row)
         {
@@ -625,13 +647,8 @@ namespace My.Client.Components.TrackedTasks
             if (dayIndex < 0 || dayIndex >= visibleDays.Count)
                 return WeekEntryGridRules.FormatDuration(TimeSpan.Zero);
             var day = visibleDays[dayIndex].Date;
-            var t = TimeSpan.Zero;
-            foreach (var task in weekTasks)
-            {
-                if (task.StartDate.Date == day)
-                    t += task.Duration;
-            }
-            return WeekEntryGridRules.FormatDuration(WeekEntryGridRules.NormalizeDuration(t));
+            var t = WeekEntryGridRules.SumDayDuration(weekTasks.Select(ToSlice), day);
+            return WeekEntryGridRules.FormatDuration(t);
         }
 
         /// <summary>Week total across every project for visible days.</summary>
@@ -641,15 +658,8 @@ namespace My.Client.Components.TrackedTasks
             {
                 var t = TimeSpan.Zero;
                 for (var i = 0; i < visibleDays.Count; i++)
-                {
-                    var day = visibleDays[i].Date;
-                    foreach (var task in weekTasks)
-                    {
-                        if (task.StartDate.Date == day)
-                            t += task.Duration;
-                    }
-                }
-                return WeekEntryGridRules.FormatDuration(WeekEntryGridRules.NormalizeDuration(t));
+                    t += WeekEntryGridRules.SumDayDuration(weekTasks.Select(ToSlice), visibleDays[i]);
+                return WeekEntryGridRules.FormatDuration(t);
             }
         }
 
@@ -695,9 +705,7 @@ namespace My.Client.Components.TrackedTasks
             cell.DurationText = WeekEntryGridRules.FilterDurationInputChars(value);
             cell.DurationError = null;
 
-            // Debounce when empty (clear) or when commit would accept (incl. bare "4").
-            if (string.IsNullOrEmpty(cell.DurationText)
-                || WeekEntryGridRules.TryCommitDayDurationText(cell.DurationText, out _))
+            if (WeekEntryGridRules.ShouldAutosaveDayDurationText(cell.DurationText))
             {
                 ScheduleSave(row, dayIndex);
                 return;
@@ -705,6 +713,25 @@ namespace My.Client.Components.TrackedTasks
 
             cell.DebounceCts?.Cancel();
             cell.Status = CellSaveStatus.Idle;
+        }
+
+        private void OnDurationBlur(TaskRow row, int dayIndex)
+        {
+            if (dayIndex < 0 || dayIndex >= row.Cells.Length) return;
+            var cell = row.Cells[dayIndex];
+            if (cell.IsReadOnly || selectedProject == null) return;
+            ScheduleSave(row, dayIndex);
+        }
+
+        private void OnDurationKeyDown(TaskRow row, int dayIndex, KeyboardEventArgs e)
+        {
+            if (e.Key != "Enter") return;
+            if (dayIndex < 0 || dayIndex >= row.Cells.Length) return;
+            var cell = row.Cells[dayIndex];
+            if (cell.IsReadOnly || selectedProject == null) return;
+            cell.DebounceCts?.Cancel();
+            var generation = ++cell.SaveGeneration;
+            _ = SaveCellAsync(row, dayIndex, generation);
         }
 
         private void ScheduleSave(TaskRow row, int dayIndex)
@@ -737,7 +764,7 @@ namespace My.Client.Components.TrackedTasks
             if (selectedProject == null || cell.IsReadOnly) return;
 
             // Always trim before validate/persist so stored names never carry edge spaces.
-            var taskName = WeekEntryGridRules.SanitizeTaskName(row.ResolvedTaskName);
+            var taskName = WeekEntryGridRules.SanitizeTaskDetails(row.ResolvedTaskName);
             var durationText = WeekEntryGridRules.FilterDurationInputChars(cell.DurationText);
             if (!WeekEntryGridRules.TryCommitDayDurationText(durationText, out var newDuration))
             {
@@ -841,7 +868,7 @@ namespace My.Client.Components.TrackedTasks
 
             var dto = new CreateTrackedTaskDto
             {
-                Name = taskName,
+                    Details = taskName,
                 StartDate = SettingsService.ConvertFromUserTime(startLocal),
                 Duration = duration,
                 IsAllDay = false,
@@ -882,7 +909,7 @@ namespace My.Client.Components.TrackedTasks
             var dto = new UpdateTrackedTaskDto
             {
                 TaskId = cell.TaskId,
-                Name = taskName,
+                    Details = taskName,
                 StartDate = SettingsService.ConvertFromUserTime(start),
                 EndDate = SettingsService.ConvertFromUserTime(end),
                 Duration = duration,
@@ -900,7 +927,7 @@ namespace My.Client.Components.TrackedTasks
             var existing = weekTasks.FirstOrDefault(t => t.TaskId == cell.TaskId);
             if (existing != null)
             {
-                existing.Name = taskName;
+                existing.Details = taskName;
                 existing.StartDate = start;
                 existing.EndDate = end;
                 existing.Duration = duration;
@@ -977,6 +1004,12 @@ namespace My.Client.Components.TrackedTasks
 
         private static string DayHeader(DateTime day) => day.ToString("ddd d");
 
+        private static bool ShowSubmittedLock(DayCell cell) =>
+            cell.IsSubmitted
+            && cell.SavedDuration > TimeSpan.Zero
+            && cell.Status == CellSaveStatus.Idle
+            && string.IsNullOrEmpty(cell.ErrorMessage);
+
         private static string StatusLabel(DayCell cell) => cell.Status switch
         {
             CellSaveStatus.Pending => "…",
@@ -984,7 +1017,6 @@ namespace My.Client.Components.TrackedTasks
             CellSaveStatus.Saved => "Saved",
             CellSaveStatus.Error => cell.ErrorMessage ?? "Error",
             _ when !string.IsNullOrEmpty(cell.ErrorMessage) => cell.ErrorMessage!,
-            _ when cell.IsSubmitted && cell.SavedDuration > TimeSpan.Zero => "Locked",
             _ => ""
         };
 

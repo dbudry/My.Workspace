@@ -138,6 +138,80 @@ h1:focus {
    event label can bleed into the neighboring day when the window narrows. */
 .mud-cal-cell-template {
     overflow: hidden;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* 7 equal columns + cell borders were a few px wider than the page. html/main
+   overflow-x: clip then shaved the last column (Sunday when the week starts Monday). */
+.task-calendar,
+.task-calendar .mud-calendar,
+.task-calendar .mud-cal-month-table-holder,
+.task-calendar .mud-cal-month-layer,
+.task-calendar .mud-cal-grid,
+.task-calendar .mud-cal-month-row-holder {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.task-calendar .mud-cal-month-cell {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.task-calendar .mud-cal-month-row-holder {
+    overflow: hidden;
+}
+
+.task-calendar .mud-cal-month-view .mud-cal-clickable,
+.task-calendar .mud-cal-month-view .mud-cal-drop-item {
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.task-calendar .mud-cal-month-cell-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.task-calendar .pp-day-total {
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
+/* Week/day headers: Heron uses nowrap + overflow:hidden, which clipped Sunday's total. */
+.task-calendar .mud-cal-week-header,
+.task-calendar .mud-cal-work-week-header,
+.task-calendar .mud-cal-day-header {
+    overflow: hidden;
+    white-space: normal;
+}
+
+.task-calendar .mud-cal-week-header > div,
+.task-calendar .mud-cal-work-week-header > div,
+.task-calendar .mud-cal-day-header > div {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.task-calendar .mud-cal-week-header > div[data-day-total],
+.task-calendar .mud-cal-work-week-header > div[data-day-total],
+.task-calendar .mud-cal-day-header > div[data-day-total] {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    white-space: normal;
 }
 
 /* Dialog forms — shared vertical rhythm across edit/create modals */
@@ -149,24 +223,51 @@ h1:focus {
     width: 100%;
 }
 
-/* Stopwatch page start form: task + project (+ Start) on one row; wrap when narrow. */
+/* Stopwatch start: Project | Details+Start.
+   Counter is taken out of flow so Start can stretch to the outlined input, not the 0/500 line. */
 .stopwatch-start-row {
+    display: grid;
+    /* Project is a picker; Details is the long “what are you working on” field. */
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    align-items: start;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+    width: 100%;
+    padding-bottom: 1.35rem;
+}
+
+.stopwatch-start-details-and-action {
     display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: 0.75rem;
+    align-items: flex-start;
+    gap: 0.5rem;
+    min-width: 0;
     width: 100%;
 }
 
-.stopwatch-start-name {
-    flex: 1 1 14rem;
-    min-width: min(100%, 12rem);
+.stopwatch-start-details-and-action > .task-details-field-host {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+}
+
+.stopwatch-start-name,
+.stopwatch-start-name.mud-input-control {
+    width: 100%;
     max-width: 100%;
+    min-width: 0;
+    position: relative;
+    overflow: visible;
+}
+
+.stopwatch-start-name .mud-input-control-helper-container {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 0;
 }
 
 .stopwatch-start-project {
-    flex: 1 1 14rem;
-    min-width: min(100%, 12rem);
+    min-width: 0;
     max-width: 100%;
 }
 
@@ -175,49 +276,73 @@ h1:focus {
     width: 100%;
 }
 
-.stopwatch-start-button {
-    flex: 0 0 auto;
-    margin-bottom: 2px; /* optical align with dense outlined inputs */
+/* Label notch: same 8px on every control in this row. No bottom margin — that threw Start off. */
+.stopwatch-start-row .mud-input-control {
+    margin-top: 8px !important;
+    margin-bottom: 0 !important;
 }
 
-/* Stopwatch work-item edit dialog: same one-row / wrap pattern. */
+.stopwatch-start-button-slot {
+    display: flex;
+    align-items: flex-start;
+    flex: 0 0 auto;
+    margin-top: 8px;
+}
+
+/* Stay one input-row tall when Details grows via Shift+Enter. */
+.stopwatch-start-button.mud-button-root,
+.stopwatch-start-button {
+    height: 40px;
+    min-height: 40px;
+    margin: 0 !important;
+}
+
+/* Stopwatch work-item edit dialog: Project, then Details full width. */
 .stopwatch-item-dialog-fields {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.75rem;
-    align-items: flex-start;
+    align-items: stretch;
     width: 100%;
 }
 
+.stopwatch-item-dialog-fields > .task-details-field-host,
 .stopwatch-item-dialog-name,
-.stopwatch-item-dialog-project {
-    flex: 1 1 12rem;
-    min-width: min(100%, 11rem);
-    max-width: 100%;
-}
-
 .stopwatch-item-dialog-name.mud-input-control,
-.stopwatch-item-dialog-project {
-    width: 100%;
-}
-
+.stopwatch-item-dialog-project,
 .stopwatch-item-dialog-project.project-autocomplete {
     display: block;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
 }
 
 @media (max-width: 600px) {
-    .stopwatch-start-name,
-    .stopwatch-start-project,
-    .stopwatch-item-dialog-name,
-    .stopwatch-item-dialog-project {
-        flex: 1 1 100%;
-        min-width: 100%;
+    .stopwatch-start-row {
+        grid-template-columns: 1fr;
+        padding-bottom: 0;
     }
 
+    .stopwatch-start-details-and-action {
+        flex-wrap: wrap;
+    }
+
+    .stopwatch-start-name .mud-input-control-helper-container {
+        position: static;
+    }
+
+    .stopwatch-start-button-slot {
+        width: 100%;
+        margin-top: 0;
+    }
+
+    .stopwatch-start-button.mud-button-root,
     .stopwatch-start-button {
         width: 100%;
+        height: auto;
     }
+
+
 }
 
 /* Submit page My/Team picker — MudToggleGroup stretches to 100% in block layout otherwise. */
@@ -265,6 +390,228 @@ h1:focus {
     gap: 0.15rem;
     flex: 0 1 auto;
     min-width: 0;
+}
+
+.tasks-toolbar-search-row {
+    justify-content: flex-start;
+    align-items: center;
+    /* Same gap under All/Week/Project+search on Week and Project (toolbar gap is extra). */
+    margin-bottom: 0.5rem;
+    container-type: inline-size;
+    container-name: tasks-search-row;
+}
+
+.tasks-search-row-toggles {
+    display: flex;
+    align-items: center;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    margin-left: auto;
+}
+
+/* Search + Business/Full no longer fit on one line: toggle takes the next full row
+   instead of floating in the empty space to the right (margin-left: auto). */
+@container tasks-search-row (max-width: 52rem) {
+    .tasks-search-row-toggles {
+        margin-left: 0;
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    .tasks-search-row-toggles .submit-view-toggle.mud-toggle-group,
+    .tasks-search-row-toggles .submit-view-toggle.mud-button-group {
+        flex: 1 1 100%;
+        width: 100%;
+        display: flex !important;
+    }
+
+    .tasks-search-row-toggles .submit-view-toggle .mud-button-root {
+        flex: 1 1 0;
+    }
+}
+
+.tasks-toolbar-search-row:has(.tasks-search-row-toggles) .tasks-search-control {
+    flex: 0 1 32rem;
+    width: min(32rem, 100%);
+    max-width: min(32rem, 100%);
+    min-width: 16rem;
+}
+
+.tasks-search-control {
+    display: flex;
+    align-items: stretch;
+    box-sizing: border-box;
+    gap: 0.75rem;
+    height: 2.5rem;
+    width: min(32rem, 100%);
+    min-width: 16rem;
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: 8px;
+    background: var(--mud-palette-surface);
+    overflow: hidden;
+}
+
+.tasks-search-control:focus-within {
+    border-color: var(--mud-palette-primary);
+}
+
+.tasks-search-views,
+.tasks-search-layouts {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    height: 100%;
+}
+
+.tasks-search-views {
+    border-right: 1px solid var(--mud-palette-lines-inputs);
+}
+
+.tasks-search-layouts {
+    border-left: 1px solid var(--mud-palette-lines-inputs);
+}
+
+.tasks-search-views button,
+.tasks-search-layouts button {
+    box-sizing: border-box;
+    height: 100%;
+    margin: 0;
+    padding: 0 0.9rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--mud-palette-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tasks-search-views button:hover,
+.tasks-search-layouts button:hover {
+    background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
+}
+
+.tasks-search-views button.is-active,
+.tasks-search-layouts button.is-active {
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+}
+
+.tasks-search-views button.is-active:hover,
+.tasks-search-layouts button.is-active:hover {
+    background: var(--mud-palette-primary);
+}
+
+.tasks-search-control .tasks-search-control-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+}
+
+.tasks-search-control .tasks-search-control-field.mud-input-control {
+    margin: 0;
+    height: 100%;
+}
+
+.tasks-search-control .tasks-search-control-field .mud-input-control-input-container,
+.tasks-search-control .tasks-search-control-field .mud-input {
+    height: 100%;
+}
+
+.tasks-search-control .tasks-search-control-field .mud-input-slot,
+.tasks-search-control .tasks-search-control-field .mud-input > input {
+    height: 100%;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.tasks-search-control .tasks-search-control-field .mud-input-adornment {
+    margin: 0;
+}
+
+.tasks-search-control .mud-input-underline,
+.tasks-search-control .mud-input::before,
+.tasks-search-control .mud-input::after {
+    display: none;
+    border: none;
+}
+
+@media (max-width: 720px) {
+    .tasks-search-control {
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        flex-wrap: wrap;
+        gap: 0;
+    }
+
+    .tasks-search-views,
+    .tasks-search-layouts {
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 100%;
+        height: 2.5rem;
+        flex-wrap: nowrap;
+    }
+
+    .tasks-search-views {
+        border-right: none;
+        border-bottom: 1px solid var(--mud-palette-lines-inputs);
+    }
+
+    .tasks-search-layouts {
+        border-left: none;
+        border-top: 1px solid var(--mud-palette-lines-inputs);
+    }
+
+    .tasks-search-views button,
+    .tasks-search-layouts button {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .tasks-search-control .tasks-search-control-field {
+        width: 100%;
+        height: 2.5rem;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    /* Same inset as All / Week / Project labels (0.9rem) and the on-row gap
+       before the icon, so the spyglass is not flush to the pill edge. */
+    .tasks-search-control .tasks-search-control-field .mud-input-control-input-container,
+    .tasks-search-control .tasks-search-control-field .mud-input {
+        padding-left: 0.9rem !important;
+        padding-right: 0.9rem !important;
+        box-sizing: border-box;
+    }
+
+    .tasks-search-control .tasks-search-control-field .mud-input-adornment {
+        margin: 0;
+        margin-inline-end: 0.35rem;
+    }
+
+    .tasks-search-row-toggles {
+        margin-left: 0;
+        flex: 1 1 100%;
+        width: 100%;
+    }
+
+    .tasks-search-row-toggles .submit-view-toggle.mud-toggle-group,
+    .tasks-search-row-toggles .submit-view-toggle.mud-button-group {
+        flex: 1 1 100%;
+        width: 100%;
+        display: flex !important;
+    }
+
+    .tasks-search-row-toggles .submit-view-toggle .mud-button-root {
+        flex: 1 1 0;
+    }
 }
 
 /* Search sits away from the org/group toggle (wrapper margin is reliable with Mud). */
@@ -359,6 +706,15 @@ h1:focus {
     cursor: pointer;
 }
 
+/* Any dialog: scrolling its content to the top/bottom edge must not chain into
+   scrolling the page behind it. The stopwatch sessions dialog below already had
+   this on its own custom scroll div; this generalizes it to every MudDialog's
+   content area so the same "scrollbar moves the screen behind it" bug (browser
+   scroll chaining) can't happen anywhere else a dialog scrolls. */
+.mud-dialog-content {
+    overscroll-behavior: contain;
+}
+
 /* Sessions dialog: keep title/actions fixed; only the day list scrolls. */
 .mud-dialog:has(.stopwatch-sessions-scroll) {
     max-height: calc(100dvh - 32px);
@@ -390,10 +746,35 @@ h1:focus {
     margin-bottom: 8px !important;
 }
 
-/* All / Week list: stable column tracks so cells don't wander per row. */
+/* All / Week / Stopwatch lists: stable column tracks so cells don't wander per row. */
 .tasks-list-table table {
     table-layout: fixed;
     width: 100%;
+    min-width: 40rem;
+}
+
+/* Long lists: keep Project / Details / Date / … visible. Pager stays below the pane. */
+.tasks-list-table .mud-table-container {
+    max-height: calc(100dvh - 18rem);
+    overflow: auto;
+    padding-bottom: 3rem;
+}
+
+.tasks-list-table thead .mud-table-cell {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background-color: var(--mud-palette-surface);
+    box-shadow: inset 0 -1px 0 var(--mud-palette-table-lines);
+}
+
+/* Week List Total row stays on screen while the body scrolls. */
+.tasks-list-table tfoot .mud-table-cell {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background-color: var(--mud-palette-surface);
+    box-shadow: inset 0 1px 0 var(--mud-palette-table-lines);
 }
 
 .tasks-list-table .tasks-col-name {
@@ -401,11 +782,59 @@ h1:focus {
 }
 
 .tasks-list-table .tasks-col-project {
-    width: 24%;
+    width: 26%;
+}
+
+.tasks-project-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.tasks-project-color-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    height: 1.375rem;
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.tasks-project-color-toggle button {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 0.4rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--mud-palette-primary);
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tasks-project-color-toggle button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--mud-palette-primary) 10%, transparent);
+}
+
+.tasks-project-color-toggle button.is-active {
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+}
+
+.tasks-project-color-toggle button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
 .tasks-list-table .tasks-col-date {
-    width: 22%;
+    width: 20%;
 }
 
 .tasks-list-table .tasks-col-duration {
@@ -416,8 +845,69 @@ h1:focus {
     width: 6rem;
 }
 
-/* Fixed marker gutter — empty or icon — so Name text starts on one vertical line. */
-.tasks-inline-name-row {
+.stopwatch-items-table .stopwatch-col-timer {
+    width: 6.25rem;
+}
+
+.stopwatch-items-table .stopwatch-col-total {
+    width: 6.5rem;
+}
+
+/* table-layout:fixed + max-width:0 is what actually clips nowrap text to "…". */
+.tasks-list-table tbody td {
+    overflow: hidden;
+    vertical-align: middle;
+}
+
+.tasks-details-cell {
+    max-width: 0;
+}
+
+/* Card layout (MudTable Sm): do not crush Details — max-width:0 is a desktop table trick. */
+@media (max-width: 599.99px) {
+    .tasks-details-cell {
+        max-width: none;
+    }
+}
+
+.tasks-details-ellipsis,
+.tasks-row-name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre-line;
+    max-width: 100%;
+    min-width: 0;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+}
+
+.tasks-details-tooltip {
+    white-space: pre-line;
+    max-width: 24rem;
+}
+
+.week-day-row-label .week-day-project-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    display: block;
+}
+
+.week-day-row-label .week-day-details-text {
+    overflow: hidden;
+    white-space: pre-line;
+    max-width: 100%;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+}
+
+/* First-column lead: icon gutter + project. Icon is on the left of the row. */
+.tasks-row-lead {
     display: flex;
     align-items: center;
     gap: 0.35rem;
@@ -425,25 +915,38 @@ h1:focus {
     min-width: 0;
 }
 
+.tasks-row-lead > .tasks-project-cell {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.tasks-inline-name-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
 .tasks-row-markers {
-    flex: 0 0 1.35rem;
-    width: 1.35rem;
-    min-width: 1.35rem;
+    flex: 0 0 1.25rem;
+    width: 1.25rem;
+    min-width: 1.25rem;
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 1px;
 }
 
 .tasks-row-marker-icon {
     flex-shrink: 0;
+    font-size: 1.125rem !important;
 }
 
-.tasks-row-name-text {
+.tasks-inline-display-name .mud-tooltip-root {
+    display: block;
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 /* Date + time share fixed tracks so stopwatch and manual rows align. */
@@ -542,15 +1045,58 @@ h1:focus {
     width: 100%;
 }
 
-.tasks-list-table tbody td {
-    vertical-align: middle;
+/* While editing, the color swatch must not grow — that shoved the picker into Details. */
+.tasks-project-cell-editing > .d-flex,
+.tasks-project-cell-editing > .tasks-project-edit-swatch {
+    width: auto;
+    flex: 0 0 auto;
 }
 
-/* ---- Week / Project day grids: horizontal scroll + pencil hugs the duration field ---- */
-.week-entry-grid-scroll {
-    overflow-x: auto;
+/* ---- Week / Project day grids: rows scroll; Total bar sits under them ---- */
+.week-entry-grid-wrap {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 16rem);
+    min-height: 0;
     width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.week-entry-grid-scroll {
+    overflow-x: hidden;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: max-content;
+    min-width: 100%;
     -webkit-overflow-scrolling: touch;
+}
+
+.week-entry-grid-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--mud-palette-background);
+    box-shadow: 0 1px 0 var(--mud-palette-table-lines);
+}
+
+.week-entry-totals-table {
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: none;
+}
+
+.week-entry-totals-table tfoot td {
+    background: var(--mud-palette-background-grey, var(--mud-palette-background));
+    box-shadow: 0 -1px 0 var(--mud-palette-table-lines);
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+/* Corner: stay under both vertical and horizontal scroll. */
+.week-entry-grid-table thead th.week-entry-col-task {
+    z-index: 5;
 }
 
 .week-entry-grid-table {
@@ -564,7 +1110,7 @@ h1:focus {
 .week-entry-col-task {
     text-align: left;
     min-width: 12rem;
-    max-width: 18rem;
+    max-width: 22rem;
     padding: 2px 8px 4px 0;
     font-weight: 500;
     color: var(--mud-palette-text-secondary);
@@ -602,9 +1148,14 @@ h1:focus {
 }
 
 .week-entry-task-label {
-    display: flex;
-    align-items: center;
+    display: block;
     min-height: 36px;
+    padding-top: 8px;
+    font-weight: 400;
+    line-height: 1.35;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 tbody .week-entry-col-task {
@@ -800,19 +1351,75 @@ tbody .week-entry-col-day {
     margin-bottom: 0 !important;
 }
 
-/* Project picker in table: input stays compact; list is a Fixed MudPopover (portal). */
+/* Project picker in table: stay inside the Project column; list is a Fixed portal. */
 .tasks-inline-project {
     position: relative;
     z-index: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
     overflow: visible;
-    align-self: flex-start;
+    align-self: stretch;
 }
 
-/* Portaled list — do not force position:absolute (that re-clips inside the grid). */
-.project-autocomplete-popover {
+.tasks-inline-project .project-autocomplete,
+.tasks-inline-project .mud-input-control {
+    width: 100%;
+    max-width: 100%;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.tasks-inline-project .mud-input-outlined,
+.tasks-inline-project .mud-input {
+    min-height: 36px;
+}
+
+/* Portaled picker: scoped CSS cannot see MudPopover (it is moved to <body>).
+   Only .project-autocomplete-scroll may scroll — otherwise the paper and the
+   inner list both grow a vertical bar. */
+.project-autocomplete-popover,
+.project-autocomplete-popover.mud-popover {
     min-width: 18rem !important;
     max-width: min(28rem, 92vw) !important;
     z-index: 3000 !important;
+    overflow: hidden !important;
+    max-height: none !important;
+}
+
+.project-autocomplete-popover .mud-popover-content,
+.project-autocomplete-popover .mud-paper,
+.project-autocomplete-popover .mud-list,
+.project-autocomplete-popover .project-autocomplete-list {
+    overflow: hidden !important;
+    max-height: none !important;
+}
+
+.project-autocomplete-scroll {
+    max-height: min(280px, 40vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+}
+
+.org-picker-popover,
+.org-picker-popover.mud-popover {
+    overflow: hidden !important;
+    max-height: none !important;
+}
+
+.org-picker-popover .mud-popover-content,
+.org-picker-popover .mud-paper,
+.org-picker-popover .mud-list {
+    overflow: hidden !important;
+    max-height: none !important;
+}
+
+.org-picker-scroll {
+    max-height: min(280px, 40vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
 }
 
 /* Click-to-edit: plain text until clicked/double-clicked, then becomes an input. */
@@ -834,12 +1441,13 @@ tbody .week-entry-col-day {
     background: var(--mud-palette-action-default-hover);
 }
 
-/* Name column: display and input fill remaining width after the marker gutter. */
+/* Details column: fill remaining width after any status icons. */
 .tasks-inline-display-name {
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
-    max-width: none;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .tasks-inline-name {
@@ -1018,6 +1626,31 @@ tbody .week-entry-col-day {
     white-space: nowrap;
 }
 
+/* Editable fields: white fill so they read as inputs on the page background. */
+.tasks-inline-duration .mud-input,
+.tasks-inline-duration .mud-input-outlined,
+.tasks-inline-start-time .mud-input,
+.tasks-inline-start-time .mud-input-outlined,
+.tasks-inline-date .mud-input,
+.tasks-inline-date .mud-input-outlined,
+.tasks-inline-name .mud-input,
+.tasks-inline-name .mud-input-outlined,
+.tasks-inline-project .mud-input,
+.tasks-inline-project .mud-input-outlined,
+.week-entry-day-duration .mud-input,
+.week-entry-day-duration .mud-input-outlined,
+.week-entry-draft-task-name .mud-input,
+.week-entry-draft-task-name .mud-input-outlined,
+.week-entry-draft-project .mud-input,
+.week-entry-draft-project .mud-input-outlined,
+.tasks-toolbar-week-field .mud-input,
+.tasks-toolbar-week-field .mud-input-outlined,
+.tasks-toolbar-project-picker .mud-input,
+.tasks-toolbar-project-picker .mud-input-outlined,
+.tasks-search-control {
+    background-color: #fff;
+}
+
 /*
   Project / Week toolbar row 1: view | week picker | layout toggles.
   Match Mud Size.Small toggle height (~36px) — do not inflate the date field.
@@ -1115,8 +1748,29 @@ tbody .week-entry-col-day {
     z-index: 5;
 }
 
+.tasks-toolbar-view-row-project .tasks-toolbar-project-picker {
+    flex: 0 1 280px;
+    align-self: center;
+    height: 36px;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-project-picker .mud-input-control,
+.tasks-toolbar-view-row-project .tasks-toolbar-project-picker .project-autocomplete .mud-input-control {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    height: 36px;
+}
+
+.tasks-toolbar-view-row-project .tasks-toolbar-project-picker .mud-input-outlined,
+.tasks-toolbar-view-row-project .tasks-toolbar-project-picker .mud-input {
+    min-height: 36px !important;
+    height: 36px !important;
+    max-height: 36px !important;
+}
+
 .tasks-toolbar-project-picker .mud-input-control {
     margin-top: 0;
+    margin-bottom: 0;
 }
 
 .tasks-project-view {
@@ -1124,7 +1778,7 @@ tbody .week-entry-col-day {
     flex-direction: column;
     align-items: stretch;
     width: 100%;
-    margin-top: 0.25rem;
+    margin-top: 0;
 }
 
 .tasks-project-status {
@@ -1163,6 +1817,12 @@ tbody .week-entry-col-day {
         width: auto;
         min-width: 0;
         max-width: none;
+    }
+
+    .tasks-toolbar-view-row-project .tasks-toolbar-project-picker {
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: 100%;
     }
 
     .tasks-toolbar-project-task-row {
@@ -1276,4 +1936,17 @@ tbody .week-entry-col-day {
         flex: 1 1 100%;
         min-width: 0;
     }
+}
+
+.google-event-color-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.event-color-select .mud-input-adornment-icon {
+    color: var(--event-color-swatch, #9e9e9e) !important;
 }

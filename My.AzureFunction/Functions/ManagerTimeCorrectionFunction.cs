@@ -107,17 +107,24 @@ public class ManagerTimeCorrectionFunction
 
         if (existingAudit == null)
         {
+            // task.Duration reads 0 here when task is a long all-day entry (SQL time
+            // cannot hold 24h+ — see AllDayEntryRules.EffectiveDuration). Snapshot
+            // PreviousEndDate/PreviousIsAllDay alongside it so the real original
+            // duration can still be recomputed later (dashboard/export/revert), the
+            // same way a live TrackedTask is recomputed.
             existingAudit = new TrackedTaskCorrectionAudit
             {
                 TaskId = taskId,
                 CorrectedByUserId = actorId,
                 CorrectedAtUtc = nowUtc,
-                PreviousName = task.Name,
+                PreviousDetails = task.Details,
                 PreviousStartDate = task.StartDate,
                 PreviousDuration = task.Duration,
+                PreviousEndDate = task.EndDate,
+                PreviousIsAllDay = task.IsAllDay,
                 PreviousProjectId = task.ProjectId,
                 PreviousIsBillable = task.IsBillable,
-                NewName = body.Name.Trim(),
+                NewDetails = body.Details.Trim(),
                 NewStartDate = startUtc,
                 NewDuration = body.Duration,
                 NewProjectId = newProjectId,
@@ -130,7 +137,7 @@ public class ManagerTimeCorrectionFunction
         {
             existingAudit.CorrectedByUserId = actorId;
             existingAudit.CorrectedAtUtc = nowUtc;
-            existingAudit.NewName = body.Name.Trim();
+            existingAudit.NewDetails = body.Details.Trim();
             existingAudit.NewStartDate = startUtc;
             existingAudit.NewDuration = body.Duration;
             existingAudit.NewProjectId = newProjectId;
@@ -138,13 +145,17 @@ public class ManagerTimeCorrectionFunction
             _logger.LogInformation("User {ActorId} updated direct correction for task {TaskId}.", actorId, taskId);
         }
 
-        task.Name = existingAudit.NewName;
+        task.Details = existingAudit.NewDetails;
         task.StartDate = existingAudit.NewStartDate;
         task.Duration = existingAudit.NewDuration;
         task.ProjectId = existingAudit.NewProjectId;
         task.IsBillable = existingAudit.NewIsBillable;
-        if (task.Duration > TimeSpan.Zero)
-            task.EndDate = task.StartDate + task.Duration;
+        // A Direct correction sets an explicit timed Duration/EndDate, not a
+        // date-range-and-workday-hours derivation — clear IsAllDay so read paths that
+        // recompute all-day duration from StartDate/EndDate don't silently discard
+        // what the manager just typed in on the next load.
+        task.IsAllDay = false;
+        task.EndDate = task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null;
 
         await _dbContext.SaveChangesAsync();
         await TryPushUpdateAsync(task);
@@ -178,12 +189,17 @@ public class ManagerTimeCorrectionFunction
         if (audit == null)
             return new NotFoundObjectResult("Direct correction not found.");
 
-        task.Name = audit.PreviousName;
+        task.Details = audit.PreviousDetails;
         task.StartDate = audit.PreviousStartDate;
         task.Duration = audit.PreviousDuration;
+        task.IsAllDay = audit.PreviousIsAllDay;
         task.ProjectId = audit.PreviousProjectId;
         task.IsBillable = audit.PreviousIsBillable;
-        task.EndDate = task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null;
+        // All-day: restore the original span (Duration may legitimately read 0 here —
+        // see AllDayEntryRules.EffectiveDuration). Timed: derive EndDate from Duration.
+        task.EndDate = audit.PreviousIsAllDay
+            ? audit.PreviousEndDate
+            : (task.Duration > TimeSpan.Zero ? task.StartDate + task.Duration : null);
 
         _dbContext.TrackedTaskCorrectionAudits.Remove(audit);
         await _dbContext.SaveChangesAsync();

@@ -141,9 +141,10 @@ public class WeekEntryGridRulesTests
     }
 
     [Theory]
-    [InlineData(null, false)]
-    [InlineData("", false)]
-    [InlineData("a", false)]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("a", true)]
     [InlineData("ab", true)]
     [InlineData("Work", true)]
     public void ValidateTaskName_enforces_length(string? name, bool ok)
@@ -169,23 +170,29 @@ public class WeekEntryGridRulesTests
     [InlineData("", "")]
     [InlineData("   ", "")]
     [InlineData("No trim needed", "No trim needed")]
-    public void SanitizeTaskName_trims_leading_and_trailing_whitespace(string? input, string expected)
+    public void SanitizeTaskDetails_trims_leading_and_trailing_whitespace(string? input, string expected)
     {
         // TrackedTaskFunction calls this on create/update before persisting, so leading/
         // trailing whitespace typed by the user (or pasted in) never reaches the database.
-        Assert.Equal(expected, WeekEntryGridRules.SanitizeTaskName(input));
+        Assert.Equal(expected, WeekEntryGridRules.SanitizeTaskDetails(input));
     }
 
     [Fact]
-    public void SanitizeTaskName_preserves_internal_whitespace()
+    public void SanitizeTaskDetails_preserves_internal_whitespace()
     {
-        Assert.Equal("Foo  Bar", WeekEntryGridRules.SanitizeTaskName("  Foo  Bar  "));
+        Assert.Equal("Foo  Bar", WeekEntryGridRules.SanitizeTaskDetails("  Foo  Bar  "));
+    }
+
+    [Fact]
+    public void SanitizeTaskDetails_preserves_internal_newlines()
+    {
+        Assert.Equal("Line one\nLine two", WeekEntryGridRules.SanitizeTaskDetails("  Line one\nLine two\n"));
     }
 
     [Fact]
     public void TruncateTaskName_caps_length()
     {
-        var longName = new string('a', 80);
+        var longName = new string('a', WeekEntryGridRules.MaxTaskNameLength + 20);
         var t = WeekEntryGridRules.TruncateTaskName(longName);
         Assert.Equal(WeekEntryGridRules.MaxTaskNameLength, t.Length);
     }
@@ -232,7 +239,7 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void BindDayForTaskName_separates_names_on_same_day()
+    public void BindDayForTaskDetails_separates_names_on_same_day()
     {
         var day = new DateTime(2026, 5, 12, 9, 0, 0);
         var tasks = new[]
@@ -241,13 +248,13 @@ public class WeekEntryGridRulesTests
             Slice("2", "p1", day.AddHours(3), TimeSpan.FromHours(1), name: "Expenses")
         };
 
-        var timeEntry = WeekEntryGridRules.BindDayForTaskName(
+        var timeEntry = WeekEntryGridRules.BindDayForTaskDetails(
             tasks, "p1", "Time Entry", new DateTime(2026, 5, 12));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, timeEntry.Kind);
         Assert.Equal("1", timeEntry.TaskId);
         Assert.Equal(TimeSpan.FromHours(2), timeEntry.EditableDuration);
 
-        var expenses = WeekEntryGridRules.BindDayForTaskName(
+        var expenses = WeekEntryGridRules.BindDayForTaskDetails(
             tasks, "p1", "expenses", new DateTime(2026, 5, 12)); // case-insensitive
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, expenses.Kind);
         Assert.Equal("2", expenses.TaskId);
@@ -275,7 +282,25 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void BindDay_ignores_stopwatch_and_allday_for_edit()
+    public void DistinctManualTaskNames_includes_empty_details_row()
+    {
+        // Details is optional (WeekEntryGridRules.ValidateTaskName) — a task saved
+        // with no Details must still surface as a row, not vanish from Project view
+        // on the next load.
+        var tasks = new[]
+        {
+            Slice("1", "p1", new DateTime(2026, 5, 12), TimeSpan.FromHours(1), name: "")
+        };
+
+        var names = WeekEntryGridRules.DistinctManualTaskNames(
+            tasks, "p1", new DateTime(2026, 5, 12), new DateTime(2026, 5, 16));
+
+        Assert.Single(names);
+        Assert.Equal("", names[0]);
+    }
+
+    [Fact]
+    public void BindDay_ignores_stopwatch_but_binds_allday_readonly()
     {
         var day = new DateTime(2026, 5, 12, 9, 0, 0);
         var tasks = new[]
@@ -284,7 +309,21 @@ public class WeekEntryGridRulesTests
             Slice("ad", "p1", day.Date, TimeSpan.FromHours(8), isAllDay: true)
         };
         var b = WeekEntryGridRules.BindDay(tasks, "p1", new DateTime(2026, 5, 12));
-        Assert.Equal(WeekEntryGridRules.DayBindKind.Empty, b.Kind);
+        Assert.Equal(WeekEntryGridRules.DayBindKind.AllDay, b.Kind);
+        Assert.Equal(TimeSpan.FromHours(8), b.TotalManualDuration);
+    }
+
+    [Fact]
+    public void SumDayDuration_all_day_plus_timed_is_nine_hours()
+    {
+        // List view: all-day IT Support 8h + Administration 1h on Wed → Day footer must be 9h.
+        var wed = new DateTime(2026, 7, 1);
+        var tasks = new[]
+        {
+            Slice("ad", "it", wed, TimeSpan.FromHours(8), name: "My.Workspace", isAllDay: true),
+            Slice("tm", "admin", wed.AddHours(10), TimeSpan.FromHours(1), name: "Operations Meeting")
+        };
+        Assert.Equal(TimeSpan.FromHours(9), WeekEntryGridRules.SumDayDuration(tasks, wed));
     }
 
     [Fact]
@@ -324,11 +363,13 @@ public class WeekEntryGridRulesTests
     [InlineData("", true, 0, 0)]
     [InlineData("2:30", true, 2, 30)]
     [InlineData("0:45", true, 0, 45)]
+    [InlineData(":15", true, 0, 15)]
     [InlineData("8", true, 8, 0)]
     [InlineData("2.5", true, 2, 30)]
     [InlineData("2h30m", true, 2, 30)]
     [InlineData("2h", true, 2, 0)]
     [InlineData("90m", true, 1, 30)]
+    [InlineData("15m", true, 0, 15)]
     [InlineData("2:99", false, 0, 0)]
     [InlineData("abc", false, 0, 0)]
     public void TryParseDurationText_accepts_common_forms(
@@ -370,6 +411,9 @@ public class WeekEntryGridRulesTests
     [InlineData("", "")]
     [InlineData("8:aa", "8")]
     [InlineData("8:00", "08:00")]
+    [InlineData(":15", "00:15")]
+    [InlineData("15m", "00:15")]
+    [InlineData("2h", "02:00")]
     [InlineData("24:00", "23:59")]
     [InlineData("24:01", "23:59")]
     [InlineData("25:00", "23:59")]
@@ -386,12 +430,18 @@ public class WeekEntryGridRulesTests
     [Theory]
     [InlineData(null, "")]
     [InlineData("", "")]
-    [InlineData("aa:aa", "")]
+    [InlineData("aa:aa", ":")]
     [InlineData("08:00", "08:00")]
     [InlineData("4", "4")]
     [InlineData("4:3", "4:3")]
     [InlineData("4:30", "4:30")]
-    [InlineData("12345", "12")] // max 2 hour digits without colon
+    [InlineData(":15", ":15")]
+    [InlineData("15m", "15m")]
+    [InlineData("15M", "15m")]
+    [InlineData("2h30m", "2h30m")]
+    [InlineData(":", ":")]
+    [InlineData(":155", ":15")]
+    [InlineData("12345", "1234")] // up to 4 digits so 15m / 1439m can be typed
     [InlineData("12:345", "12:34")]
     public void FilterDurationInputChars_soft_only(string? raw, string expected)
     {
@@ -404,6 +454,14 @@ public class WeekEntryGridRulesTests
     [InlineData("8:00", true, 8, 0)]
     [InlineData("08:00", true, 8, 0)]
     [InlineData("00:45", true, 0, 45)]
+    [InlineData(":15", true, 0, 15)]
+    [InlineData("15m", true, 0, 15)]
+    [InlineData("2h", true, 2, 0)]
+    [InlineData("2h30m", true, 2, 30)]
+    [InlineData("90m", true, 1, 30)]
+    [InlineData(":1", false, 0, 0)]
+    [InlineData(":", false, 0, 0)]
+    [InlineData("2h30", false, 0, 0)]
     [InlineData("23:59", true, 23, 59)]
     [InlineData("24:00", false, 0, 0)]
     [InlineData("24:01", false, 0, 0)]
@@ -433,11 +491,65 @@ public class WeekEntryGridRulesTests
     }
 
     [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData("ball", true)]
+    [InlineData("BALL", true)]
+    [InlineData("xyz", false)]
+    public void MatchesEntrySearch_is_case_insensitive_substring(string? query, bool match)
+    {
+        Assert.Equal(match, WeekEntryGridRules.MatchesEntrySearch(query, "Ball PHC Support", "Standup"));
+    }
+
+    [Fact]
+    public void CanEnterDraftDayDuration_requires_project_only()
+    {
+        Assert.False(WeekEntryGridRules.CanEnterDraftDayDuration(hasProject: false));
+        Assert.True(WeekEntryGridRules.CanEnterDraftDayDuration(hasProject: true));
+    }
+
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("00:30", true)]
+    [InlineData(":15", true)]
+    [InlineData("15m", true)]
+    [InlineData("2h", true)]
+    [InlineData("8:00", true)]
+    [InlineData("00:00", true)]
+    [InlineData(":", false)]
+    [InlineData(":1", false)]
+    [InlineData("0", false)]
+    [InlineData("00", false)]
+    [InlineData("00:", false)]
+    [InlineData("00:3", false)]
+    [InlineData("4", false)]
+    [InlineData("4:", false)]
+    [InlineData("4:3", false)]
+    public void ShouldAutosaveDayDurationText_waits_for_complete_minutes(string? raw, bool autosave)
+    {
+        Assert.Equal(autosave, WeekEntryGridRules.ShouldAutosaveDayDurationText(raw));
+    }
+
+    [Fact]
+    public void TryCommitDayDurationText_accepts_zero_hours_thirty_minutes()
+    {
+        Assert.True(WeekEntryGridRules.TryCommitDayDurationText("00:30", out var d));
+        Assert.Equal(TimeSpan.FromMinutes(30), d);
+    }
+
+    [Theory]
     [InlineData("4", true, 4, 0)]
     [InlineData("04", true, 4, 0)]
     [InlineData("4:", true, 4, 0)]
     [InlineData("4:3", true, 4, 3)]
     [InlineData("04:30", true, 4, 30)]
+    [InlineData(":15", true, 0, 15)]
+    [InlineData(":5", true, 0, 5)]
+    [InlineData("15m", true, 0, 15)]
+    [InlineData("90m", true, 1, 30)]
+    [InlineData("2h30", true, 2, 30)]
+    [InlineData(":", false, 0, 0)]
     [InlineData("23:59", true, 23, 59)]
     [InlineData("24:00", false, 0, 0)]
     [InlineData("25", false, 0, 0)]
@@ -458,6 +570,7 @@ public class WeekEntryGridRulesTests
         TimeSpan duration,
         string name = "Task",
         bool isAllDay = false,
-        string? stopwatchItemId = null) =>
-        new(id, name, projectId, start, duration, isAllDay, stopwatchItemId);
+        string? stopwatchItemId = null,
+        DateTime? end = null) =>
+        new(id, name, projectId, start, duration, isAllDay, stopwatchItemId, end);
 }

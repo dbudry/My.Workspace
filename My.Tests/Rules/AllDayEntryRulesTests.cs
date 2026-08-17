@@ -219,6 +219,66 @@ public class AllDayEntryRulesTests
     }
 
     [Fact]
+    public void EffectiveDuration_recomputes_24_hour_all_day_when_sql_time_stored_zero()
+    {
+        var start = new DateTime(2026, 7, 28);
+        var end = new DateTime(2026, 7, 30);
+        Assert.Equal(
+            TimeSpan.FromHours(24),
+            AllDayEntryRules.EffectiveDuration(true, start, end, TimeSpan.Zero, 8.0));
+    }
+
+    [Fact]
+    public void EffectiveDuration_keeps_timed_seconds()
+    {
+        var stored = new TimeSpan(13, 17, 30);
+        Assert.Equal(
+            stored,
+            AllDayEntryRules.EffectiveDuration(false, DateTime.Today, null, stored, 8.0));
+    }
+
+    [Fact]
+    public void DurationFor_tuesday_through_thursday_is_exactly_24_hours()
+    {
+        // Jul 28–30 2026 is Tue–Thu. 3 workdays × 8h = 24h. This used to be
+        // rejected because SQL time cannot store 24:00, so the entry never
+        // reached Google Calendar.
+        var d = AllDayEntryRules.DurationFor(
+            new DateTime(2026, 7, 28),
+            new DateTime(2026, 7, 30),
+            8.0);
+        Assert.Equal(TimeSpan.FromHours(24), d);
+    }
+
+    [Fact]
+    public void FormatAllDayForGoogle_july_28_through_30_ends_exclusive_on_the_31st()
+    {
+        var (start, end) = AllDayEntryRules.FormatAllDayForGoogle(
+            new DateTime(2026, 7, 28),
+            new DateTime(2026, 7, 30));
+        Assert.Equal("2026-07-28", start);
+        Assert.Equal("2026-07-31", end);
+    }
+
+    [Fact]
+    public void ValidateSpan_allows_a_three_day_vacation()
+    {
+        Assert.Null(AllDayEntryRules.ValidateSpan(
+            new DateTime(2026, 7, 28),
+            new DateTime(2026, 7, 30)));
+    }
+
+    [Fact]
+    public void ValidateSpan_rejects_more_than_90_calendar_days()
+    {
+        Assert.Equal(
+            AllDayEntryRules.SpanTooLongMessage,
+            AllDayEntryRules.ValidateSpan(
+                new DateTime(2026, 1, 1),
+                new DateTime(2026, 4, 2)));
+    }
+
+    [Fact]
     public void DurationFor_friday_to_next_monday_logs_two_workdays_not_four()
     {
         // Fri + Sat + Sun + Mon → 2 workdays × 8h = 16h.

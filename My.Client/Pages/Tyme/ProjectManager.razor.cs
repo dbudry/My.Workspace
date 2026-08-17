@@ -565,9 +565,12 @@ namespace My.Client.Pages.Tyme
         private async Task ArchiveProject(Project project)
         {
             var action = project.IsArchived ? "unarchive" : "archive";
+            var detail = project.IsArchived
+                ? $"Unarchive \"{project.Name}\"? If its organization or department is archived, those are unarchived too so the project can be used. Time on this project comes back with it."
+                : $"Archive \"{project.Name}\"? Time logged on this project stays with it and cannot be used until the project is unarchived.";
             var confirmed = await DialogService.ShowMessageBoxAsync(
-                "Confirm", $"Are you sure you want to {action} \"{project.Name}\"?",
-                yesText: "Yes", cancelText: "Cancel");
+                "Confirm", detail,
+                yesText: project.IsArchived ? "Unarchive" : "Archive", cancelText: "Cancel");
             if (confirmed != true) return;
 
             try

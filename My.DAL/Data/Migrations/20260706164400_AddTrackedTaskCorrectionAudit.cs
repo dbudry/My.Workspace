@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -19,14 +19,18 @@ namespace My.DAL.Data.Migrations
                     TaskId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     CorrectedByUserId = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     CorrectedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    PreviousName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    PreviousDetails = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     PreviousStartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     PreviousDuration = table.Column<TimeSpan>(type: "time", nullable: false),
+                    PreviousEndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    PreviousIsAllDay = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     PreviousProjectId = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    NewName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    PreviousIsBillable = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    NewDetails = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     NewStartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     NewDuration = table.Column<TimeSpan>(type: "time", nullable: false),
-                    NewProjectId = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    NewProjectId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    NewIsBillable = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
                 },
                 constraints: table =>
                 {

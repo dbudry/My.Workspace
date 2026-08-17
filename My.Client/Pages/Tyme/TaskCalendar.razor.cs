@@ -1,3 +1,4 @@
+using Microsoft.JSInterop;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using MudBlazor;
@@ -21,6 +22,7 @@ namespace My.Client.Pages.Tyme
 
         private bool isLoading = true;
         private EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both;
+        private double workdayHours = AllDayEntryRules.DefaultWorkdayHours;
 
         private HttpClient client = null!;
 
@@ -58,6 +60,9 @@ namespace My.Client.Pages.Tyme
         [Inject]
         private AppSettingsCache AppSettingsCache { get; set; } = null!;
 
+        [Inject]
+        private IJSRuntime Js { get; set; } = null!;
+
         #endregion
 
         // Heron's MudCalendar measures its parent at construction time. If we render it on
@@ -91,7 +96,11 @@ namespace My.Client.Pages.Tyme
             {
                 _calendarReady = true;
                 await InvokeAsync(StateHasChanged);
+                return;
             }
+
+            if (_calendarReady && !isLoading)
+                await ApplyDayTotalsAsync();
         }
 
         /// <summary>Workspace mode from App Settings only — no per-user override.</summary>
@@ -103,6 +112,8 @@ namespace My.Client.Pages.Tyme
                 var settings = await AppSettingsCache.GetAsync();
                 displayMode = EmployeeTimeDisplayModeRules.FromAppSettings(
                     settings.Select(s => new KeyValuePair<string, string?>(s.Key, s.Value)));
+                var workdayRaw = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.WorkdayHours)?.Value;
+                workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRaw);
             }
             catch
             {
@@ -165,7 +176,7 @@ namespace My.Client.Pages.Tyme
                     {
                         TaskId = t.TaskId,
                         StopwatchItemId = t.StopwatchItemId!,
-                        Name = t.Name,
+                    Details = t.Details,
                         StartDate = t.StartDate,
                         EndDate = t.EndDate,
                         Duration = t.Duration,
@@ -177,8 +188,8 @@ namespace My.Client.Pages.Tyme
                     if (!tasksById.TryGetValue(group.RepresentativeTaskId, out var sample))
                         continue;
                     var label = group.SessionCount > 1
-                        ? $"{group.Name} ({group.SessionCount} sessions)"
-                        : group.Name;
+                        ? $"{group.Details} ({group.SessionCount} sessions)"
+                        : group.Details;
 
                     calendarItems.Add(new TaskCalendarItem
                     {
@@ -217,7 +228,7 @@ namespace My.Client.Pages.Tyme
                         calendarItems.Add(new TaskCalendarItem
                         {
                             TaskId = task.TaskId,
-                            Text = task.Name,
+                            Text = task.Details,
                             Start = start,
                             End = end,
                             AllDay = false,
@@ -248,6 +259,32 @@ namespace My.Client.Pages.Tyme
             isLoading = false;
         }
 
+        private async Task OnDateRangeChanged(DateRange _)
+        {
+            if (_calendarReady && !isLoading)
+                await ApplyDayTotalsAsync();
+        }
+
+        private async Task ApplyDayTotalsAsync()
+        {
+            var chips = calendarItems.Select(i => new CalendarDayTotalRules.Chip(
+                i.Start,
+                i.Duration,
+                i.IsAllDay || i.AllDay,
+                i.IsManagerAdjustmentOverlay || i.IsManagerAdjusted,
+                i.TaskId));
+            var labels = CalendarDayTotalRules.ToIsoLabels(
+                CalendarDayTotalRules.SumByDay(chips, workdayHours));
+            try
+            {
+                await Js.InvokeVoidAsync("calendarDayTotals.apply", labels);
+            }
+            catch (JSException)
+            {
+                // Tests / script not loaded.
+            }
+        }
+
         private static TaskCalendarItem BuildAdjustmentChip(TrackedTask task)
         {
             var adj = task.ManagerAdjustment!;
@@ -262,7 +299,7 @@ namespace My.Client.Pages.Tyme
             return new TaskCalendarItem
             {
                 TaskId = task.TaskId,
-                Text = $"{adj.Name} (adjusted)",
+                Text = $"{adj.Details} (adjusted)",
                 Start = adjStart,
                 End = adjEnd,
                 AllDay = false,
@@ -289,7 +326,7 @@ namespace My.Client.Pages.Tyme
             => new()
             {
                 TaskId = task.TaskId,
-                Text = task.Name,
+                Text = task.Details,
                 Start = day,
                 End = day.AddDays(1).AddTicks(-1),
                 AllDay = true,
@@ -314,7 +351,7 @@ namespace My.Client.Pages.Tyme
                 var sessionsDialogParameters = new DialogParameters<StopwatchSessionsDialog>
                 {
                     { x => x.ItemId, item.StopwatchItemId },
-                    { x => x.ItemName, sample?.Name ?? item.Text },
+                    { x => x.ItemName, sample?.Details ?? item.Text },
                     { x => x.ItemProjectId, sample?.ProjectId ?? item.ProjectId },
                     { x => x.ItemProjectName, item.ProjectName },
                     { x => x.DayFilter, item.StopwatchDay },
@@ -334,10 +371,10 @@ namespace My.Client.Pages.Tyme
 
             var task = trackedTasksList.FirstOrDefault(t => t.TaskId == item.TaskId);
             var isOverlay = item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted;
-            // Chip carries the values we display; do not mix original task.Name with overlay times.
+            // Chip carries the values we display; do not mix original task.Details with overlay times.
             var displayName = isOverlay
-                ? (task?.ManagerAdjustment?.Name ?? item.Text)
-                : (task?.Name ?? item.Text);
+                ? (task?.ManagerAdjustment?.Details ?? item.Text)
+                : (task?.Details ?? item.Text);
 
             var mode = item.IsLocked || isOverlay
                 ? TrackedTaskDialogMode.ReadOnly
@@ -370,7 +407,7 @@ namespace My.Client.Pages.Tyme
 
             if (isOverlay && task != null)
             {
-                parameters.Add(x => x.OriginalTaskName, task.Name);
+                parameters.Add(x => x.OriginalTaskName, task.Details);
                 parameters.Add(x => x.OriginalProjectName, task.Project?.DisplayName);
                 parameters.Add(x => x.OriginalStartDate, task.StartDate);
                 parameters.Add(x => x.OriginalEndDate,
@@ -509,7 +546,7 @@ namespace My.Client.Pages.Tyme
         /// </summary>
         private string GetChipColor(TaskCalendarItem item)
         {
-            // Matches AppTheme.PaletteLight.Warning (#E08E2A).
+            // Warning palette accent used for calendar day-total highlights (#E08E2A).
             if (item.IsManagerAdjustmentOverlay || item.IsManagerAdjusted)
                 return "#E08E2A";
 

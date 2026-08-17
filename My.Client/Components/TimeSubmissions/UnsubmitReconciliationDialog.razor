@@ -34,9 +34,9 @@
                 <MudTh>Adjusted</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd>@context.OriginalName</MudTd>
+                <MudTd>@context.OriginalDetails</MudTd>
                 <MudTd>@context.OriginalStartDate.ToLocalTime().ToString("MM/dd/yyyy") · @FormatDuration(context.OriginalDurationSeconds)</MudTd>
-                <MudTd>@context.AdjustedName · @context.AdjustedStartDate.ToLocalTime().ToString("MM/dd/yyyy") · @FormatDuration(context.AdjustedDurationSeconds)</MudTd>
+                <MudTd>@context.AdjustedDetails · @context.AdjustedStartDate.ToLocalTime().ToString("MM/dd/yyyy") · @FormatDuration(context.AdjustedDurationSeconds)</MudTd>
             </RowTemplate>
         </MudTable>
     </DialogContent>

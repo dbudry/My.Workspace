@@ -21,9 +21,6 @@ namespace My.Functions
 {
     public class GoogleCalendarFunction
     {
-        private const string SyncResourceState = "sync";
-        private const string ExistsResourceState = "exists";
-
         // Google's reserved alias for the authenticated user's own primary calendar.
         // We bind every Tyme integration to this instead of creating a dedicated "Tyme"
         // sub-calendar — see docs/initiatives/personal-calendar-migration.md.
@@ -36,6 +33,13 @@ namespace My.Functions
         private static readonly Regex SlugTagPattern =
             new(@"\[\s*([a-z0-9]+)\s*\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        private static string? FirstSlugTag(string? summary)
+        {
+            if (string.IsNullOrWhiteSpace(summary)) return null;
+            var match = SlugTagPattern.Match(summary);
+            return match.Success ? match.Groups[1].Value : null;
+        }
+
         private readonly IRepository<UserSettings> settingsRepository;
         private readonly IRepository<TrackedTask> taskRepository;
         private readonly IRepository<Project> projectRepository;
@@ -44,6 +48,7 @@ namespace My.Functions
         private readonly GoogleCalendarService google;
         private readonly GoogleTokenEncryptor encryptor;
         private readonly TeamAvailabilityPublisher teamAvailabilityPublisher;
+        private readonly GoogleCalendarWebhookImportQueue webhookImportQueue;
         private readonly ILogger<GoogleCalendarFunction> logger;
         private readonly RedirectUriQueryValidator redirectUriValidator;
         private readonly IValidator<GoogleCalendarCallbackDto> callbackValidator;
@@ -55,6 +60,7 @@ namespace My.Functions
             GoogleCalendarService google,
             GoogleTokenEncryptor encryptor,
             TeamAvailabilityPublisher teamAvailabilityPublisher,
+            GoogleCalendarWebhookImportQueue webhookImportQueue,
             ILogger<GoogleCalendarFunction> logger,
             RedirectUriQueryValidator redirectUriValidator,
             IValidator<GoogleCalendarCallbackDto> callbackValidator,
@@ -68,6 +74,7 @@ namespace My.Functions
             this.google = google;
             this.encryptor = encryptor;
             this.teamAvailabilityPublisher = teamAvailabilityPublisher;
+            this.webhookImportQueue = webhookImportQueue;
             this.logger = logger;
             this.redirectUriValidator = redirectUriValidator;
             this.callbackValidator = callbackValidator;
@@ -150,6 +157,7 @@ namespace My.Functions
                 // afterwards if they want one-way sync only.
                 settings.PublishToGoogleCalendar = true;
                 settings.ImportFromGoogleCalendar = true;
+                settings.GoogleCalendarAutoConnectOptOut = false;
                 await settingsRepository.Update(settings);
 
                 await TryStartWatchAsync(settings, req);
@@ -203,6 +211,7 @@ namespace My.Functions
             settings.GoogleChannelExpiresAt = null;
             settings.GoogleSyncToken = null;
             settings.CalendarBackfillAcknowledgedUtc = null;
+            settings.GoogleCalendarAutoConnectOptOut = true;
             await settingsRepository.Update(settings);
 
             return new NoContentResult();
@@ -392,7 +401,7 @@ namespace My.Functions
             {
                 try
                 {
-                    var outcome = await TryImportEventAsync(ev, settings);
+                    var outcome = await TryImportEventAsync(ev, settings, incrementalSync: false);
                     switch (outcome)
                     {
                         case EventImportOutcome.Created: result.Created++; break;
@@ -401,7 +410,17 @@ namespace My.Functions
                         case EventImportOutcome.SkippedOurs: result.SkippedOurs++; break;
                         case EventImportOutcome.SkippedNoDates: result.SkippedNoDates++; break;
                         case EventImportOutcome.SkippedNoTag: result.SkippedNoTag++; break;
-                        case EventImportOutcome.SkippedUnresolvedTag: result.SkippedUnresolvedTag++; break;
+                        case EventImportOutcome.SkippedUnresolvedTag:
+                            result.SkippedUnresolvedTag++;
+                            if (result.UnresolvedTags.Count < CalendarPullResultRules.MaxUnresolvedNotes)
+                            {
+                                result.UnresolvedTags.Add(new CalendarPullSkipNoteDto
+                                {
+                                    Summary = string.IsNullOrWhiteSpace(ev.Summary) ? "(Untitled)" : ev.Summary,
+                                    Tag = FirstSlugTag(ev.Summary) ?? ""
+                                });
+                            }
+                            break;
                         case EventImportOutcome.SkippedDeclinedInvite: result.SkippedDeclinedInvite++; break;
                         case EventImportOutcome.SkippedMonthSubmitted: result.SkippedMonthSubmitted++; break;
                     }
@@ -470,7 +489,7 @@ namespace My.Functions
                     {
                         try
                         {
-                            var outcome = await TryImportEventAsync(ev, settings);
+                            var outcome = await TryImportEventAsync(ev, settings, incrementalSync: false);
                             switch (outcome)
                             {
                                 case EventImportOutcome.Created: created++; break;
@@ -549,38 +568,62 @@ namespace My.Functions
                 return new OkResult();
             }
 
-            // "sync" is Google's "channel-is-live" handshake; no real change to process.
-            if (string.Equals(resourceState, SyncResourceState, StringComparison.OrdinalIgnoreCase))
+            if (!GoogleCalendarWebhookRules.ShouldImport(
+                    resourceState,
+                    settings.ImportFromGoogleCalendar,
+                    settings.GoogleRefreshToken,
+                    settings.GoogleCalendarId))
                 return new OkResult();
 
-            if (!settings.ImportFromGoogleCalendar
-                || string.IsNullOrEmpty(settings.GoogleRefreshToken)
-                || string.IsNullOrEmpty(settings.GoogleCalendarId))
-                return new OkResult();
-
-            if (!string.Equals(resourceState, ExistsResourceState, StringComparison.OrdinalIgnoreCase))
-                return new OkResult();
-
-            try
-            {
-                await ImportChangesAsync(settings);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Google webhook import failed for user {UserId}.", settings.UserId);
-                return new ObjectResult("Import failed.") { StatusCode = 500 };
-            }
+            // Acknowledge immediately. Google retries any non-2xx, which used to
+            // turn a single import failure into a SQL-pool storm. The worker
+            // runs ImportChangesAsync; nightly self-heal covers a lost queue item.
+            if (webhookImportQueue.TryEnqueue(settings.UserId))
+                logger.LogInformation("Google webhook queued import for user {UserId}.", settings.UserId);
+            else
+                logger.LogInformation("Google webhook import already queued for user {UserId}.", settings.UserId);
 
             return new OkResult();
         }
 
+        /// <summary>
+        /// Incremental import for a queued webhook. Reloads settings so a stale
+        /// snapshot cannot import after the user disconnects.
+        /// </summary>
+        internal async Task ImportQueuedWebhookAsync(string userId, CancellationToken cancellationToken)
+        {
+            var settings = (await settingsRepository.Get(s => s.UserId == userId)).FirstOrDefault();
+            if (settings == null)
+            {
+                logger.LogInformation("Queued Google import skipped; no settings for user {UserId}.", userId);
+                return;
+            }
+
+            if (!GoogleCalendarWebhookRules.ShouldImport(
+                    GoogleCalendarWebhookRules.ExistsResourceState,
+                    settings.ImportFromGoogleCalendar,
+                    settings.GoogleRefreshToken,
+                    settings.GoogleCalendarId))
+            {
+                logger.LogInformation("Queued Google import skipped; import disabled for user {UserId}.", userId);
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            await ImportChangesAsync(settings);
+        }
+
         private async Task ImportChangesAsync(UserSettings settings)
         {
+            // A missing token means this is a first/reconnect window list (includes
+            // ShowDeleted tombstones). Do not treat those as "delete the Tyme row."
+            var incrementalSync = !string.IsNullOrEmpty(settings.GoogleSyncToken);
+
             var (events, nextSync) = await google.SyncEventsAsync(
                 settings.GoogleRefreshToken!, settings.GoogleCalendarId!, settings.GoogleSyncToken);
 
             foreach (var ev in events)
-                await TryImportEventAsync(ev, settings);
+                await TryImportEventAsync(ev, settings, incrementalSync);
 
             if (!string.IsNullOrEmpty(nextSync) && nextSync != settings.GoogleSyncToken)
             {
@@ -618,41 +661,50 @@ namespace My.Functions
         /// The webhook path discards the return — it logs internally.
         /// </summary>
         private async Task<EventImportOutcome> TryImportEventAsync(
-            Google.Apis.Calendar.v3.Data.Event ev, UserSettings settings)
+            Google.Apis.Calendar.v3.Data.Event ev, UserSettings settings, bool incrementalSync = false)
         {
             string? source = null;
             ev.ExtendedProperties?.Private__?.TryGetValue(GoogleCalendarService.ExtendedPropSource, out source);
             var isOurs = string.Equals(source, GoogleCalendarService.ExtendedPropSourceValue, StringComparison.Ordinal);
 
-            // Cancellations are processed regardless of source: when the user deletes a
-            // Tyme-pushed event from Google Calendar, the cancellation webhook still has
-            // our extended property attached, but the user's intent is clear — the matching
-            // Tyme task should also disappear. (If we ourselves deleted the event via
-            // TryPushDeleteAsync, the Tyme task is already gone and this becomes a no-op.)
+            // Incremental webhook: deleting the Google copy while still connected
+            // still removes the Tyme row (see personal-calendar-migration.md 2026-05-15).
+            // Initial connect, reconnect, pull-missed, and nightly range lists include
+            // cancelled tombstones from "I disconnected and cleaned my calendar" — that
+            // must not wipe Tyme. Unlink GoogleEventId so a later backfill can republish.
             if (string.Equals(ev.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
             {
-                var toDelete = (await taskRepository.Get(t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
-                if (toDelete != null
-                    && !await IsMonthSubmittedAsync(settings.UserId, toDelete.StartDate.Year, toDelete.StartDate.Month))
+                var linked = (await taskRepository.Get(t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
+                if (linked != null
+                    && !await IsMonthSubmittedAsync(settings.UserId, linked.StartDate.Year, linked.StartDate.Month))
                 {
-                    // Clean up the team-availability sister event *before* deleting the
-                    // TrackedTask — once the row is gone we've lost the
-                    // TeamAvailabilityEventId reference. Without this step a user
-                    // deleting [vac] from their primary calendar would see the team
-                    // calendar still show their availability entry.
-                    await teamAvailabilityPublisher.DeleteSisterEventAsync(toDelete, settings);
-
-                    await taskRepository.Delete(toDelete.TaskId);
-                    logger.LogInformation(
-                        "Deleted TrackedTask {TaskId} for user {UserId} after Google cancelled event {EventId}.",
-                        toDelete.TaskId, settings.UserId, ev.Id);
+                    if (CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(incrementalSync))
+                    {
+                        await teamAvailabilityPublisher.DeleteSisterEventAsync(linked, settings);
+                        await taskRepository.Delete(linked.TaskId);
+                        logger.LogInformation(
+                            "Deleted TrackedTask {TaskId} for user {UserId} after Google cancelled event {EventId}.",
+                            linked.TaskId, settings.UserId, ev.Id);
+                    }
+                    else
+                    {
+                        linked.GoogleEventId = null;
+                        await taskRepository.Update(linked);
+                        logger.LogInformation(
+                            "Unlinked TrackedTask {TaskId} for user {UserId} from cancelled Google event {EventId} without deleting Tyme.",
+                            linked.TaskId, settings.UserId, ev.Id);
+                    }
                 }
                 return EventImportOutcome.Cancelled;
             }
 
-            // Non-cancellation echoes from our own Tyme → Google pushes: skip to avoid
-            // re-importing what we just sent.
-            if (isOurs) return EventImportOutcome.SkippedOurs;
+            // Echoes of a Tyme → Google push: skip only when the TrackedTask is still
+            // here. If the user deleted the Tyme row, Google still has source=tyme and
+            // a blanket skip meant "[admin] Company Meeting" could never come back.
+            var existing = (await taskRepository.Get(
+                t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
+            if (isOurs && existing != null)
+                return EventImportOutcome.SkippedOurs;
 
             // Parse start/end via the pure CalendarEventDateRules helper so the logic
             // can be unit-tested without the Google SDK. Returns null when neither shape
@@ -689,8 +741,6 @@ namespace My.Functions
             var rawSummary = ev.Summary ?? string.Empty;
             var (matchedProjectId, cleanSummary, tagHandling) = await ResolveSlugTagAsync(rawSummary, settings.UserId);
 
-            var existing = (await taskRepository.Get(t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
-
             // Primary-calendar rules (see docs/initiatives/personal-calendar-migration.md):
             //   - Untagged event → never imported. The primary calendar holds personal events;
             //     persisting them would be a privacy violation.
@@ -718,16 +768,33 @@ namespace My.Functions
             // when aliases are involved); a missing Self row means the event is
             // self-organized or has no attendees and always imports.
             var selfAttendee = ev.Attendees?.FirstOrDefault(a => a.Self == true);
-            var inviteDecision = CalendarImportRules.EvaluateInvite(selfAttendee?.ResponseStatus);
+            var isOrganizer = ev.Organizer?.Self == true || ev.Creator?.Self == true;
+            var inviteDecision = CalendarImportRules.EvaluateInvite(selfAttendee?.ResponseStatus, isOrganizer);
             if (inviteDecision == CalendarImportRules.InviteImportDecision.Skip)
             {
                 if (existing != null
                     && !await IsMonthSubmittedAsync(settings.UserId, existing.StartDate.Year, existing.StartDate.Month))
                 {
-                    await taskRepository.Delete(existing.TaskId);
+                    // Same hazard as the cancelled-event branch above: a full resync
+                    // (reconnect/pull-missed/nightly) can surface a stale "declined" that
+                    // predates this connection just as easily as a stale "cancelled" can.
+                    // Only delete on a genuine incremental delta; otherwise unlink so a
+                    // later backfill can republish instead of leaving a dead 404 link.
+                    if (CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(incrementalSync))
+                    {
+                        await taskRepository.Delete(existing.TaskId);
+                    }
+                    else
+                    {
+                        existing.GoogleEventId = null;
+                        await taskRepository.Update(existing);
+                        logger.LogInformation(
+                            "Unlinked TrackedTask {TaskId} for user {UserId} from declined-invite Google event {EventId} without deleting Tyme.",
+                            existing.TaskId, settings.UserId, ev.Id);
+                    }
                 }
                 logger.LogInformation(
-                    "Skipping Google event {EventId} for user {UserId}: invite responseStatus='{Status}' (need accepted or tentative).",
+                    "Skipping Google event {EventId} for user {UserId}: invite responseStatus='{Status}' (declined).",
                     ev.Id, settings.UserId, selfAttendee?.ResponseStatus);
                 return EventImportOutcome.SkippedDeclinedInvite;
             }
@@ -747,10 +814,10 @@ namespace My.Functions
             {
                 if (await IsMonthSubmittedAsync(settings.UserId, existing.StartDate.Year, existing.StartDate.Month))
                     return EventImportOutcome.SkippedMonthSubmitted;
-                existing.Name = finalName;
+                existing.Details = finalName;
                 existing.StartDate = startDate;
                 existing.EndDate = endDate;
-                existing.Duration = derivedDuration;
+                existing.Duration = DurationStorageRules.ForSqlTimeColumn(derivedDuration);
                 existing.IsAllDay = isAllDay;
                 existing.ProjectId = matchedProjectId;
                 existing.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, matchedProjectId);
@@ -763,10 +830,10 @@ namespace My.Functions
                 saved = new TrackedTask
                 {
                     UserId = settings.UserId,
-                    Name = finalName,
+                    Details = finalName,
                     StartDate = startDate,
                     EndDate = endDate,
-                    Duration = derivedDuration,
+                    Duration = DurationStorageRules.ForSqlTimeColumn(derivedDuration),
                     IsAllDay = isAllDay,
                     ProjectId = matchedProjectId,
                     GoogleEventId = ev.Id,

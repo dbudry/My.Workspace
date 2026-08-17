@@ -1,11 +1,11 @@
-﻿using My.Shared.Dtos.Project;
+using My.Shared.Dtos.Project;
 
 namespace My.Shared.Dtos.TrackedTask
 {
     public class TrackedTaskDto
     {
         public string TaskId { get; set; } = null!;
-        public string Name { get; set; } = null!;
+        public string Details { get; set; } = "";
         public TimeSpan Duration { get; set; }
         public DateTime StartDate { get; set; }
         public DateTime? EndDate { get; set; }

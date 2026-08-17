@@ -45,7 +45,7 @@ namespace My.Client.Pages.Tyme
         {
             ("date", "Date"),
             ("employee", "Employee"),
-            ("task", "Task"),
+            ("task", "Details"),
             ("project", "Project"),
             ("organization", "Organization"),
             ("group", "Group"),
@@ -770,9 +770,9 @@ namespace My.Client.Pages.Tyme
             var displayDuration = isCorrected && showOriginal && task.OriginalDurationSeconds.HasValue
                 ? task.OriginalDurationSeconds.Value
                 : task.DurationSeconds;
-            var displayName = isCorrected && showOriginal && task.OriginalName != null
-                ? task.OriginalName
-                : task.Name;
+            var displayName = isCorrected && showOriginal && task.OriginalDetails != null
+                ? task.OriginalDetails
+                : task.Details;
             var displayIsBillable = isCorrected && showOriginal && task.OriginalIsBillable.HasValue
                 ? task.OriginalIsBillable.Value
                 : task.IsBillable;
@@ -820,7 +820,7 @@ namespace My.Client.Pages.Tyme
             {
                 ["TaskId"] = item.TaskId,
                 ["OriginalUserName"] = item.UserName,
-                ["InitialName"] = item.IsAliased ? item.Name : (item.OriginalName ?? item.Name),
+                ["InitialName"] = item.IsAliased ? item.Details : (item.OriginalDetails ?? item.Details),
                 ["InitialStartDate"] = item.StartDate,
                 ["InitialDuration"] = TimeSpan.FromSeconds(item.DurationSeconds),
                 ["InitialProjectId"] = item.ProjectId,
@@ -846,7 +846,7 @@ namespace My.Client.Pages.Tyme
             {
                 ["TaskId"] = item.TaskId,
                 ["OriginalUserName"] = item.UserName,
-                ["InitialName"] = item.Name,
+                ["InitialName"] = item.Details,
                 ["InitialStartDate"] = item.StartDate,
                 ["InitialDuration"] = TimeSpan.FromSeconds(item.DurationSeconds),
                 ["InitialProjectId"] = item.ProjectId,
@@ -934,7 +934,7 @@ namespace My.Client.Pages.Tyme
         public class AdminTaskItem
         {
             public string TaskId { get; set; } = null!;
-            public string Name { get; set; } = null!;
+            public string Details { get; set; } = null!;
             public double DurationSeconds { get; set; }
             public double Duration { get => DurationSeconds; set => DurationSeconds = value; }
             public DateTime StartDate { get; set; }
@@ -959,7 +959,7 @@ namespace My.Client.Pages.Tyme
             public string? OriginalProjectName { get; set; }
             public string? OriginalOrganizationName { get; set; }
             public string? OriginalProjectGroupName { get; set; }
-            public string? OriginalName { get; set; }
+            public string? OriginalDetails { get; set; }
         }
 
         public class UserSummaryItem

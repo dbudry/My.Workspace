@@ -251,12 +251,12 @@ namespace My.Client.Components.TrackedTasks
         private async Task SaveAsync()
         {
             // Strip leading/trailing whitespace before validate/save.
-            editName = WeekEntryGridRules.SanitizeTaskName(editName);
+            editName = WeekEntryGridRules.SanitizeTaskDetails(editName);
 
             // Session create/edit: never let name/project/day drift from the work item context.
             if (IsStopwatchSession)
             {
-                editName = WeekEntryGridRules.SanitizeTaskName(TaskName);
+                editName = WeekEntryGridRules.SanitizeTaskDetails(TaskName);
                 editIsAllDay = false;
                 editStartDateOnly = StartDate.Date;
             }
@@ -316,16 +316,13 @@ namespace My.Client.Components.TrackedTasks
                     // west of UTC.
                     startDate = DateTime.SpecifyKind(startDay, DateTimeKind.Utc);
                     endDate = DateTime.SpecifyKind(endDay, DateTimeKind.Utc);
-                    duration = AllDayEntryRules.DurationFor(startDay, endDay, workdayHours);
-                    // Multi-day all-day can exceed SQL time; block in UI instead of API 500.
-                    var allDayDurationError = DurationStorageRules.ValidateForStorage(duration);
-                    if (allDayDurationError != null)
+                    if (AllDayEntryRules.ValidateSpan(startDay, endDay) is { } spanError)
                     {
-                        saveError =
-                            "All-day span is too long to store as a single entry. Use a shorter date range or log each day separately.";
+                        saveError = spanError;
                         isBusy = false;
                         return;
                     }
+                    duration = AllDayEntryRules.DurationFor(startDay, endDay, workdayHours);
                 }
                 else
                 {
@@ -346,7 +343,7 @@ namespace My.Client.Components.TrackedTasks
                 {
                     var dto = new CreateTrackedTaskDto
                     {
-                        Name = editName,
+                    Details = editName,
                         StartDate = startDate,
                         Duration = duration,
                         IsAllDay = editIsAllDay,
@@ -361,7 +358,7 @@ namespace My.Client.Components.TrackedTasks
                     var dto = new UpdateTrackedTaskDto
                     {
                         TaskId = TaskId!,
-                        Name = editName,
+                    Details = editName,
                         StartDate = startDate,
                         EndDate = endDate,
                         Duration = duration,

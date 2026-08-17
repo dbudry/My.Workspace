@@ -37,6 +37,12 @@ namespace My.Client.Services
 
         public bool IsGoogleCalendarConnected => _cachedSettings?.IsGoogleCalendarConnected ?? false;
 
+        /// <summary>
+        /// True after Settings → Disconnect. Sign-in must not start Calendar OAuth.
+        /// </summary>
+        public bool GoogleCalendarAutoConnectOptOut =>
+            _cachedSettings?.GoogleCalendarAutoConnectOptOut ?? false;
+
         public string? GoogleCalendarEmail => _cachedSettings?.GoogleCalendarEmail;
 
         public bool PublishToGoogleCalendar => _cachedSettings?.PublishToGoogleCalendar ?? false;
@@ -213,9 +219,12 @@ namespace My.Client.Services
 
         /// <summary>
         /// Browser flag that blocks auto Google connect on next dashboard load.
-        /// Cleared on logout, disconnect, and when the user starts connect again.
+        /// Set to "connected" after a live link, "disconnected" after an explicit
+        /// disconnect (so Index does not immediately start OAuth again), or a timestamp
+        /// after a cancelled first-time prompt. Cleared on logout.
         /// </summary>
         public const string GoogleAutoConnectAttemptedKey = "googleAutoConnectAttempted";
+        public const string GoogleAutoConnectDisconnectedValue = "disconnected";
 
         /// <summary>
         /// Starts the Google Calendar + Drive connect flow (the same one used from Settings).
@@ -276,8 +285,26 @@ namespace My.Client.Services
         }
 
         /// <summary>
+        /// After an explicit Disconnect, keep a flag so the dashboard does not
+        /// auto-start Google OAuth on the next load (that reconnect + cancelled
+        /// Google copies was deleting Tyme rows).
+        /// </summary>
+        public async Task MarkGoogleCalendarDisconnectedAsync()
+        {
+            try
+            {
+                await _js.InvokeVoidAsync("localStorage.setItem",
+                    GoogleAutoConnectAttemptedKey, GoogleAutoConnectDisconnectedValue);
+            }
+            catch
+            {
+                // Best-effort; Settings connect still works.
+            }
+        }
+
+        /// <summary>
         /// Clears the browser flag set after a connect attempt or successful connection so
-        /// disconnect → connect (and auto-connect after sign-in) can run again.
+        /// a first-time auto-connect (or a failed attempt) can run again.
         /// </summary>
         public async Task ClearGoogleAutoConnectAttemptedAsync()
         {

@@ -2,12 +2,16 @@
 @using My.Client.Services
 @using My.Shared.Constants
 @using My.Shared.Dtos.TimeSubmission
+@using My.Shared.Rules
 @using System.Net
 @using System.Net.Http.Json
+
 @inject IHttpClientFactory ClientFactory
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject TimeSubmissionEvents SubmissionEvents
+@inject AppSettingsCache AppSettingsCache
+
 
 @*
     Reusable manager view of (user × month) submission rows.
@@ -78,7 +82,7 @@
                 <MudTh>Employee</MudTh>
                 <MudTh Style="width:160px;">Month</MudTh>
                 <MudTh Style="width:140px;">Status</MudTh>
-                <MudTh Style="width:140px; text-align:right;">Actions</MudTh>
+                <MudTh Style="width:200px; text-align:right;">Actions</MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Employee">@context.UserName</MudTd>
@@ -98,7 +102,17 @@
                     }
                 </MudTd>
                 <MudTd DataLabel="Actions" Style="text-align:right;">
-                    @if (context.IsSubmitted && !string.IsNullOrEmpty(context.TimeSubmissionId))
+                    @if (!context.IsSubmitted && allowManagerSubmitOnBehalf)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Send"
+                                   OnClick="@(() => SubmitOnBehalfAsync(context))"
+                                   Disabled="@(busyKey == BusyKeyFor(context))"
+                                   Class="mr-1">
+                            Submit
+                        </MudButton>
+                    }
+                    else if (context.IsSubmitted && !string.IsNullOrEmpty(context.TimeSubmissionId))
                     {
                         <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
                                    StartIcon="@Icons.Material.Filled.LockOpen"
@@ -109,6 +123,7 @@
                     }
                 </MudTd>
             </RowTemplate>
+
         </MudTable>
 
         @if (MaxRows.HasValue && allRows.Count > MaxRows.Value)
@@ -141,6 +156,8 @@
     private HttpClient client = null!;
     private bool isLoading = true;
     private string? busyKey;
+    private bool allowManagerSubmitOnBehalf;
+
 
     // Filter fields are wrapped as properties so a UI change (via @bind-Value) triggers
     // a server re-fetch automatically. Without this, MudSelect would update the field
@@ -198,6 +215,18 @@
         StateHasChanged();
         try
         {
+            try
+            {
+                var settings = await AppSettingsCache.GetAsync();
+                var row = settings.FirstOrDefault(s =>
+                    string.Equals(s.Key, Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf, StringComparison.Ordinal));
+                allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(row?.Value);
+            }
+            catch
+            {
+                allowManagerSubmitOnBehalf = false;
+            }
+
             var qs = new List<string> { $"status={Uri.EscapeDataString(statusFilter)}" };
             if (!string.IsNullOrEmpty(userFilter)) qs.Add($"userId={Uri.EscapeDataString(userFilter)}");
             if (yearFilter.HasValue) qs.Add($"year={yearFilter}");
@@ -234,7 +263,52 @@
         }
     }
 
+    private async Task SubmitOnBehalfAsync(TeamSubmissionRowDto row)
+    {
+        if (row.IsSubmitted) return;
+
+        var monthLabel = new DateTime(row.Year, row.Month, 1).ToString("MMMM yyyy");
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Submit for employee?",
+            $"Submit {row.UserName}'s {monthLabel} on their behalf? This locks their tracked tasks for that month the same as if they submitted themselves.",
+            yesText: "Submit", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        busyKey = BusyKeyFor(row);
+        try
+        {
+            var payload = new CreateManagerTimeSubmissionDto
+            {
+                UserId = row.UserId,
+                Year = row.Year,
+                Month = row.Month
+            };
+            var resp = await client.PostAsJsonAsync(Constants.API.TimeSubmission.CreateOnBehalf, payload);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var detail = await resp.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(detail)
+                    ? $"Couldn't submit: {(int)resp.StatusCode}"
+                    : detail.Trim('"'), Severity.Error);
+                return;
+            }
+
+            Snackbar.Add($"Submitted {row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMM yyyy}.", Severity.Success);
+            SubmissionEvents.NotifyChanged();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Couldn't submit: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            busyKey = null;
+        }
+    }
+
     private async Task UnsubmitAsync(TeamSubmissionRowDto row)
+
     {
         if (string.IsNullOrEmpty(row.TimeSubmissionId)) return;
 

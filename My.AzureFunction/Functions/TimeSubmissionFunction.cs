@@ -20,16 +20,20 @@ namespace My.Functions
         private readonly ApplicationDbContext _dbContext;
         private readonly ILogger<TimeSubmissionFunction> _logger;
         private readonly IValidator<CreateTimeSubmissionDto> _createValidator;
+        private readonly IValidator<CreateManagerTimeSubmissionDto> _createOnBehalfValidator;
 
         public TimeSubmissionFunction(
             ApplicationDbContext dbContext,
             ILogger<TimeSubmissionFunction> logger,
-            IValidator<CreateTimeSubmissionDto> createValidator)
+            IValidator<CreateTimeSubmissionDto> createValidator,
+            IValidator<CreateManagerTimeSubmissionDto> createOnBehalfValidator)
         {
             _dbContext = dbContext;
             _logger = logger;
             _createValidator = createValidator;
+            _createOnBehalfValidator = createOnBehalfValidator;
         }
+
 
         [Function("GetTimeSubmissions")]
         public async Task<IActionResult> GetMineAsync(
@@ -245,8 +249,79 @@ namespace My.Functions
             });
         }
 
+        /// <summary>
+        /// Manager:Tyme+ submits a month for another employee when the workspace setting
+        /// <c>TymeAllowManagerSubmitOnBehalf</c> is enabled. Admin:Tyme is included via the
+        /// Manager role hierarchy. Sets <see cref="TimeSubmission.SubmittedByUserId"/> to the
+        /// manager so audit distinguishes self-submit from on-behalf submit.
+        /// </summary>
+        [Function("CreateManagerTimeSubmission")]
+        public async Task<IActionResult> CreateOnBehalfAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "timesubmissions/onbehalf")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth)
+                return unauth;
+            var actorId = principal.FindFirstValue(Constants.Claims.UserId);
+            if (string.IsNullOrEmpty(actorId))
+                return new UnauthorizedResult();
+
+            var (body, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, _createOnBehalfValidator);
+            if (validationError != null)
+                return validationError;
+
+            var settingRow = await _dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf);
+            if (!ManagerSubmitOnBehalfRules.IsEnabled(settingRow?.Value))
+                return new BadRequestObjectResult(ManagerSubmitOnBehalfRules.DisabledMessage);
+
+            var targetUserId = body!.UserId.Trim();
+            if (!await CanManageSubmissionUserAsync(principal, targetUserId))
+                return new ForbidResult();
+
+            var existing = await _dbContext.TimeSubmissions
+                .FirstOrDefaultAsync(s => s.UserId == targetUserId && s.Year == body.Year && s.Month == body.Month);
+            if (existing != null)
+                return new BadRequestObjectResult("This month has already been submitted.");
+
+            var monthStart = new DateTime(body.Year, body.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
+            var hasTrackedTime = await _dbContext.TrackedTasks
+                .AnyAsync(t => t.UserId == targetUserId && t.StartDate >= monthStart && t.StartDate <= monthEnd);
+            if (!hasTrackedTime)
+                return new BadRequestObjectResult("No tracked time for that month yet — nothing to submit.");
+
+            var nowUtc = DateTime.UtcNow;
+            var entity = new TimeSubmission
+            {
+                UserId = targetUserId,
+                Year = body.Year,
+                Month = body.Month,
+                SubmittedAt = nowUtc,
+                SubmittedByUserId = actorId
+            };
+
+            _dbContext.TimeSubmissions.Add(entity);
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "User {ActorId} submitted time on behalf of {TargetId} for {Year}-{Month:00}.",
+                actorId, targetUserId, body.Year, body.Month);
+
+            return new OkObjectResult(new TimeSubmissionDto
+            {
+                TimeSubmissionId = entity.TimeSubmissionId,
+                UserId = entity.UserId,
+                Year = entity.Year,
+                Month = entity.Month,
+                SubmittedAt = entity.SubmittedAt,
+                SubmittedByUserId = entity.SubmittedByUserId
+            });
+        }
+
         [Function("GetTimeSubmissionCorrections")]
         public async Task<IActionResult> GetCorrectionsAsync(
+
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/{id}/corrections")] HttpRequestData req,
             string id)
         {
@@ -282,6 +357,17 @@ namespace My.Functions
                 .ToDictionaryAsync(a => a.TaskId);
             var taskById = tasks.ToDictionary(t => t.TaskId);
 
+            var workdayRow = await _dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
+            var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
+            // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store that) —
+            // recompute from the dates instead of reading the raw column.
+            TimeSpan ActualDuration(TrackedTask t) => AllDayEntryRules.EffectiveDuration(
+                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
+            // Same idea for a Direct-correction audit's "previous" snapshot.
+            TimeSpan ActualPreviousDuration(TrackedTaskCorrectionAudit a) => AllDayEntryRules.EffectiveDuration(
+                a.PreviousIsAllDay, a.PreviousStartDate, a.PreviousEndDate, a.PreviousDuration, workdayHours);
+
             var items = new List<TimeSubmissionCorrectionItemDto>();
 
             foreach (var alias in aliases)
@@ -293,12 +379,12 @@ namespace My.Functions
                 {
                     TaskId = alias.TaskId,
                     Kind = "Alias",
-                    TaskName = task.Name,
-                    OriginalName = task.Name,
+                    TaskDetails = task.Details,
+                    OriginalDetails = task.Details,
                     OriginalStartDate = task.StartDate,
-                    OriginalDurationSeconds = task.Duration.TotalSeconds,
+                    OriginalDurationSeconds = ActualDuration(task).TotalSeconds,
                     OriginalProjectName = task.Project?.Name,
-                    AdjustedName = alias.Name,
+                    AdjustedDetails = alias.Details,
                     AdjustedStartDate = alias.StartDate,
                     AdjustedDurationSeconds = alias.Duration.TotalSeconds,
                     AdjustedProjectName = alias.Project?.Name
@@ -314,12 +400,12 @@ namespace My.Functions
                 {
                     TaskId = audit.TaskId,
                     Kind = "Direct",
-                    TaskName = task.Name,
-                    OriginalName = audit.PreviousName,
+                    TaskDetails = task.Details,
+                    OriginalDetails = audit.PreviousDetails,
                     OriginalStartDate = audit.PreviousStartDate,
-                    OriginalDurationSeconds = audit.PreviousDuration.TotalSeconds,
+                    OriginalDurationSeconds = ActualPreviousDuration(audit).TotalSeconds,
                     OriginalProjectName = null,
-                    AdjustedName = audit.NewName,
+                    AdjustedDetails = audit.NewDetails,
                     AdjustedStartDate = audit.NewStartDate,
                     AdjustedDurationSeconds = audit.NewDuration.TotalSeconds,
                     AdjustedProjectName = task.Project?.Name
@@ -395,7 +481,7 @@ namespace My.Functions
                         if (!taskById.TryGetValue(alias.TaskId, out var task))
                             continue;
 
-                        task.Name = alias.Name;
+                        task.Details = alias.Details;
                         task.StartDate = alias.StartDate;
                         task.Duration = alias.Duration;
                         task.ProjectId = alias.ProjectId;

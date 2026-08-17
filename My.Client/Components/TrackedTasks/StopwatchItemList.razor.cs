@@ -258,7 +258,7 @@ namespace My.Client.Components.TrackedTasks
             var parameters = new DialogParameters<StopwatchItemDialog>
             {
                 { x => x.ItemId, item.StopwatchItemId },
-                { x => x.ItemName, item.Name },
+                { x => x.ItemName, item.Details },
                 { x => x.ProjectId, item.ProjectId },
                 { x => x.ProjectName, item.Project?.Name ?? GetProjectDisplayName(item) },
                 { x => x.SearchProjects, (Func<string?, CancellationToken, Task<IEnumerable<Project>>>)SearchProjects }
@@ -278,7 +278,7 @@ namespace My.Client.Components.TrackedTasks
                 var updated = await StopwatchItemsClient.UpdateAsync(new UpdateStopwatchItemDto
                 {
                     StopwatchItemId = item.StopwatchItemId,
-                    Name = savedName,
+                    Details = savedName,
                     ProjectId = savedProjectId
                 });
                 ReplaceItem(updated);
@@ -295,7 +295,7 @@ namespace My.Client.Components.TrackedTasks
         {
             var confirmed = await DialogService.ShowMessageBoxAsync(
                 "Delete work item",
-                $"Delete \"{item.Name}\" and all of its logged sessions? This can't be undone.",
+                $"Delete \"{item.Details}\" and all of its logged sessions? This can't be undone.",
                 yesText: "Delete",
                 cancelText: "Cancel");
 
@@ -327,13 +327,13 @@ namespace My.Client.Components.TrackedTasks
             var parameters = new DialogParameters<StopwatchSessionsDialog>
             {
                 { x => x.ItemId, item.StopwatchItemId },
-                { x => x.ItemName, item.Name },
+                { x => x.ItemName, item.Details },
                 { x => x.ItemProjectId, item.ProjectId },
                 { x => x.ItemProjectName, GetProjectDisplayName(item) },
                 { x => x.HttpClient, client }
             };
 
-            var dialog = await DialogService.ShowAsync<StopwatchSessionsDialog>(item.Name, parameters,
+            var dialog = await DialogService.ShowAsync<StopwatchSessionsDialog>(item.Details, parameters,
                 new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
             var result = await dialog.Result;
 

@@ -112,7 +112,10 @@ namespace My.Functions
             task.EndDate = DateTime.SpecifyKind(lastDay, DateTimeKind.Utc);
 
             var hours = await GetWorkdayHoursAsync();
-            task.Duration = AllDayEntryRules.DurationFor(task.StartDate, task.EndDate, hours);
+            var derived = AllDayEntryRules.DurationFor(task.StartDate, task.EndDate, hours);
+            // SQL time holds 13:17:30; it cannot hold 24:00. Overflow all-day totals
+            // persist as 00:00 and are recomputed on read.
+            task.Duration = DurationStorageRules.ForSqlTimeColumn(derived);
         }
 
         /// <summary>
@@ -161,9 +164,17 @@ namespace My.Functions
             return rows.Select(s => (s.Year, s.Month)).ToHashSet();
         }
 
-        private TrackedTaskDto ToDtoWithSubmissionFlag(TrackedTask task, HashSet<(int Year, int Month)> submitted)
+        private TrackedTaskDto ToDto(TrackedTask task, double workdayHours)
         {
             var dto = mapper.TrackedTaskToDto(task);
+            dto.Duration = AllDayEntryRules.EffectiveDuration(
+                task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours);
+            return dto;
+        }
+
+        private TrackedTaskDto ToDtoWithSubmissionFlag(TrackedTask task, HashSet<(int Year, int Month)> submitted, double workdayHours)
+        {
+            var dto = ToDto(task, workdayHours);
             dto.IsMonthSubmitted = submitted.Contains((task.StartDate.Year, task.StartDate.Month));
             return dto;
         }
@@ -175,11 +186,12 @@ namespace My.Functions
 
             var taskIds = tasks.Select(t => t.TaskId).ToList();
             var adjustmentContext = await TrackedTaskAdjustmentEnricher.LoadForTasksAsync(dbContext, taskIds);
+            var workdayHours = await GetWorkdayHoursAsync();
             for (var i = 0; i < dtos.Count; i++)
             {
                 adjustmentContext.Aliases.TryGetValue(tasks[i].TaskId, out var alias);
                 adjustmentContext.Audits.TryGetValue(tasks[i].TaskId, out var audit);
-                TrackedTaskAdjustmentEnricher.ApplyEmployeeView(dtos[i], alias, audit, adjustmentContext, mapper);
+                TrackedTaskAdjustmentEnricher.ApplyEmployeeView(dtos[i], alias, audit, adjustmentContext, mapper, workdayHours);
             }
         }
 
@@ -321,8 +333,9 @@ namespace My.Functions
                 includeProperties: "Project.ProjectGroup,Project.Organization");
 
             var submitted = await GetSubmittedMonthsAsync(userId);
+            var workdayHours = await GetWorkdayHoursAsync();
             var taskList = pagedTrackedTaskList.ToList();
-            var dtos = taskList.Select(t => ToDtoWithSubmissionFlag(t, submitted)).ToList();
+            var dtos = taskList.Select(t => ToDtoWithSubmissionFlag(t, submitted, workdayHours)).ToList();
             await EnrichEmployeeViewAsync(dtos, taskList);
             return new OkObjectResult(new PagedResponse<TrackedTaskDto>
             {
@@ -358,7 +371,8 @@ namespace My.Functions
                 dbContext, userId, from, to, search, excludeStopwatchSessions);
 
             var submitted = await GetSubmittedMonthsAsync(userId);
-            var dtos = tasks.Select(t => ToDtoWithSubmissionFlag(t, submitted)).ToList();
+            var workdayHours = await GetWorkdayHoursAsync();
+            var dtos = tasks.Select(t => ToDtoWithSubmissionFlag(t, submitted, workdayHours)).ToList();
             await EnrichEmployeeViewAsync(dtos, tasks);
             return new OkObjectResult(dtos);
         }
@@ -378,7 +392,8 @@ namespace My.Functions
 
             var activeTaskList = activeTasks.ToList();
             var submitted = await GetSubmittedMonthsAsync(userId);
-            var dtos = activeTaskList.Select(t => ToDtoWithSubmissionFlag(t, submitted)).ToList();
+            var workdayHours = await GetWorkdayHoursAsync();
+            var dtos = activeTaskList.Select(t => ToDtoWithSubmissionFlag(t, submitted, workdayHours)).ToList();
             await EnrichEmployeeViewAsync(dtos, activeTaskList);
             return new OkObjectResult(dtos);
         }
@@ -397,7 +412,7 @@ namespace My.Functions
             if (trackedTask == null)
                 return new NotFoundObjectResult("Tracked task not found!");
 
-            var dto = mapper.TrackedTaskToDto(trackedTask);
+            var dto = ToDto(trackedTask, await GetWorkdayHoursAsync());
             dto.IsMonthSubmitted = await IsMonthSubmittedAsync(
                 trackedTask.UserId, trackedTask.StartDate.Year, trackedTask.StartDate.Month);
             await EnrichEmployeeViewAsync(new[] { dto }, new[] { trackedTask });
@@ -415,7 +430,7 @@ namespace My.Functions
                 return validationError;
 
             // Never store leading/trailing whitespace on task names.
-            trackedTask!.Name = WeekEntryGridRules.SanitizeTaskName(trackedTask.Name);
+            trackedTask!.Details = WeekEntryGridRules.SanitizeTaskDetails(trackedTask.Details);
 
             var newTrackedTask = mapper.DtoToTrackedTask(trackedTask!);
             newTrackedTask.UserId = userId;
@@ -460,6 +475,8 @@ namespace My.Functions
                 // Skip ToUniversalTime — see comment above. Derivations normalize to 00:00 UTC.
                 if (trackedTask.EndDate.HasValue)
                     newTrackedTask.EndDate = DateTime.SpecifyKind(trackedTask.EndDate.Value.Date, DateTimeKind.Utc);
+                if (AllDayEntryRules.ValidateSpan(newTrackedTask.StartDate, newTrackedTask.EndDate) is { } spanError)
+                    return new BadRequestObjectResult(spanError);
                 await ApplyAllDayDerivationsAsync(newTrackedTask);
             }
             else if (newTrackedTask.Duration > TimeSpan.Zero)
@@ -473,8 +490,10 @@ namespace My.Functions
                 newTrackedTask.EndDate = null;
             }
 
-            // Last line of defense: SQL time cannot store ≥24h (was a 500 / SqlDbType.Time overflow).
-            if (DurationStorageRules.ValidateForStorage(newTrackedTask.Duration) is { } durationStorageError)
+            // Timed entries still must fit SQL time (under 24h). All-day 24h+
+            // totals are derived on read, not stored in the time column.
+            if (!newTrackedTask.IsAllDay
+                && DurationStorageRules.ValidateForStorage(newTrackedTask.Duration) is { } durationStorageError)
                 return new BadRequestObjectResult(durationStorageError);
 
             newTrackedTask.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, newTrackedTask.ProjectId);
@@ -505,7 +524,7 @@ namespace My.Functions
 
             await TryPushCreateAsync(newTrackedTask);
 
-            var createdDto = mapper.TrackedTaskToDto(newTrackedTask);
+            var createdDto = ToDto(newTrackedTask, await GetWorkdayHoursAsync());
             createdDto.IsMonthSubmitted = false;
             return new OkObjectResult(createdDto);
         }
@@ -578,7 +597,7 @@ namespace My.Functions
             var clone = new TrackedTask
             {
                 UserId = userId,
-                Name = source.Name,
+                Details = source.Details,
                 ProjectId = source.ProjectId,
                 StartDate = start,
                 Duration = source.Duration,
@@ -602,7 +621,7 @@ namespace My.Functions
             await TryPushCreateAsync(clone);
             logger.LogInformation("Tracked task {SourceId} duplicated to {NewId}.", id, clone.TaskId);
 
-            var cloneDto = mapper.TrackedTaskToDto(clone);
+            var cloneDto = ToDto(clone, await GetWorkdayHoursAsync());
             cloneDto.IsMonthSubmitted = false;
             return new OkObjectResult(cloneDto);
         }
@@ -618,7 +637,7 @@ namespace My.Functions
                 return validationError;
 
             // Never store leading/trailing whitespace on task names.
-            trackedTask!.Name = WeekEntryGridRules.SanitizeTaskName(trackedTask.Name);
+            trackedTask!.Details = WeekEntryGridRules.SanitizeTaskDetails(trackedTask.Details);
 
             var foundTrackedTask = await taskRepository.Find(trackedTask!.TaskId);
             if (foundTrackedTask == null)
@@ -657,6 +676,8 @@ namespace My.Functions
             {
                 if (foundTrackedTask.EndDate.HasValue)
                     foundTrackedTask.EndDate = DateTime.SpecifyKind(foundTrackedTask.EndDate.Value.Date, DateTimeKind.Utc);
+                if (AllDayEntryRules.ValidateSpan(foundTrackedTask.StartDate, foundTrackedTask.EndDate) is { } updateSpanError)
+                    return new BadRequestObjectResult(updateSpanError);
                 await ApplyAllDayDerivationsAsync(foundTrackedTask);
             }
             else if (foundTrackedTask.EndDate.HasValue)
@@ -670,15 +691,15 @@ namespace My.Functions
                 foundTrackedTask.Duration = trackedTask.Duration.Value;
             }
 
-            // Same storage limit as create — never let SQL time overflow become a 500.
-            if (DurationStorageRules.ValidateForStorage(foundTrackedTask.Duration) is { } updateDurationError)
+            if (!foundTrackedTask.IsAllDay
+                && DurationStorageRules.ValidateForStorage(foundTrackedTask.Duration) is { } updateDurationError)
                 return new BadRequestObjectResult(updateDurationError);
 
             foundTrackedTask.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, foundTrackedTask.ProjectId);
 
             await taskRepository.Update(foundTrackedTask);
             await TryPushUpdateAsync(foundTrackedTask);
-            return new OkObjectResult(mapper.TrackedTaskToDto(foundTrackedTask));
+            return new OkObjectResult(ToDto(foundTrackedTask, await GetWorkdayHoursAsync()));
         }
 
     }

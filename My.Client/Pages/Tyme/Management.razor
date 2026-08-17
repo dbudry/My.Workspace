@@ -176,8 +176,8 @@
             <HeaderContent>
                 @if (IsColumnVisible("date"))         { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.StartDate)">Date</MudTableSortLabel></MudTh> }
                 @if (IsColumnVisible("employee"))     { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.UserName)">Employee</MudTableSortLabel></MudTh> }
-                @if (IsColumnVisible("task"))         { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.Name)">Task</MudTableSortLabel></MudTh> }
                 @if (IsColumnVisible("project"))      { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.ProjectName)">Project</MudTableSortLabel></MudTh> }
+                @if (IsColumnVisible("task"))         { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.Details)">Details</MudTableSortLabel></MudTh> }
                 @if (IsColumnVisible("organization")) { <MudTh><MudTableSortLabel SortBy="@(new Func<AdminTaskItem, object>(x => x.OrganizationName ?? string.Empty))">Organization</MudTableSortLabel></MudTh> }
                 @if (IsColumnVisible("group"))        { <MudTh><MudTableSortLabel SortBy="@(new Func<AdminTaskItem, object>(x => x.ProjectGroupName ?? string.Empty))">Group</MudTableSortLabel></MudTh> }
                 @if (IsColumnVisible("duration"))     { <MudTh><MudTableSortLabel SortBy="new Func<AdminTaskItem, object>(x => x.DurationSeconds)">Duration</MudTableSortLabel></MudTh> }
@@ -197,17 +197,17 @@
                     var displayDuration = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalDurationSeconds.HasValue)
                         ? context.OriginalDurationSeconds.Value
                         : context.DurationSeconds;
-                    var displayName = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalName != null)
-                        ? context.OriginalName
-                        : context.Name;
+                    var displayName = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalDetails != null)
+                        ? context.OriginalDetails
+                        : context.Details;
                     var displayIsBillable = ((context.IsAliased || context.IsDirectCorrected) && showOriginal && context.OriginalIsBillable.HasValue)
                         ? context.OriginalIsBillable.Value
                         : context.IsBillable;
                 }
                 @if (IsColumnVisible("date"))         { <MudTd DataLabel="Date">@displayDate.ToLocalTime().ToString("MM/dd/yyyy")</MudTd> }
                 @if (IsColumnVisible("employee"))     { <MudTd DataLabel="Employee">@context.UserName</MudTd> }
-                @if (IsColumnVisible("task"))         { <MudTd DataLabel="Task">@displayName</MudTd> }
                 @if (IsColumnVisible("project"))      { <MudTd DataLabel="Project">@displayProject</MudTd> }
+                @if (IsColumnVisible("task"))         { <MudTd DataLabel="Details">@displayName</MudTd> }
                 @if (IsColumnVisible("organization")) { <MudTd DataLabel="Organization">@context.OrganizationName</MudTd> }
                 @if (IsColumnVisible("group"))        { <MudTd DataLabel="Group">@context.ProjectGroupName</MudTd> }
                 @if (IsColumnVisible("duration"))     { <MudTd DataLabel="Duration">@FormatDuration(displayDuration)</MudTd> }

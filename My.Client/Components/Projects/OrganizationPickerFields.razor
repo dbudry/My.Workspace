@@ -1,0 +1,671 @@
+@namespace My.Client.Components.Projects
+@using My.Client.Models
+@using My.Client.Services
+@using My.Shared.Dtos.Paging
+@using My.Shared.Rules
+@implements IDisposable
+@inject OrganizationsCache OrganizationsCache
+@inject IJSRuntime Js
+
+@*
+    Org/Department picker — same pattern as ProjectAutocomplete (text field + MudPopover
+    + inner scroll), not MudAutocomplete. Pages through GET /organizations so every
+    active org is reachable; typing searches the full catalog.
+*@
+
+<div class="org-picker-field @(_orgOpen ? "org-picker-open" : null)" @onfocusin="OnOrgFocusInAsync">
+    <MudTextField @ref="_orgTextField"
+                  T="string"
+                  Value="_orgText"
+                  ValueChanged="OnOrgTextChangedAsync"
+                  Label="@OrganizationLabel"
+                  Placeholder="Type to search organizations…"
+                  Variant="Variant.Text"
+                  Margin="Margin.Dense"
+                  Immediate="true"
+                  Clearable="true"
+                  Adornment="Adornment.End"
+                  AdornmentIcon="@Icons.Material.Filled.Search"
+                  AdornmentColor="Color.Default"
+                  OnClearButtonClick="ClearOrgAsync"
+                  OnBlur="OnOrgBlurAsync"
+                  OnKeyDown="OnOrgKeyDownAsync"
+                  HelperText="@OrganizationHelperText" />
+
+    @* Do not set MaxHeight on MudPopover — that steals scroll from the inner list. *@
+    <MudPopover Open="_orgOpen"
+                Fixed="true"
+                Paper="true"
+                Elevation="8"
+                RelativeWidth="DropdownWidth.Ignore"
+                OverflowBehavior="OverflowBehavior.FlipOnOpen"
+                AnchorOrigin="@(PreferOpenUpward ? Origin.TopLeft : Origin.BottomLeft)"
+                TransformOrigin="@(PreferOpenUpward ? Origin.BottomLeft : Origin.TopLeft)"
+                Class="@($"org-picker-popover{(PreferOpenUpward ? " org-picker-popover-up" : "")}")"
+                Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
+        <div @ref="_orgScrollEl"
+             @onmousedown:preventDefault="true"
+             class="org-picker-scroll"
+             @onscroll="OnOrgListScrollAsync">
+            @if (_orgLoading && _orgResults.Count == 0)
+            {
+                <div class="pa-3 d-flex justify-center">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                </div>
+            }
+            else if (_orgResults.Count == 0 && !_orgLoading)
+            {
+                <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
+                    No matching organizations. Try a different name.
+                </MudText>
+            }
+            else
+            {
+                <MudList T="Organization" Dense="true" Class="py-1 org-picker-list">
+                    @for (var i = 0; i < _orgResults.Count; i++)
+                    {
+                        var org = _orgResults[i];
+                        var idx = i;
+                        <MudListItem T="Organization"
+                                     OnClick="@(() => SelectOrgAsync(org))"
+                                     Class="@(idx == _orgHighlight ? "mud-selected-item mud-primary-text mud-primary-hover" : null)">
+                            @org.Name
+                        </MudListItem>
+                    }
+                </MudList>
+                @if (_orgLoadingMore)
+                {
+                    <div class="pa-2 d-flex justify-center">
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    </div>
+                }
+                else if (_orgHasMore)
+                {
+                    <div class="px-2 pb-2 pt-1 d-flex flex-column align-center gap-1">
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                   FullWidth="true"
+                                   OnClick="LoadMoreOrgsAsync"
+                                   Disabled="@_orgLoadingMore">
+                            Load more organizations
+                        </MudButton>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Or scroll to load more
+                        </MudText>
+                    </div>
+                }
+            }
+        </div>
+    </MudPopover>
+</div>
+
+@if (ShowDepartment)
+{
+    var depts = DepartmentOptions;
+    if (depts.Count > 0)
+    {
+        <div class="org-picker-field @(_deptOpen ? "org-picker-open" : null)" @onfocusin="OnDeptFocusInAsync">
+            <MudTextField @ref="_deptTextField"
+                          T="string"
+                          Value="_deptText"
+                          ValueChanged="OnDeptTextChangedAsync"
+                          Label="@DepartmentLabel"
+                          Variant="Variant.Text"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Clearable="true"
+                          OnClearButtonClick="ClearDeptAsync"
+                          OnBlur="OnDeptBlurAsync"
+                          OnKeyDown="OnDeptKeyDownAsync"
+                          HelperText="@DepartmentHelperText" />
+
+            <MudPopover Open="_deptOpen"
+                        Fixed="true"
+                        Paper="true"
+                        Elevation="8"
+                        RelativeWidth="DropdownWidth.Ignore"
+                        OverflowBehavior="OverflowBehavior.FlipOnOpen"
+                        Class="org-picker-popover"
+                        Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
+                <div @ref="_deptScrollEl" @onmousedown:preventDefault="true" class="org-picker-scroll">
+                    @if (_deptResults.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
+                            No matching departments.
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudList T="DepartmentModel" Class="py-1 org-picker-list">
+                            @foreach (var dept in _deptResults)
+                            {
+                                <MudListItem T="DepartmentModel"
+                                             OnClick="@(() => SelectDeptAsync(dept))"
+                                             Class="@(_selectedDept != null && IdsEqual(_selectedDept.DepartmentId, dept.DepartmentId) ? "mud-selected-item mud-primary-text mud-primary-hover" : null)">
+                                    @dept.Name
+                                </MudListItem>
+                            }
+                        </MudList>
+                    }
+                </div>
+            </MudPopover>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public string? OrganizationId { get; set; }
+    [Parameter] public EventCallback<string?> OrganizationIdChanged { get; set; }
+    [Parameter] public string? OrganizationName { get; set; }
+    [Parameter] public string? DepartmentId { get; set; }
+    [Parameter] public EventCallback<string?> DepartmentIdChanged { get; set; }
+
+    /// <summary>Seed / fallback list from the parent (first page + linked org).</summary>
+    [Parameter] public IReadOnlyList<Organization> Organizations { get; set; } = [];
+
+    [Parameter] public bool ShowDepartment { get; set; } = true;
+    [Parameter] public string OrganizationLabel { get; set; } = "Organization";
+    [Parameter] public string DepartmentLabel { get; set; } = "Department";
+    [Parameter] public string? OrganizationHelperText { get; set; }
+    [Parameter] public string? DepartmentHelperText { get; set; }
+
+    /// <summary>Open the list above the field (project dialog sits near the bottom).</summary>
+    [Parameter] public bool PreferOpenUpward { get; set; } = true;
+
+    private Organization? _selectedOrg;
+    private DepartmentModel? _selectedDept;
+    private string? _syncedOrgId;
+    private string? _syncedDeptId;
+
+    // Organization popover state
+    private MudTextField<string>? _orgTextField;
+    private ElementReference _orgScrollEl;
+    private string _orgText = string.Empty;
+    private bool _orgOpen;
+    private bool _orgLoading;
+    private bool _orgTextDirty;
+    private bool _suppressOrgBlurClose;
+    private List<Organization> _orgResults = new();
+    private CancellationTokenSource? _orgDebounceCts;
+    private CancellationTokenSource? _orgSearchCts;
+    private int _orgPageNumber;
+    private bool _orgHasMore;
+    private bool _orgLoadingMore;
+    private int _orgHighlight = -1;
+    private string _orgActiveQuery = string.Empty;
+
+    // Department popover state (client-side filter only — no server round trip)
+    private MudTextField<string>? _deptTextField;
+    private ElementReference _deptScrollEl;
+    private string _deptText = string.Empty;
+    private bool _deptOpen;
+    private bool _deptTextDirty;
+    private bool _suppressDeptBlurClose;
+    private List<DepartmentModel> _deptResults = new();
+
+    private static string OrgName(Organization? org) => org?.Name ?? string.Empty;
+    private static string DeptName(DepartmentModel? dept) => dept?.Name ?? string.Empty;
+
+    private IReadOnlyList<DepartmentModel> DepartmentOptions
+    {
+        get
+        {
+            var depts = _selectedOrg?.Departments;
+            if (depts == null || depts.Count == 0)
+                return [];
+
+            return depts
+                .Where(d => d.IsActive && !d.IsArchived)
+                .ToList();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IdsEqual(_syncedOrgId, OrganizationId) || _selectedOrg == null && !string.IsNullOrEmpty(OrganizationId))
+        {
+            _syncedOrgId = OrganizationId;
+            await ResolveSelectedOrganizationAsync();
+        }
+
+        if (!_orgTextDirty)
+            _orgText = OrgName(_selectedOrg);
+
+        if (!IdsEqual(_syncedDeptId, DepartmentId))
+        {
+            _syncedDeptId = DepartmentId;
+            SyncSelectedDepartment();
+        }
+
+        if (!_deptTextDirty)
+            _deptText = DeptName(_selectedDept);
+    }
+
+    private async Task ResolveSelectedOrganizationAsync()
+    {
+        if (string.IsNullOrEmpty(OrganizationId))
+        {
+            _selectedOrg = null;
+            _selectedDept = null;
+            return;
+        }
+
+        var fromSeed = Organizations.FirstOrDefault(o => IdsEqual(o.OrganizationId, OrganizationId));
+        if (fromSeed != null && (fromSeed.Departments?.Count > 0 || !ShowDepartment))
+        {
+            _selectedOrg = LabelIfInactive(fromSeed);
+            SyncSelectedDepartment();
+            return;
+        }
+
+        var fetched = await OrganizationsCache.TryGetByIdAsync(OrganizationId);
+        if (fetched != null)
+        {
+            _selectedOrg = LabelIfInactive(fetched);
+            SyncSelectedDepartment();
+            return;
+        }
+
+        _selectedOrg = new Organization
+        {
+            OrganizationId = OrganizationId,
+            Name = OrganizationName ?? "Unknown organization"
+        };
+        _selectedDept = null;
+    }
+
+    private void SyncSelectedDepartment()
+    {
+        if (string.IsNullOrEmpty(DepartmentId))
+        {
+            _selectedDept = null;
+            return;
+        }
+
+        _selectedDept = DepartmentOptions.FirstOrDefault(d => IdsEqual(d.DepartmentId, DepartmentId));
+    }
+
+    // ---------- Organization popover ----------
+
+    private async Task OnOrgFocusInAsync()
+    {
+        if (!_orgOpen)
+        {
+            _orgDebounceCts?.Cancel();
+            // Empty query on open — show the catalog, not only the current name.
+            await ResetAndSearchOrgsAsync(string.Empty, CancellationToken.None);
+        }
+    }
+
+    private async Task OnOrgTextChangedAsync(string? value)
+    {
+        _orgText = value ?? string.Empty;
+        _orgTextDirty = true;
+
+        if (_selectedOrg != null && !string.Equals(_orgText, _selectedOrg.Name, StringComparison.Ordinal))
+        {
+            _selectedOrg = null;
+            _selectedDept = null;
+            await OrganizationIdChanged.InvokeAsync(null);
+            await DepartmentIdChanged.InvokeAsync(null);
+        }
+
+        _orgDebounceCts?.Cancel();
+        _orgDebounceCts?.Dispose();
+        _orgDebounceCts = new CancellationTokenSource();
+        var token = _orgDebounceCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            await ResetAndSearchOrgsAsync(_orgText, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // newer keystroke
+        }
+    }
+
+    private async Task ResetAndSearchOrgsAsync(string? query, CancellationToken outerToken)
+    {
+        _orgSearchCts?.Cancel();
+        _orgSearchCts?.Dispose();
+        _orgSearchCts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
+        var token = _orgSearchCts.Token;
+
+        _orgActiveQuery = query?.Trim() ?? string.Empty;
+        _orgPageNumber = 0;
+        _orgHasMore = false;
+        _orgResults = new List<Organization>();
+        _orgLoading = true;
+        _orgLoadingMore = false;
+        _orgOpen = true;
+        StateHasChanged();
+
+        try
+        {
+            await LoadNextOrgPageAsync(token, replace: true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                _orgLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadNextOrgPageAsync(CancellationToken token, bool replace)
+    {
+        var nextPage = _orgPageNumber + 1;
+        IReadOnlyList<Organization> items;
+        bool hasNext;
+        try
+        {
+            (items, hasNext) = await OrganizationsCache.LookupActivePageAsync(
+                search: string.IsNullOrWhiteSpace(_orgActiveQuery) ? null : _orgActiveQuery,
+                pageNumber: nextPage,
+                pageSize: ListQueryParameters.MaxPageSize);
+        }
+        catch
+        {
+            var fallback = PickerNameFilter.Match(Organizations, _orgActiveQuery, o => o.Name)
+                .Where(o => o.IsActive && !o.IsArchived)
+                .ToList();
+            items = fallback;
+            hasNext = false;
+        }
+
+        if (token.IsCancellationRequested)
+            return;
+
+        if (replace)
+            _orgResults = items.ToList();
+        else
+            AppendUniqueOrgs(items);
+
+        _orgPageNumber = nextPage;
+        _orgHasMore = hasNext;
+        _orgHighlight = _orgResults.Count == 0 ? -1 : 0;
+        if (_selectedOrg != null && _orgResults.Count > 0)
+        {
+            var selectedIdx = _orgResults.FindIndex(o =>
+                IdsEqual(o.OrganizationId, _selectedOrg.OrganizationId));
+            if (selectedIdx >= 0)
+                _orgHighlight = selectedIdx;
+        }
+    }
+
+    private void AppendUniqueOrgs(IReadOnlyList<Organization> items)
+    {
+        var existing = new HashSet<string>(_orgResults.Select(o => o.OrganizationId), StringComparer.OrdinalIgnoreCase);
+        foreach (var org in items)
+        {
+            if (existing.Add(org.OrganizationId))
+                _orgResults.Add(org);
+        }
+    }
+
+    private async Task OnOrgListScrollAsync()
+    {
+        if (!_orgHasMore || _orgLoadingMore || _orgLoading)
+            return;
+
+        var nearBottom = false;
+        try
+        {
+            nearBottom = await Js.InvokeAsync<bool>(
+                "projectAutocomplete.isNearBottom", _orgScrollEl, 80);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (nearBottom)
+            await LoadMoreOrgsAsync();
+    }
+
+    private async Task LoadMoreOrgsAsync()
+    {
+        if (!_orgHasMore || _orgLoadingMore || _orgLoading)
+            return;
+
+        _orgLoadingMore = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var token = _orgSearchCts?.Token ?? CancellationToken.None;
+            await LoadNextOrgPageAsync(token, replace: false);
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        finally
+        {
+            _orgLoadingMore = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SelectOrgAsync(Organization org)
+    {
+        _suppressOrgBlurClose = true;
+
+        if (ShowDepartment && (org.Departments == null || org.Departments.Count == 0))
+        {
+            var full = await OrganizationsCache.TryGetByIdAsync(org.OrganizationId);
+            if (full != null)
+                org = LabelIfInactive(full);
+        }
+
+        _selectedOrg = org;
+        _selectedDept = null;
+        _syncedOrgId = org.OrganizationId;
+        _syncedDeptId = null;
+        _orgText = org.Name;
+        _orgTextDirty = false;
+        _orgOpen = false;
+        _orgResults = new List<Organization>();
+        _orgHasMore = false;
+
+        _deptText = string.Empty;
+        _deptTextDirty = false;
+
+        await OrganizationIdChanged.InvokeAsync(org.OrganizationId);
+        await DepartmentIdChanged.InvokeAsync(null);
+        _suppressOrgBlurClose = false;
+    }
+
+    private async Task ClearOrgAsync()
+    {
+        _orgText = string.Empty;
+        _orgTextDirty = false;
+        _orgOpen = false;
+        _orgResults = new List<Organization>();
+        _orgHasMore = false;
+        _selectedOrg = null;
+        _selectedDept = null;
+        _syncedOrgId = null;
+        _syncedDeptId = null;
+        _deptText = string.Empty;
+        await OrganizationIdChanged.InvokeAsync(null);
+        await DepartmentIdChanged.InvokeAsync(null);
+    }
+
+    private async Task OnOrgBlurAsync()
+    {
+        await Task.Delay(150);
+        if (_suppressOrgBlurClose) return;
+        _orgOpen = false;
+        if (_orgTextDirty && _selectedOrg == null)
+        {
+            _orgText = string.Empty;
+            _orgTextDirty = false;
+        }
+        else if (_orgTextDirty)
+        {
+            _orgText = _selectedOrg!.Name;
+            _orgTextDirty = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnOrgKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _orgOpen = false;
+            StateHasChanged();
+            return;
+        }
+
+        if (!_orgOpen && (e.Key is "ArrowDown" or "Enter"))
+        {
+            await ResetAndSearchOrgsAsync(string.Empty, CancellationToken.None);
+            return;
+        }
+
+        if (!_orgOpen || _orgResults.Count == 0) return;
+
+        if (e.Key == "ArrowDown")
+        {
+            _orgHighlight = Math.Min(_orgResults.Count - 1, _orgHighlight + 1);
+            if (_orgHighlight >= _orgResults.Count - 3 && _orgHasMore && !_orgLoadingMore)
+                await LoadMoreOrgsAsync();
+            StateHasChanged();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            _orgHighlight = Math.Max(0, _orgHighlight - 1);
+            StateHasChanged();
+        }
+        else if (e.Key == "Enter" && _orgHighlight >= 0 && _orgHighlight < _orgResults.Count)
+        {
+            await SelectOrgAsync(_orgResults[_orgHighlight]);
+        }
+    }
+
+    // ---------- Department popover (client-side filter of the selected org's departments) ----------
+
+    private Task OnDeptFocusInAsync()
+    {
+        if (!_deptOpen)
+            FilterDepartments(_deptText);
+        return Task.CompletedTask;
+    }
+
+    private Task OnDeptTextChangedAsync(string? value)
+    {
+        _deptText = value ?? string.Empty;
+        _deptTextDirty = true;
+
+        if (_selectedDept != null && !string.Equals(_deptText, _selectedDept.Name, StringComparison.Ordinal))
+        {
+            _selectedDept = null;
+            _ = DepartmentIdChanged.InvokeAsync(null);
+        }
+
+        FilterDepartments(_deptText);
+        return Task.CompletedTask;
+    }
+
+    private void FilterDepartments(string? query)
+    {
+        _deptResults = PickerNameFilter.Match(DepartmentOptions, query, d => d.Name).ToList();
+        _deptOpen = true;
+        StateHasChanged();
+    }
+
+    private Task SelectDeptAsync(DepartmentModel dept)
+    {
+        _suppressDeptBlurClose = true;
+        _selectedDept = dept;
+        _syncedDeptId = dept.DepartmentId;
+        _deptText = dept.Name;
+        _deptTextDirty = false;
+        _deptOpen = false;
+        _deptResults = new List<DepartmentModel>();
+        var result = DepartmentIdChanged.InvokeAsync(dept.DepartmentId);
+        _suppressDeptBlurClose = false;
+        return result;
+    }
+
+    private Task ClearDeptAsync()
+    {
+        _deptText = string.Empty;
+        _deptTextDirty = false;
+        _deptOpen = false;
+        _deptResults = new List<DepartmentModel>();
+        _selectedDept = null;
+        _syncedDeptId = null;
+        return DepartmentIdChanged.InvokeAsync(null);
+    }
+
+    private async Task OnDeptBlurAsync()
+    {
+        await Task.Delay(150);
+        if (_suppressDeptBlurClose) return;
+        _deptOpen = false;
+        if (_deptTextDirty && _selectedDept == null)
+        {
+            _deptText = string.Empty;
+            _deptTextDirty = false;
+        }
+        else if (_deptTextDirty)
+        {
+            _deptText = _selectedDept!.Name;
+            _deptTextDirty = false;
+        }
+        StateHasChanged();
+    }
+
+    private Task OnDeptKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            _deptOpen = false;
+            StateHasChanged();
+        }
+        else if (!_deptOpen && (e.Key is "ArrowDown" or "Enter"))
+        {
+            FilterDepartments(_deptText);
+        }
+        return Task.CompletedTask;
+    }
+
+    private Organization LabelIfInactive(Organization org)
+    {
+        if (org.IsActive && !org.IsArchived)
+            return org;
+
+        if (org.Name.Contains("(inactive)", StringComparison.OrdinalIgnoreCase))
+            return org;
+
+        return new Organization
+        {
+            OrganizationId = org.OrganizationId,
+            Name = org.Name + " (inactive)",
+            IsActive = org.IsActive,
+            IsArchived = org.IsArchived,
+            Departments = org.Departments
+        };
+    }
+
+    private static bool IdsEqual(string? left, string? right) =>
+        string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+
+    public void Dispose()
+    {
+        _orgOpen = false;
+        _deptOpen = false;
+        _orgDebounceCts?.Cancel();
+        _orgDebounceCts?.Dispose();
+        _orgSearchCts?.Cancel();
+        _orgSearchCts?.Dispose();
+    }
+}

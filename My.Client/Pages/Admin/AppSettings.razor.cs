@@ -30,8 +30,10 @@ namespace My.Client.Pages.Admin
         private bool allowProjectDelete;
         private int dataRetentionDays = 2555;
         private int submissionMonthInterval = 1;
+        private bool allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.DefaultEnabled;
         private bool allowManagerTimeCorrection = true;
         private string managerCorrectionMode = "Alias";
+
         private string employeeTimeDisplayMode = EmployeeTimeDisplayModeRules.BothKey;
         private int calendarBackfillDefaultDays = 30;
         private bool calendarBackfillPromptUser = true;
@@ -126,9 +128,13 @@ namespace My.Client.Pages.Admin
                     if (intervalVal != null && int.TryParse(intervalVal.Value, out var months) && months >= 1)
                         submissionMonthInterval = months;
 
+                    var managerSubmitVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf);
+                    allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(managerSubmitVal?.Value);
+
                     var managerCorrectionVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowManagerTimeCorrection);
                     if (managerCorrectionVal != null && bool.TryParse(managerCorrectionVal.Value, out var managerCorrectionParsed))
                         allowManagerTimeCorrection = managerCorrectionParsed;
+
 
                     var modeVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeManagerCorrectionMode);
                     if (modeVal != null && !string.IsNullOrWhiteSpace(modeVal.Value))
@@ -284,14 +290,21 @@ namespace My.Client.Pages.Admin
                     new() { Key = Constants.SettingKeys.AllowOrganizationDelete, Value = allowOrganizationDelete.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.AllowProjectDelete, Value = allowProjectDelete.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.TymeSubmissionMonthInterval, Value = submissionMonthInterval.ToString() },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf,
+                        Value = allowManagerSubmitOnBehalf.ToString().ToLower(),
+                        Description = "When enabled, Tyme managers and admins can submit an employee's time month on their behalf."
+                    },
                     new() { Key = Constants.SettingKeys.TymeAllowManagerTimeCorrection, Value = allowManagerTimeCorrection.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.TymeManagerCorrectionMode, Value = managerCorrectionMode },
+
                     new()
                     {
                         Key = Constants.SettingKeys.TymeEmployeeTimeDisplayMode,
                         Value = EmployeeTimeDisplayModeRules.ToStorageKey(
                             EmployeeTimeDisplayModeRules.Parse(employeeTimeDisplayMode)),
-                        Description = "Employee view on Tasks, Calendar, and Reports: original, manager-adjusted, or both."
+                        Description = "Default employee view on Tasks, Calendar, and Reports: their original time, manager-adjusted time, or both."
                     },
                     new() { Key = Constants.SettingKeys.TymeCalendarBackfillDefaultDays, Value = calendarBackfillDefaultDays.ToString() },
                     new() { Key = Constants.SettingKeys.TymeCalendarBackfillPromptUser, Value = calendarBackfillPromptUser.ToString().ToLower() },

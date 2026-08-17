@@ -21,6 +21,15 @@ public static class AllDayEntryRules
     public const double MaxWorkdayHours = 24.0;
 
     /// <summary>
+    /// Longest all-day span we accept (inclusive calendar days). A week of vacation is
+    /// fine; a multi-month block should be split so reports stay readable.
+    /// </summary>
+    public const int MaxInclusiveCalendarDays = 90;
+
+    public const string SpanTooLongMessage =
+        "All-day span cannot exceed 90 calendar days. Split longer time off into separate entries.";
+
+    /// <summary>
     /// Parses the AppSetting string into a usable hours-per-day double. Bad input
     /// (empty, non-numeric, NaN, negative, &gt;24) falls back to <see cref="DefaultWorkdayHours"/>.
     /// Always returns a value in <c>[MinWorkdayHours, MaxWorkdayHours]</c>.
@@ -84,9 +93,34 @@ public static class AllDayEntryRules
     /// Derived <c>Duration</c> for an all-day entry: <c>workdayHours × WorkdaysInSpan</c>.
     /// Weekend days don't accrue PTO so a Fri→Mon vacation logs 2 workdays, not 4 calendar
     /// days. Reports and dashboards consume the resulting Duration unchanged.
+    /// A Tue–Thu span at 8h/day is 24 hours. SQL <c>time</c> cannot store that, so
+    /// persist via <see cref="DurationStorageRules.ForSqlTimeColumn"/> and read the
+    /// real total with <see cref="EffectiveDuration"/>.
     /// </summary>
     public static TimeSpan DurationFor(DateTime start, DateTime? end, double workdayHours) =>
         TimeSpan.FromHours(workdayHours * WorkdaysInSpan(start, end));
+
+    /// <summary>
+    /// Timed entries use the stored <c>time</c> value (including seconds). All-day
+    /// entries always recompute from dates so a 24h vacation is not lost.
+    /// </summary>
+    public static TimeSpan EffectiveDuration(
+        bool isAllDay,
+        DateTime start,
+        DateTime? end,
+        TimeSpan stored,
+        double workdayHours)
+        => isAllDay ? DurationFor(start, end, workdayHours) : stored;
+
+    /// <summary>
+    /// Null when the inclusive calendar span is acceptable; otherwise a user-facing message.
+    /// </summary>
+    public static string? ValidateSpan(DateTime start, DateTime? end)
+    {
+        if (InclusiveDaySpan(start, end) > MaxInclusiveCalendarDays)
+            return SpanTooLongMessage;
+        return null;
+    }
 
     /// <summary>
     /// Returns the (startDate, endDateExclusive) string pair for Google Calendar's

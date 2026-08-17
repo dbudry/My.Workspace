@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using My.DAL.Data;
 using My.DAL.Models;
+using My.Shared.Constants;
 using My.Shared.Dtos.TrackedTask;
 using My.Shared.Rules;
 
@@ -52,7 +53,16 @@ namespace My.Functions.Helpers
             query = orderBy(query).AsSplitQuery();
 
             var entities = await query.Take(take).ToListAsync(cancellationToken);
-            return entities.Select(t => _mapper.TrackedTaskToDto(t)).ToList();
+            var hoursRow = await _db.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours, cancellationToken);
+            var hours = AllDayEntryRules.ParseWorkdayHours(hoursRow?.Value);
+            return entities.Select(t =>
+            {
+                var dto = _mapper.TrackedTaskToDto(t);
+                dto.Duration = AllDayEntryRules.EffectiveDuration(
+                    t.IsAllDay, t.StartDate, t.EndDate, t.Duration, hours);
+                return dto;
+            }).ToList();
         }
     }
 
@@ -70,34 +80,34 @@ namespace My.Functions.Helpers
             return (sortBy ?? TaskListRules.SortDate) switch
             {
                 TaskListRules.SortName => sortDescending
-                    ? q => q.OrderByDescending(t => t.Name)
+                    ? q => q.OrderByDescending(t => t.Details)
                         .ThenByDescending(t => t.StartDate)
-                        .ThenBy(t => t.Name)
-                    : q => q.OrderBy(t => t.Name)
+                        .ThenBy(t => t.Details)
+                    : q => q.OrderBy(t => t.Details)
                         .ThenByDescending(t => t.StartDate)
-                        .ThenBy(t => t.Name),
+                        .ThenBy(t => t.Details),
                 // Coalesce in a form EF can translate (null project sorts as empty).
                 TaskListRules.SortProject or "ProjectName" => sortDescending
                     ? q => q.OrderByDescending(t => t.Project != null
                             ? (t.Project.DisplayName ?? t.Project.Name)
                             : "")
                         .ThenByDescending(t => t.StartDate)
-                        .ThenBy(t => t.Name)
+                        .ThenBy(t => t.Details)
                     : q => q.OrderBy(t => t.Project != null
                             ? (t.Project.DisplayName ?? t.Project.Name)
                             : "")
                         .ThenByDescending(t => t.StartDate)
-                        .ThenBy(t => t.Name),
+                        .ThenBy(t => t.Details),
                 TaskListRules.SortDuration => sortDescending
-                    ? q => q.OrderByDescending(t => t.Duration)
+                    ? q => q.OrderByDescending(TrackedTaskListFilters.DurationSeconds)
                         .ThenByDescending(t => t.StartDate)
-                        .ThenBy(t => t.Name)
-                    : q => q.OrderBy(t => t.Duration)
+                        .ThenBy(t => t.Details)
+                    : q => q.OrderBy(TrackedTaskListFilters.DurationSeconds)
                         .ThenByDescending(t => t.StartDate)
-                        .ThenBy(t => t.Name),
+                        .ThenBy(t => t.Details),
                 _ => sortDescending
-                    ? q => q.OrderByDescending(t => t.StartDate).ThenBy(t => t.Name)
-                    : q => q.OrderBy(t => t.StartDate).ThenBy(t => t.Name)
+                    ? q => q.OrderByDescending(t => t.StartDate).ThenBy(t => t.Details)
+                    : q => q.OrderBy(t => t.StartDate).ThenBy(t => t.Details)
             };
         }
     }

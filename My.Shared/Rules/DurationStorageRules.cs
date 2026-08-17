@@ -34,6 +34,14 @@ public static class DurationStorageRules
         return null;
     }
 
+    /// <summary>
+    /// Value that SQL <c>time</c> can store. Timed entries must already be in range.
+    /// All-day derived totals of 24h+ become <see cref="TimeSpan.Zero"/> here; callers
+    /// recompute the real total with <see cref="AllDayEntryRules.EffectiveDuration"/>.
+    /// </summary>
+    public static TimeSpan ForSqlTimeColumn(TimeSpan duration)
+        => IsWithinStorageLimit(duration) ? duration : TimeSpan.Zero;
+
     public const string ZeroDurationMessage = "Enter a duration greater than zero.";
 
     /// <summary>

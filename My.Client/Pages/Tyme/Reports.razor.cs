@@ -216,10 +216,26 @@ namespace My.Client.Pages.Tyme
                 return true;
             }).OrderByDescending(t => t.StartDate).ToList();
 
-            taskDetailRows = BuildTaskDetailRows(filteredTasks);
+            taskDetailRows = BuildTaskDetailRows(filteredTasks)
+                .Where(RowDateInFilter)
+                .ToList();
 
             CalculateSummary();
             BuildChartData();
+        }
+
+        private bool RowDateInFilter(TrackedTask row)
+        {
+            var taskDate = ToUserDate(row.StartDate);
+            if (dateFrom.HasValue && taskDate < dateFrom.Value.Date) return false;
+            if (dateTo.HasValue && taskDate > dateTo.Value.Date) return false;
+            return true;
+        }
+
+        private string FormatReportDate(DateTime dt)
+        {
+            var utc = dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+            return SettingsService.ConvertToUserTime(utc).ToString("MM/dd/yyyy");
         }
 
         private void CalculateSummary()
@@ -320,18 +336,18 @@ namespace My.Client.Pages.Tyme
 
                 var adjustment = task.ManagerAdjustment;
                 var isAlias = task.AdjustmentKind == "Alias";
-                var startLocal = adjustment.StartDate.Kind == DateTimeKind.Utc
-                    ? adjustment.StartDate.ToLocalTime()
-                    : adjustment.StartDate;
+                var startUtc = adjustment.StartDate.Kind == DateTimeKind.Utc
+                    ? adjustment.StartDate
+                    : adjustment.StartDate.ToUniversalTime();
 
                 rows.Add(new TrackedTask
                 {
                     TaskId = task.TaskId,
-                    Name = adjustment.Name,
+                    Details = adjustment.Details,
                     Duration = adjustment.Duration,
-                    StartDate = startLocal,
+                    StartDate = startUtc,
                     EndDate = adjustment.Duration > TimeSpan.Zero
-                        ? startLocal + adjustment.Duration
+                        ? startUtc + adjustment.Duration
                         : null,
                     ProjectId = adjustment.ProjectId,
                     Project = string.IsNullOrEmpty(adjustment.ProjectId) && string.IsNullOrEmpty(adjustment.ProjectName)
@@ -378,13 +394,13 @@ namespace My.Client.Pages.Tyme
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("\"Date\",\"Task\",\"Project\",\"Duration\"");
+            sb.AppendLine("\"Date\",\"Project\",\"Details\",\"Duration\"");
             foreach (var task in taskDetailRows)
             {
                 sb.AppendLine(
-                    $"\"{Escape(task.StartDate.ToLocalTime().ToString("MM/dd/yyyy"))}\"," +
-                    $"\"{Escape(task.Name)}\"," +
+                    $"\"{Escape(FormatReportDate(task.StartDate))}\"," +
                     $"\"{Escape(task.Project?.DisplayName ?? task.Project?.Name ?? "None")}\"," +
+                    $"\"{Escape(task.Details)}\"," +
                     $"\"{Escape($"{(int)task.Duration.TotalHours:00}:{task.Duration.Minutes:00}")}\"");
             }
 

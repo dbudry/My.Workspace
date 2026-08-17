@@ -99,7 +99,7 @@ namespace My.Client.Components.TrackedTasks
                 var client = ClientFactory.CreateClient(Constants.API.ClientName);
                 var payload = new ManagerTimeCorrectionDto
                 {
-                    Name = editName.Trim(),
+                    Details = editName.Trim(),
                     StartDate = DateTime.SpecifyKind(editDate.Value, DateTimeKind.Local).ToUniversalTime(),
                     Duration = new TimeSpan(editHours, editMinutes, 0),
                     ProjectId = selectedProject?.ProjectId,

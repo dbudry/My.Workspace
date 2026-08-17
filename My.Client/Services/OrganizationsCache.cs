@@ -41,6 +41,41 @@ namespace My.Client.Services
         }
 
         /// <summary>
+        /// One page of active (non-archived) organizations for project-dialog pickers.
+        /// Same shape as <c>ProjectsCache.LookupActivePageAsync</c> — typeahead + infinite scroll.
+        /// Uses GET /organizations (not the 25-row lookup) so search reaches the full catalog.
+        /// </summary>
+        public async Task<(IReadOnlyList<Organization> Items, bool HasNext)> LookupActivePageAsync(
+            string? search = null,
+            int pageNumber = 1,
+            int pageSize = ListQueryParameters.MaxPageSize)
+        {
+            var query = new ListQueryParameters
+            {
+                PageNumber = pageNumber < 1 ? 1 : pageNumber,
+                PageSize = pageSize < 1
+                    ? ListQueryParameters.MaxPageSize
+                    : Math.Min(pageSize, ListQueryParameters.MaxPageSize),
+                Search = search,
+                SortBy = "Name",
+                IncludeArchived = false,
+                IncludeInactive = false
+            };
+
+            var client = _clientFactory.CreateClient(Constants.API.ClientName);
+            var response = await TryGetPagedAsync(
+                client,
+                Constants.API.Organization.Get,
+                query,
+                ("summary", "true"));
+            if (response?.Items == null)
+                return (Array.Empty<Organization>(), false);
+
+            var items = response.Items.Select(d => new Organization(d)).ToList();
+            return (items, response.HasNext);
+        }
+
+        /// <summary>
         /// Org picker data for the project dialog. Loads typeahead matches and, when editing,
         /// hydrates the linked org (with departments) so the department dropdown works.
         /// </summary>

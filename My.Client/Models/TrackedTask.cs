@@ -8,9 +8,9 @@ namespace My.Client.Models
     {
         public string TaskId { get; set; } = null!;
 
-        [Required]
-        [StringLength(50, MinimumLength = 3, ErrorMessage = "Name can not have less then 3 characters and more then 50.")]
-        public string Name { get; set; } = null!;
+        [StringLength(My.Shared.Rules.TaskDetailsRules.MaxLength,
+            ErrorMessage = My.Shared.Rules.TaskDetailsRules.MaxLengthMessage)]
+        public string Details { get; set; } = "";
 
         [Required]
         public TimeSpan Duration { get; set; }
@@ -74,7 +74,7 @@ namespace My.Client.Models
         public TrackedTask(TrackedTaskDto trackedTask, TimeZoneInfo? userTimeZone = null)
         {
             TaskId = trackedTask.TaskId;
-            Name = trackedTask.Name;
+                    Details = trackedTask.Details;
             StopwatchItemId = trackedTask.StopwatchItemId;
             Duration = trackedTask.Duration;
             IsAllDay = trackedTask.IsAllDay;

@@ -55,14 +55,23 @@ public sealed class TymeDataExtractionBuilder
         if (entities.Contains(TymeDataExtractionRules.ApplicationUsers))
             export.ApplicationUsers = await LoadApplicationUsersAsync(request);
 
+        double? workdayHours = null;
+        if (entities.Contains(TymeDataExtractionRules.TrackedTasks)
+            || entities.Contains(TymeDataExtractionRules.TrackedTaskCorrectionAudits))
+        {
+            var workdayRow = await dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
+            workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
+        }
+
         if (entities.Contains(TymeDataExtractionRules.TrackedTasks))
-            export.TrackedTasks = MapTrackedTasks(scopedTasks ?? [], await LoadSubmittedSetAsync(scopedTasks));
+            export.TrackedTasks = MapTrackedTasks(scopedTasks ?? [], await LoadSubmittedSetAsync(scopedTasks), workdayHours!.Value);
 
         if (entities.Contains(TymeDataExtractionRules.TrackedTaskAliases))
             export.TrackedTaskAliases = await LoadAliasesAsync(request, scopedTasks);
 
         if (entities.Contains(TymeDataExtractionRules.TrackedTaskCorrectionAudits))
-            export.TrackedTaskCorrectionAudits = await LoadAuditsAsync(request, scopedTasks);
+            export.TrackedTaskCorrectionAudits = await LoadAuditsAsync(request, scopedTasks, workdayHours!.Value);
 
         if (entities.Contains(TymeDataExtractionRules.TimeSubmissions))
             export.TimeSubmissions = await LoadTimeSubmissionsAsync(request);
@@ -222,13 +231,17 @@ public sealed class TymeDataExtractionBuilder
 
     private static List<TrackedTaskExportRow> MapTrackedTasks(
         List<TrackedTask> tasks,
-        HashSet<(string UserId, int Year, int Month)> submittedSet) =>
+        HashSet<(string UserId, int Year, int Month)> submittedSet,
+        double workdayHours) =>
         tasks
             .Select(task => new TrackedTaskExportRow
             {
                 TaskId = task.TaskId,
-                Name = task.Name,
-                DurationSeconds = task.Duration.TotalSeconds,
+                Details = task.Details,
+                // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store
+                // that) — recompute from the dates instead of exporting the raw column.
+                DurationSeconds = AllDayEntryRules.EffectiveDuration(
+                    task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours).TotalSeconds,
                 StartDate = task.StartDate,
                 EndDate = task.EndDate,
                 IsBillable = task.IsBillable,
@@ -291,7 +304,7 @@ public sealed class TymeDataExtractionBuilder
             {
                 TrackedTaskAliasId = alias.TrackedTaskAliasId,
                 TaskId = alias.TaskId,
-                Name = alias.Name,
+                Details = alias.Details,
                 StartDate = alias.StartDate,
                 DurationSeconds = alias.Duration.TotalSeconds,
                 ProjectId = alias.ProjectId,
@@ -306,7 +319,8 @@ public sealed class TymeDataExtractionBuilder
 
     private async Task<List<TrackedTaskCorrectionAuditExportRow>> LoadAuditsAsync(
         TymeDataExtractionRequest request,
-        List<TrackedTask>? scopedTasks)
+        List<TrackedTask>? scopedTasks,
+        double workdayHours)
     {
         IQueryable<TrackedTaskCorrectionAudit> query = dbContext.TrackedTaskCorrectionAudits.AsNoTracking();
 
@@ -346,12 +360,17 @@ public sealed class TymeDataExtractionBuilder
                 TaskId = audit.TaskId,
                 CorrectedByUserId = audit.CorrectedByUserId,
                 CorrectedAtUtc = audit.CorrectedAtUtc,
-                PreviousName = audit.PreviousName,
+                PreviousDetails = audit.PreviousDetails,
                 PreviousStartDate = audit.PreviousStartDate,
-                PreviousDurationSeconds = audit.PreviousDuration.TotalSeconds,
+                // audit.PreviousDuration reads 0 for a long all-day original (SQL time
+                // can't hold 24h+) — recompute from PreviousStartDate/PreviousEndDate/
+                // PreviousIsAllDay instead of exporting the raw column.
+                PreviousDurationSeconds = AllDayEntryRules.EffectiveDuration(
+                    audit.PreviousIsAllDay, audit.PreviousStartDate, audit.PreviousEndDate,
+                    audit.PreviousDuration, workdayHours).TotalSeconds,
                 PreviousProjectId = audit.PreviousProjectId,
                 PreviousIsBillable = audit.PreviousIsBillable,
-                NewName = audit.NewName,
+                NewDetails = audit.NewDetails,
                 NewStartDate = audit.NewStartDate,
                 NewDurationSeconds = audit.NewDuration.TotalSeconds,
                 NewProjectId = audit.NewProjectId,

@@ -99,8 +99,9 @@ namespace My.DAL.Data
                 .IsRequired();
 
             builder.Entity<TrackedTask>()
-                .Property(x => x.Name)
-                .IsRequired();
+                .Property(x => x.Details)
+                .IsRequired(false)
+                .HasMaxLength(500);
 
             builder.Entity<TrackedTask>()
                 .Property(x => x.StartDate)
@@ -131,9 +132,9 @@ namespace My.DAL.Data
             builder.Entity<StopwatchItem>().HasKey(i => i.StopwatchItemId);
 
             builder.Entity<StopwatchItem>()
-                .Property(x => x.Name)
+                .Property(x => x.Details)
                 .IsRequired()
-                .HasMaxLength(50);
+                .HasMaxLength(500);
 
             builder.Entity<StopwatchItem>()
                 .HasIndex(i => new { i.UserId, i.LastWorkedAt });
@@ -269,6 +270,11 @@ namespace My.DAL.Data
                 .IsRequired();
 
             builder.Entity<TrackedTaskAlias>().HasKey(a => a.TrackedTaskAliasId);
+
+            builder.Entity<TrackedTaskAlias>()
+                .Property(x => x.Details)
+                .IsRequired()
+                .HasMaxLength(500);
 
             builder.Entity<TrackedTaskAlias>()
                 .HasOne(a => a.Task)

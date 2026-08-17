@@ -12,8 +12,8 @@ namespace My.DAL.Models
         public string TaskId { get; set; } = null!;
         public TrackedTask Task { get; set; } = null!;
 
-        /// <summary>Manager override of the task description (TrackedTask.Name).</summary>
-        public string Name { get; set; } = null!;
+        /// <summary>Manager override of the task description (TrackedTask.Details).</summary>
+        public string Details { get; set; } = null!;
 
         public DateTime StartDate { get; set; }
         public TimeSpan Duration { get; set; }

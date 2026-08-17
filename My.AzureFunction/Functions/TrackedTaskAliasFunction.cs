@@ -70,7 +70,7 @@ namespace My.Functions
                 {
                     TrackedTaskAliasId = a.TrackedTaskAliasId,
                     TaskId = a.TaskId,
-                    Name = a.Name,
+                    Details = a.Details,
                     StartDate = a.StartDate,
                     Duration = a.Duration,
                     ProjectId = a.ProjectId,
@@ -166,7 +166,7 @@ namespace My.Functions
                 existing = new TrackedTaskAlias
                 {
                     TaskId = taskId,
-                    Name = body.Name.Trim(),
+                    Details = body.Details.Trim(),
                     StartDate = startUtc,
                     Duration = body.Duration,
                     ProjectId = string.IsNullOrEmpty(body.ProjectId) ? null : body.ProjectId,
@@ -180,7 +180,7 @@ namespace My.Functions
             }
             else
             {
-                existing.Name = body.Name.Trim();
+                existing.Details = body.Details.Trim();
                 existing.StartDate = startUtc;
                 existing.Duration = body.Duration;
                 existing.ProjectId = string.IsNullOrEmpty(body.ProjectId) ? null : body.ProjectId;
@@ -198,7 +198,7 @@ namespace My.Functions
             {
                 TrackedTaskAliasId = existing.TrackedTaskAliasId,
                 TaskId = existing.TaskId,
-                Name = existing.Name,
+                Details = existing.Details,
                 StartDate = existing.StartDate,
                 Duration = existing.Duration,
                 ProjectId = existing.ProjectId,

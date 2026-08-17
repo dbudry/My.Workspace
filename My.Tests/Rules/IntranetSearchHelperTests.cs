@@ -8,8 +8,8 @@ public class IntranetSearchHelperTests
     [Fact]
     public void ParseQueryTerms_splits_and_lowercases()
     {
-        var terms = IntranetSearchHelper.ParseQueryTerms("  Profit  Network  ");
-        Assert.Equal(["profit", "network"], terms);
+        var terms = IntranetSearchHelper.ParseQueryTerms("  Acme  Network  ");
+        Assert.Equal(["acme", "network"], terms);
     }
 
     [Fact]
@@ -29,7 +29,7 @@ public class IntranetSearchHelperTests
             new IntranetSearchHelper.PageSearchRecord("3", "Network", null, "<p>Only one term</p>", true, DateTime.UtcNow),
         };
 
-        var hits = IntranetSearchHelper.SearchPages(pages, ["profit", "network"], limit: 10);
+        var hits = IntranetSearchHelper.SearchPages(pages, ["acme", "network"], limit: 10);
 
         Assert.Empty(hits);
 

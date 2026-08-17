@@ -11,14 +11,22 @@
         }
         else
         {
-            <MudTable Items="@items" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" Class="mt-3"
+            <MudTable Items="@items" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
+                      Class="mt-3 tasks-list-table stopwatch-items-table"
                       RowClassFunc="@((item, _) => item.IsRunning ? "running-row" : "")">
+                <ColGroup>
+                    <col class="stopwatch-col-timer" />
+                    <col class="tasks-col-project" />
+                    <col class="tasks-col-name" />
+                    <col class="stopwatch-col-total" />
+                    <col class="tasks-col-actions" />
+                </ColGroup>
                 <HeaderContent>
-                    <MudTh Style="width: 96px; text-align: center;">Timer</MudTh>
-                    <MudTh>Task</MudTh>
+                    <MudTh Style="text-align: center;">Timer</MudTh>
                     <MudTh>Project</MudTh>
-                    <MudTh Style="width: 110px;">Total</MudTh>
-                    <MudTh Style="width: 96px; text-align: center;">Actions</MudTh>
+                    <MudTh>Details</MudTh>
+                    <MudTh>Total</MudTh>
+                    <MudTh Style="text-align: center;">Actions</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel="Timer" Style="text-align: center;">
@@ -42,11 +50,6 @@
                             </MudTooltip>
                         }
                     </MudTd>
-                    <MudTd DataLabel="Task" @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
-                        <MudText Typo="Typo.body2" Style="@(context.IsRunning ? "font-weight: bold;" : "")">
-                            @context.Name
-                        </MudText>
-                    </MudTd>
                     <MudTd DataLabel="Project">
                         @if (string.IsNullOrEmpty(context.ProjectId) && context.Project == null)
                         {
@@ -64,6 +67,20 @@
                                                            ProjectGroupColor="@context.Project?.ProjectGroupColor" />
                             </div>
                         }
+                    </MudTd>
+                    <MudTd DataLabel="Details" Class="tasks-details-cell"
+                           @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
+                        <MudTooltip>
+                            <ChildContent>
+                                <MudText Typo="Typo.body2" Class="tasks-details-ellipsis"
+                                         Style="@(context.IsRunning ? "font-weight: bold;" : "")">
+                                    @context.Details
+                                </MudText>
+                            </ChildContent>
+                            <TooltipContent>
+                                <div class="tasks-details-tooltip">@context.Details</div>
+                            </TooltipContent>
+                        </MudTooltip>
                     </MudTd>
                     <MudTd DataLabel="Total" @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
                         <MudText Typo="Typo.body2" Style="font-family: monospace;">

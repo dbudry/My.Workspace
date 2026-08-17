@@ -166,6 +166,15 @@
                         reminder for any past month they have not yet submitted.
                     </MudText>
 
+                    <MudSwitch T="bool" Value="allowManagerSubmitOnBehalf" Label="Allow manager submit on behalf of employee"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => allowManagerSubmitOnBehalf = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, Tyme managers and admins can submit an employee's month from the Team view
+                        on Submit Tasks — for when someone is out or unresponsive. Off by default.
+                        The submission is recorded as submitted by the manager (audit field).
+                    </MudText>
+
                     <MudSwitch T="bool" Value="allowManagerTimeCorrection" Label="Allow manager time correction"
                                Color="Color.Primary" Class="mb-2"
                                ValueChanged="@((bool v) => allowManagerTimeCorrection = v)" />
@@ -173,6 +182,7 @@
                         When enabled, Tyme managers and admins can correct employee time after submission.
                         Turning this off does not remove existing corrections — it only blocks new ones.
                     </MudText>
+
 
                     <MudText Typo="Typo.subtitle2" Class="mb-1">Correction mode</MudText>
                     <MudRadioGroup T="string" @bind-Value="managerCorrectionMode" Class="mb-2"

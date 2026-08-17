@@ -72,14 +72,15 @@ internal static class TrackedTaskAdjustmentEnricher
         TrackedTaskAlias? alias,
         TrackedTaskCorrectionAudit? audit,
         TrackedTaskAdjustmentContext context,
-        AppMapper mapper)
+        AppMapper mapper,
+        double workdayHours)
     {
         if (alias != null)
         {
             dto.IsManagerAdjusted = true;
             dto.AdjustmentKind = "Alias";
             dto.ManagerAdjustment = BuildAdjustment(
-                alias.Name,
+                alias.Details,
                 alias.StartDate,
                 alias.Duration,
                 alias.ProjectId,
@@ -94,7 +95,7 @@ internal static class TrackedTaskAdjustmentEnricher
         dto.IsManagerAdjusted = true;
         dto.AdjustmentKind = "Direct";
         dto.ManagerAdjustment = BuildAdjustment(
-            audit.NewName,
+            audit.NewDetails,
             audit.NewStartDate,
             audit.NewDuration,
             audit.NewProjectId,
@@ -103,16 +104,20 @@ internal static class TrackedTaskAdjustmentEnricher
 
         // Task row in DB holds corrected values; restore the employee's original submission
         // on the main DTO (same shape as alias mode).
-        dto.Name = audit.PreviousName;
+        dto.Details = audit.PreviousDetails;
         dto.StartDate = audit.PreviousStartDate;
-        dto.Duration = audit.PreviousDuration;
+        dto.IsAllDay = audit.PreviousIsAllDay;
         dto.ProjectId = audit.PreviousProjectId;
         dto.Project = ResolveProjectDto(audit.PreviousProjectId, context.ProjectsById, mapper);
-        // EndDate is not stored on the audit — re-derive so read-only dialogs don't show the
-        // corrected end against the restored original start/duration.
-        dto.EndDate = audit.PreviousDuration > TimeSpan.Zero
-            ? audit.PreviousStartDate + audit.PreviousDuration
-            : null;
+        // audit.PreviousDuration reads 0 for a long all-day original (SQL time can't
+        // hold 24h+ — see AllDayEntryRules.EffectiveDuration). Recompute the real
+        // value from PreviousStartDate/PreviousEndDate/PreviousIsAllDay instead of
+        // trusting the raw column, same as a live TrackedTask.
+        dto.Duration = My.Shared.Rules.AllDayEntryRules.EffectiveDuration(
+            audit.PreviousIsAllDay, audit.PreviousStartDate, audit.PreviousEndDate, audit.PreviousDuration, workdayHours);
+        dto.EndDate = audit.PreviousIsAllDay
+            ? audit.PreviousEndDate
+            : (dto.Duration > TimeSpan.Zero ? audit.PreviousStartDate + dto.Duration : null);
     }
 
     private static ManagerAdjustmentDto BuildAdjustment(
@@ -130,7 +135,7 @@ internal static class TrackedTaskAdjustmentEnricher
 
         return new ManagerAdjustmentDto
         {
-            Name = name,
+            Details = name,
             StartDate = startDate,
             Duration = duration,
             ProjectId = projectId,

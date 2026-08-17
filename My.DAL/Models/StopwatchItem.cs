@@ -8,7 +8,7 @@ namespace My.DAL.Models
         public string StopwatchItemId { get; set; } = null!;
         public string UserId { get; set; } = null!;
         public ApplicationUser User { get; set; } = null!;
-        public string Name { get; set; } = null!;
+        public string Details { get; set; } = null!;
         public string? ProjectId { get; set; }
         public Project? Project { get; set; }
         public DateTime LastWorkedAt { get; set; }

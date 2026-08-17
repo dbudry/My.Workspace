@@ -6,7 +6,7 @@ namespace My.Shared.Dtos.StopwatchItem
     {
         [Required]
         [StringLength(50, MinimumLength = 2)]
-        public string Name { get; set; } = null!;
+        public string Details { get; set; } = null!;
 
         [Required(ErrorMessage = "Project is required.")]
         public string ProjectId { get; set; } = null!;

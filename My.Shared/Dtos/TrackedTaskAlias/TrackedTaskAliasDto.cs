@@ -4,7 +4,7 @@ namespace My.Shared.Dtos.TrackedTaskAlias
     {
         public string TrackedTaskAliasId { get; set; } = null!;
         public string TaskId { get; set; } = null!;
-        public string Name { get; set; } = null!;
+        public string Details { get; set; } = null!;
         public DateTime StartDate { get; set; }
         public TimeSpan Duration { get; set; }
         public string? ProjectId { get; set; }
@@ -17,7 +17,7 @@ namespace My.Shared.Dtos.TrackedTaskAlias
 
     public class UpsertTrackedTaskAliasDto
     {
-        public string Name { get; set; } = null!;
+        public string Details { get; set; } = null!;
         public DateTime StartDate { get; set; }
         public TimeSpan Duration { get; set; }
         public string? ProjectId { get; set; }

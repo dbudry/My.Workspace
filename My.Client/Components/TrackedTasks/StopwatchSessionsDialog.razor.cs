@@ -294,10 +294,10 @@ namespace My.Client.Components.TrackedTasks
                 var updated = await StopwatchItemsClient.UpdateAsync(new UpdateStopwatchItemDto
                 {
                     StopwatchItemId = ItemId,
-                    Name = savedName,
+                    Details = savedName,
                     ProjectId = savedProjectId
                 });
-                displayItemName = updated.Name;
+                displayItemName = updated.Details;
                 currentProjectId = updated.ProjectId;
                 displayProjectName = ProjectDisplayHelper.FromDto(updated.Project) ?? displayProjectName;
                 changed = true;
@@ -336,7 +336,7 @@ namespace My.Client.Components.TrackedTasks
                 { x => x.Mode, TrackedTaskDialogMode.Edit },
                 { x => x.TaskId, session.TaskId },
                 // Prefer work-item identity so name/project stay locked to the parent stopwatch item.
-                { x => x.TaskName, string.IsNullOrWhiteSpace(displayItemName) ? session.Name : displayItemName },
+                { x => x.TaskName, string.IsNullOrWhiteSpace(displayItemName) ? session.Details : displayItemName },
                 { x => x.ProjectId, string.IsNullOrEmpty(currentProjectId) ? session.ProjectId : currentProjectId },
                 { x => x.ProjectName, string.IsNullOrEmpty(displayProjectName) ? projectName : displayProjectName },
                 { x => x.StartDate, session.StartDate },

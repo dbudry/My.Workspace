@@ -83,6 +83,24 @@ public class GoogleEventColorsTests
         // existing rows to this value and the SQL default is "11". Keep them aligned.
         Assert.Equal("11", GoogleEventColors.DefaultUnmatchedColorId);
         Assert.Equal("Tomato", GoogleEventColors.All.Single(c => c.Id == "11").Name);
+        Assert.Equal("#dc2127", GoogleEventColors.HexFor("11"));
+    }
+
+    [Fact]
+    public void Every_palette_entry_has_a_hex_swatch()
+    {
+        Assert.All(GoogleEventColors.All, c =>
+        {
+            Assert.StartsWith("#", c.Hex);
+            Assert.Equal(7, c.Hex.Length);
+        });
+    }
+
+    [Fact]
+    public void DisplayName_and_HexFor_calendar_default()
+    {
+        Assert.Equal("Calendar default", GoogleEventColors.DisplayName(null));
+        Assert.Null(GoogleEventColors.HexFor(null));
     }
 
     [Fact]

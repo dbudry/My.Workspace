@@ -60,10 +60,25 @@ public class DurationStorageRulesTests
     }
 
     [Fact]
+    public void ForSqlTimeColumn_keeps_thirteen_hours_seventeen_minutes_thirty_seconds()
+    {
+        var span = new TimeSpan(13, 17, 30);
+        Assert.Equal(span, DurationStorageRules.ForSqlTimeColumn(span));
+    }
+
+    [Fact]
+    public void ForSqlTimeColumn_does_not_store_a_24_hour_all_day_total()
+    {
+        Assert.Equal(TimeSpan.Zero, DurationStorageRules.ForSqlTimeColumn(TimeSpan.FromHours(24)));
+    }
+
+    [Fact]
     public void ValidateForFinalize_exempts_all_day_entries_from_the_zero_check()
     {
         // All-day duration is derived from workday hours, not this field — an all-day
         // entry with a zero-valued duration field (irrelevant/unused) must not block save.
         Assert.Null(DurationStorageRules.ValidateForFinalize(TimeSpan.Zero, isAllDay: true));
+        // 3 workdays × 8h = 24h. Timed entries still cannot store that; all-day can.
+        Assert.Null(DurationStorageRules.ValidateForFinalize(TimeSpan.FromHours(24), isAllDay: true));
     }
 }

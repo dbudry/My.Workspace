@@ -317,7 +317,9 @@ namespace My.DAL.Data.Migrations
                     TymeEventColorId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     TymeUnmatchedEventColorId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ProjectColorSource = table.Column<int>(type: "int", nullable: false),
-                    FavoriteIntranetPageIdsJson = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    FavoriteIntranetPageIdsJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    // Explicit disconnect opt-out (no auto-connect on login). Greenfield default false.
+                    GoogleCalendarAutoConnectOptOut = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
                 },
                 constraints: table =>
                 {
@@ -479,7 +481,8 @@ namespace My.DAL.Data.Migrations
                 columns: table => new
                 {
                     TaskId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    // Free-text Details ("what are you working on") — optional on greenfield installs.
+                    Details = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     Duration = table.Column<TimeSpan>(type: "time", nullable: false),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -513,6 +516,8 @@ namespace My.DAL.Data.Migrations
                 {
                     TrackedTaskAliasId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     TaskId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    // Free-text Details override — greenfield installs create this with the table.
+                    Details = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false, defaultValue: ""),
                     StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
                     Duration = table.Column<TimeSpan>(type: "time", nullable: false),
                     ProjectId = table.Column<string>(type: "nvarchar(450)", nullable: true),

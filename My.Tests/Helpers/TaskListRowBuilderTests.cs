@@ -15,7 +15,7 @@ public class TaskListRowBuilderTests
         var dto = new TrackedTaskDto
         {
             TaskId = "t1",
-            Name = "Original name",
+                    Details = "Original name",
             StartDate = new DateTime(2026, 6, 26, 10, 0, 0, DateTimeKind.Utc),
             Duration = TimeSpan.FromHours(8),
             EndDate = new DateTime(2026, 6, 26, 18, 0, 0, DateTimeKind.Utc),
@@ -32,7 +32,7 @@ public class TaskListRowBuilderTests
             AdjustmentKind = "Direct",
             ManagerAdjustment = new ManagerAdjustmentDto
             {
-                Name = "Adjusted name",
+                    Details = "Adjusted name",
                 StartDate = new DateTime(2026, 6, 26, 5, 0, 0, DateTimeKind.Utc),
                 Duration = TimeSpan.FromHours(8),
                 ProjectId = null,
@@ -48,12 +48,12 @@ public class TaskListRowBuilderTests
     {
         var rows = TaskListRowBuilder.ExpandManualRows(AdjustedTask(), EmployeeTimeDisplayMode.Both).ToList();
         Assert.Equal(2, rows.Count);
-        Assert.Equal("Original name", rows[0].Name);
+        Assert.Equal("Original name", rows[0].Details);
         Assert.Equal("Marketing", rows[0].ProjectName);
         Assert.Equal("Marketing", rows[0].ProjectDisplayName);
         Assert.Equal("Acme Organization", rows[0].OrganizationName);
         Assert.False(rows[0].IsOverlayRow);
-        Assert.Equal("Adjusted name", rows[1].Name);
+        Assert.Equal("Adjusted name", rows[1].Details);
         Assert.Null(rows[1].ProjectDisplayName);
         Assert.True(rows[1].IsOverlayRow);
     }
@@ -63,7 +63,7 @@ public class TaskListRowBuilderTests
     {
         var rows = TaskListRowBuilder.ExpandManualRows(AdjustedTask(), EmployeeTimeDisplayMode.TheirTime).ToList();
         Assert.Single(rows);
-        Assert.Equal("Original name", rows[0].Name);
+        Assert.Equal("Original name", rows[0].Details);
         Assert.False(rows[0].IsOverlayRow);
     }
 
@@ -72,9 +72,9 @@ public class TaskListRowBuilderTests
     {
         var rows = TaskListRowBuilder.ExpandManualRows(AdjustedTask(), EmployeeTimeDisplayMode.Adjusted).ToList();
         Assert.Single(rows);
-        Assert.Equal("Adjusted name", rows[0].Name);
+        Assert.Equal("Adjusted name", rows[0].Details);
         Assert.True(rows[0].IsOverlayRow);
-        Assert.Equal("Adjusted name", rows[0].OverlayName);
+        Assert.Equal("Adjusted name", rows[0].OverlayDetails);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class TaskListRowBuilderTests
         var dto = new TrackedTaskDto
         {
             TaskId = "t2",
-            Name = "Plain",
+                    Details = "Plain",
             StartDate = DateTime.UtcNow,
             Duration = TimeSpan.FromHours(1),
             UserId = "u1"
@@ -94,7 +94,7 @@ public class TaskListRowBuilderTests
         {
             var rows = TaskListRowBuilder.ExpandManualRows(task, mode).ToList();
             Assert.Single(rows);
-            Assert.Equal("Plain", rows[0].Name);
+            Assert.Equal("Plain", rows[0].Details);
         }
     }
 
@@ -113,7 +113,7 @@ public class TaskListRowBuilderTests
         var earlier = new TrackedTask(new TrackedTaskDto
         {
             TaskId = "m1",
-            Name = "Zebra",
+                    Details = "Zebra",
             StartDate = new DateTime(2026, 8, 3, 9, 0, 0, DateTimeKind.Local),
             Duration = TimeSpan.FromHours(1),
             UserId = "u1"
@@ -121,7 +121,7 @@ public class TaskListRowBuilderTests
         var laterManual = new TrackedTask(new TrackedTaskDto
         {
             TaskId = "m2",
-            Name = "Alpha",
+                    Details = "Alpha",
             StartDate = new DateTime(2026, 8, 4, 9, 0, 0, DateTimeKind.Local),
             Duration = TimeSpan.FromHours(2),
             UserId = "u1"
@@ -129,7 +129,7 @@ public class TaskListRowBuilderTests
         var session = new TrackedTask(new TrackedTaskDto
         {
             TaskId = "s1",
-            Name = "Session work",
+                    Details = "Session work",
             StartDate = new DateTime(2026, 8, 3, 14, 0, 0, DateTimeKind.Local),
             Duration = TimeSpan.FromHours(0.5),
             UserId = "u1",
@@ -141,9 +141,9 @@ public class TaskListRowBuilderTests
             EmployeeTimeDisplayMode.Both);
 
         Assert.Equal(3, rows.Count);
-        Assert.Equal("Zebra", rows[0].Name);
-        Assert.Equal("Session work", rows[1].Name);
-        Assert.Equal("Alpha", rows[2].Name);
+        Assert.Equal("Zebra", rows[0].Details);
+        Assert.Equal("Session work", rows[1].Details);
+        Assert.Equal("Alpha", rows[2].Details);
         Assert.NotNull(rows[1].ManualTask);
         Assert.Equal("sw1", rows[1].ManualTask!.StopwatchItemId);
     }
@@ -154,7 +154,7 @@ public class TaskListRowBuilderTests
         var plain = new TrackedTask(new TrackedTaskDto
         {
             TaskId = "p1",
-            Name = "Plain",
+                    Details = "Plain",
             StartDate = new DateTime(2026, 8, 5, 9, 0, 0, DateTimeKind.Local),
             Duration = TimeSpan.FromHours(1),
             UserId = "u1"
@@ -167,9 +167,9 @@ public class TaskListRowBuilderTests
 
         // plain (1) + adjusted original + overlay (2) = 3
         Assert.Equal(3, rows.Count);
-        Assert.Contains(rows, r => r.Name == "Plain" && !r.IsOverlayRow);
-        Assert.Contains(rows, r => r.Name == "Original name" && !r.IsOverlayRow);
-        Assert.Contains(rows, r => r.Name == "Adjusted name" && r.IsOverlayRow);
+        Assert.Contains(rows, r => r.Details == "Plain" && !r.IsOverlayRow);
+        Assert.Contains(rows, r => r.Details == "Original name" && !r.IsOverlayRow);
+        Assert.Contains(rows, r => r.Details == "Adjusted name" && r.IsOverlayRow);
     }
 
     [Fact]
@@ -185,7 +185,7 @@ public class TaskListRowBuilderTests
         new()
         {
             StopwatchItemId = "sw1",
-            Name = "Live session",
+                    Details = "Live session",
             TotalDuration = TimeSpan.FromMinutes(30),
             IsRunning = true,
             ActiveSessionId = "as1",
@@ -237,7 +237,7 @@ public class TaskListRowBuilderTests
         var item = new StopwatchItemDto
         {
             StopwatchItemId = "sw2",
-            Name = "Paused",
+                    Details = "Paused",
             TotalDuration = TimeSpan.FromHours(2),
             IsRunning = false,
             LastWorkedAt = lastWorkedUtc,

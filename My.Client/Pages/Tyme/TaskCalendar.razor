@@ -15,13 +15,15 @@
 <PageLoader IsLoading="@(isLoading || !_calendarReady)">
     @if (_calendarReady)
     {
+        <div class="task-calendar">
         <MudCalendar T="TaskCalendarItem" Items="@calendarItems"
                      ItemClicked="OnItemClicked"
                      CellClicked="OnCellClicked"
                      ItemContextMenuClicked="OnItemContextMenu"
+                     DateRangeChanged="OnDateRangeChanged"
                      ShowDay="true" ShowWeek="true" ShowMonth="true" ShowWorkWeek="true"
                      ShowTodayButton="true" HighlightToday="true"
-                     MonthCellMinHeight="80"
+                     MonthCellMinHeight="96"
                      DayItemMinHeight="20"
                      FirstDayOfWeek="DayOfWeek.Monday"
                      FirstDayOfWorkWeek="DayOfWeek.Monday"
@@ -38,6 +40,7 @@
                 </MudTooltip>
             </CellTemplate>
         </MudCalendar>
+        </div>
     }
 </PageLoader>
 

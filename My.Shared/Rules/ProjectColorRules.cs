@@ -57,7 +57,7 @@ public static class ProjectColorRules
     /// <summary>
     /// Returns the *name* of the entity whose color was used by <see cref="Resolve"/>.
     /// Used by UI tooltips so a user hovering a color bar can see "Ball" or
-    /// "Profit Network" instead of just a swatch with no context.
+    /// "Acme Network" instead of just a swatch with no context.
     ///
     /// Returns null when no color would be drawn (None source, or both colors empty).
     /// For <see cref="ProjectColorSource.GroupThenOrganization"/> the label matches

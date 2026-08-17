@@ -19,7 +19,7 @@ namespace My.Tests.Rules
             new()
             {
                 StopwatchItemId = "sw-" + name,
-                Name = name,
+                    Details = name,
                 LastWorkedAt = lastWorked,
                 TotalDuration = total,
                 Project = project == null ? null : new ProjectDto { Name = project, DisplayName = project }
@@ -29,7 +29,7 @@ namespace My.Tests.Rules
             new()
             {
                 TaskId = "mt-" + name,
-                Name = name,
+                    Details = name,
                 StartDate = start,
                 Duration = duration,
                 Project = project == null ? null : new ProjectDto { Name = project, DisplayName = project }
@@ -161,7 +161,7 @@ namespace My.Tests.Rules
 
             var prefixLen = TaskListRules.RequiredManualPrefixLength(3, 25);
             // Manuals already date-desc (newest first) matches default sort.
-            var manualPrefix = manuals.OrderByDescending(m => m.StartDate).ThenBy(m => m.Name).Take(prefixLen).ToArray();
+            var manualPrefix = manuals.OrderByDescending(m => m.StartDate).ThenBy(m => m.Details).Take(prefixLen).ToArray();
 
             var fromPrefix = TaskListRules.BuildPageFromManualPrefix(
                 stopwatch, manualPrefix, totalMatchingManuals: manuals.Length,
@@ -192,7 +192,7 @@ namespace My.Tests.Rules
         }
 
         private static string NameOf(Shared.Dtos.TaskList.TaskListRowDto row) =>
-            row.IsStopwatch ? row.StopwatchItem!.Name : row.ManualTask!.Name;
+            row.IsStopwatch ? row.StopwatchItem!.Details : row.ManualTask!.Details;
 
         private static string ProjectOf(Shared.Dtos.TaskList.TaskListRowDto row) =>
             row.IsStopwatch ? row.StopwatchItem!.Project?.DisplayName ?? "" : row.ManualTask!.Project?.DisplayName ?? "";

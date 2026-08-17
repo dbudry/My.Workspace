@@ -15,7 +15,7 @@ namespace My.Shared.Rules
     /// </summary>
     public static class TaskListRules
     {
-        public const string SortName = "Name";
+        public const string SortName = "Details";
         public const string SortProject = "Project";
         public const string SortDuration = "Duration";
         public const string SortDate = "Date";
@@ -23,7 +23,7 @@ namespace My.Shared.Rules
         private sealed class Row
         {
             public required TaskListRowDto Dto { get; init; }
-            public required string Name { get; init; }
+            public required string Details { get; init; }
             public required string ProjectDisplay { get; init; }
             public required long DurationTicks { get; init; }
             public required DateTime SortDate { get; init; }
@@ -135,7 +135,7 @@ namespace My.Shared.Rules
                 rows.Add(new Row
                 {
                     Dto = new TaskListRowDto { IsStopwatch = true, StopwatchItem = item },
-                    Name = item.Name ?? string.Empty,
+                    Details = item.Details ?? string.Empty,
                     ProjectDisplay = StopwatchProjectDisplay(item.Project),
                     DurationTicks = duration.Ticks,
                     SortDate = item.LastWorkedAt
@@ -147,7 +147,7 @@ namespace My.Shared.Rules
                 rows.Add(new Row
                 {
                     Dto = new TaskListRowDto { IsStopwatch = false, ManualTask = task },
-                    Name = task.Name ?? string.Empty,
+                    Details = task.Details ?? string.Empty,
                     ProjectDisplay = task.Project?.DisplayName ?? task.Project?.Name ?? string.Empty,
                     DurationTicks = task.Duration.Ticks,
                     SortDate = task.StartDate
@@ -164,7 +164,7 @@ namespace My.Shared.Rules
 
             var term = search.Trim();
             return rows.Where(r =>
-                    r.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    r.Details.Contains(term, StringComparison.OrdinalIgnoreCase)
                     || r.ProjectDisplay.Contains(term, StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
@@ -173,7 +173,7 @@ namespace My.Shared.Rules
         {
             var ordered = (sortBy ?? SortDate) switch
             {
-                SortName => Order(rows, r => r.Name, sortDescending),
+                SortName => Order(rows, r => r.Details, sortDescending),
                 SortProject or "ProjectName" => Order(rows, r => r.ProjectDisplay, sortDescending),
                 SortDuration => Order(rows, r => r.DurationTicks, sortDescending),
                 _ => Order(rows, r => r.SortDate, sortDescending) // Date / default
@@ -183,7 +183,7 @@ namespace My.Shared.Rules
             // key ties (e.g. many rows share a date).
             return ordered
                 .ThenByDescending(r => r.SortDate)
-                .ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(r => r.Details, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 

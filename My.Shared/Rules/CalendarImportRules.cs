@@ -19,31 +19,43 @@ public static class CalendarImportRules
     /// Google marks the owner's attendee row with <c>Self=true</c>; the caller
     /// passes that row's <c>responseStatus</c>, or <c>null</c> if the owner is
     /// not in the attendees list (self-organized events, or events with no
-    /// attendees).
+    /// attendees). Pass <paramref name="isOrganizer"/> when
+    /// <c>event.Organizer.Self</c> (or Creator.Self) is true.
     ///
     /// <para>
-    /// Returns <see cref="InviteImportDecision.Import"/> when:
-    /// <list type="bullet">
-    ///   <item>the user is not an attendee (organizer-only / no-invite event), or</item>
-    ///   <item>the user is an attendee and has <c>accepted</c>, or</item>
-    ///   <item>the user is an attendee and has marked <c>tentative</c> (treated as
-    ///         accepted so users aren't penalized for honest uncertainty).</item>
-    /// </list>
-    /// Returns <see cref="InviteImportDecision.Skip"/> for any other status —
-    /// declined, needsAction (no response yet), empty/null on an existing
-    /// attendee row, or unknown future values Google might add.
+    /// Returns <see cref="InviteImportDecision.Skip"/> only when the user is an
+    /// attendee and has explicitly <c>declined</c>. Every other case — the user
+    /// organized the event, is not an attendee (organizer-only / no-invite event),
+    /// has <c>accepted</c>, has marked <c>tentative</c>, is still <c>needsAction</c>
+    /// (no response yet), or has an empty/null status — returns
+    /// <see cref="InviteImportDecision.Import"/>. This is intentionally permissive:
+    /// Google often still lists the organizer as <c>needsAction</c> on their own
+    /// attendee row, and a not-yet-responded invite the user tagged with [slug] is
+    /// still an opt-in.
     /// </para>
     /// </summary>
-    public static InviteImportDecision EvaluateInvite(string? selfResponseStatus)
+    public static InviteImportDecision EvaluateInvite(string? selfResponseStatus, bool isOrganizer = false)
     {
-        if (selfResponseStatus is null)
+        // This helper runs only after a [slug] matched. The tag is the user's
+        // opt-in. Skip only an explicit decline — needsAction used to drop
+        // "[admin] Company Meeting" that the organizer had not clicked Accept on.
+        if (isOrganizer)
             return InviteImportDecision.Import;
 
-        return string.Equals(selfResponseStatus, "accepted", System.StringComparison.OrdinalIgnoreCase)
-            || string.Equals(selfResponseStatus, "tentative", System.StringComparison.OrdinalIgnoreCase)
-                ? InviteImportDecision.Import
-                : InviteImportDecision.Skip;
+        if (string.Equals(selfResponseStatus, "declined", System.StringComparison.OrdinalIgnoreCase))
+            return InviteImportDecision.Skip;
+
+        return InviteImportDecision.Import;
     }
+
+    /// <summary>
+    /// Whether a Google <c>cancelled</c> event should delete the matching Tyme row.
+    /// True only for incremental webhook sync (we already had a sync token).
+    /// Initial connect, reconnect, pull-missed, and nightly range scans must not
+    /// delete — those lists include tombstones from "I disconnected and cleaned
+    /// Google," which is not "delete my Tyme week."
+    /// </summary>
+    public static bool ShouldDeleteTrackedTaskOnGoogleCancel(bool incrementalSync) => incrementalSync;
 
     /// <summary>
     /// Outcome of the invite rule. <see cref="Skip"/> additionally implies that

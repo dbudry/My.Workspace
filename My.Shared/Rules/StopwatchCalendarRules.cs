@@ -9,7 +9,7 @@ namespace My.Shared.Rules
         {
             public required string TaskId { get; init; }
             public required string StopwatchItemId { get; init; }
-            public required string Name { get; init; }
+            public required string Details { get; init; }
             public required DateTime StartDate { get; init; }
             public DateTime? EndDate { get; init; }
             public TimeSpan Duration { get; init; }
@@ -19,7 +19,7 @@ namespace My.Shared.Rules
         public sealed class GroupedDayEntry
         {
             public required string StopwatchItemId { get; init; }
-            public required string Name { get; init; }
+            public required string Details { get; init; }
             public required DateTime Day { get; init; }
             public required DateTime Start { get; init; }
             public required DateTime End { get; init; }
@@ -52,7 +52,7 @@ namespace My.Shared.Rules
                     return new GroupedDayEntry
                     {
                         StopwatchItemId = g.Key.StopwatchItemId,
-                        Name = list[0].Name,
+                        Details = list[0].Details,
                         Day = g.Key.Day,
                         Start = start,
                         End = end,
