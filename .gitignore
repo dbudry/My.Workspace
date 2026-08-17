@@ -369,7 +369,7 @@ Scripts/Import-Db-TimeDb-Tyme.config.json
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-#Profit Point
+# Workspace
 .claude/
 
 # Azurite local storage emulator — runtime data dir used by Dev-StartDebugSession.ps1
