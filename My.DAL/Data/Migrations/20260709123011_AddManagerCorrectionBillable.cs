@@ -10,19 +10,9 @@ namespace My.DAL.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<bool>(
-                name: "NewIsBillable",
-                table: "TrackedTaskCorrectionAudits",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
-
-            migrationBuilder.AddColumn<bool>(
-                name: "PreviousIsBillable",
-                table: "TrackedTaskCorrectionAudits",
-                type: "bit",
-                nullable: false,
-                defaultValue: false);
+            // NewIsBillable / PreviousIsBillable are created with TrackedTaskCorrectionAudits
+            // in AddTrackedTaskCorrectionAudit (greenfield). This migration only adds alias
+            // IsBillable and backfills existing rows.
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsBillable",
@@ -50,14 +40,6 @@ namespace My.DAL.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "NewIsBillable",
-                table: "TrackedTaskCorrectionAudits");
-
-            migrationBuilder.DropColumn(
-                name: "PreviousIsBillable",
-                table: "TrackedTaskCorrectionAudits");
-
             migrationBuilder.DropColumn(
                 name: "IsBillable",
                 table: "TrackedTaskAliases");
