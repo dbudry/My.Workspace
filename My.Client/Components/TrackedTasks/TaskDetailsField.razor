@@ -1,0 +1,88 @@
+@using Microsoft.JSInterop
+@using My.Shared.Rules
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+<div @ref="_root" class="task-details-field-host">
+    <MudTextField T="string"
+                  Value="Value"
+                  ValueChanged="ValueChanged"
+                  Label="@Label"
+                  Variant="Variant"
+                  Margin="Margin"
+                  Required="Required"
+                  RequiredError="@TaskDetailsRules.RequiredMessage"
+                  MaxLength="TaskDetailsRules.MaxLength"
+                  Counter="TaskDetailsRules.MaxLength"
+                  Immediate="true"
+                  Lines="1"
+                  MaxLines="TaskDetailsRules.MaxInputLines"
+                  Sizing="InputSizing.Auto"
+                  ShrinkLabel="ShrinkLabel"
+                  AutoFocus="AutoFocus"
+                  Disabled="Disabled"
+                  ReadOnly="ReadOnly"
+                  Class="@Class"
+                  Placeholder="@Placeholder"
+                  Error="Error"
+                  ErrorText="ErrorText"
+                  OnBlur="HandleBlur" />
+</div>
+
+@code {
+    private ElementReference _root;
+    private DotNetObjectReference<TaskDetailsField>? _self;
+    private bool _attached;
+
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = TaskDetailsRules.InputLabel;
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Margin Margin { get; set; } = Margin.Dense;
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool ShrinkLabel { get; set; } = true;
+    [Parameter] public bool AutoFocus { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Error { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public EventCallback OnBlur { get; set; }
+    /// <summary>Fired on Enter when this field is not inside a form (dialogs / inline edit).</summary>
+    [Parameter] public EventCallback OnEnter { get; set; }
+
+    private async Task HandleBlur(FocusEventArgs _)
+    {
+        if (OnBlur.HasDelegate)
+            await OnBlur.InvokeAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_attached) return;
+        try
+        {
+            _self ??= DotNetObjectReference.Create(this);
+            _attached = await Js.InvokeAsync<bool>("taskDetailsField.attach", _root, _self);
+        }
+        catch (JSException)
+        {
+            // bUnit / script not loaded — Shift+Enter still types in the textarea; Enter is not intercepted.
+        }
+    }
+
+    [JSInvokable]
+    public async Task NotifyPlainEnter()
+    {
+        if (OnEnter.HasDelegate)
+            await OnEnter.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _self?.Dispose();
+        _self = null;
+        await ValueTask.CompletedTask;
+    }
+}

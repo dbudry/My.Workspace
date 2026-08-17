@@ -13,26 +13,52 @@ namespace My.Shared.Rules;
 /// </summary>
 public static class GoogleEventColors
 {
-    public record Color(string Id, string Name);
+    public record Color(string Id, string Name, string Hex);
 
     /// <summary>
     /// Google's documented event color palette. Order matches the Google Calendar UI's
-    /// color picker for events.
+    /// color picker for events. Hex values are Google's published event colors so the
+    /// Settings dropdown can show the same swatch the calendar will use.
     /// </summary>
     public static readonly IReadOnlyList<Color> All = new[]
     {
-        new Color("1", "Lavender"),
-        new Color("2", "Sage"),
-        new Color("3", "Grape"),
-        new Color("4", "Flamingo"),
-        new Color("5", "Banana"),
-        new Color("6", "Tangerine"),
-        new Color("7", "Peacock"),
-        new Color("8", "Graphite"),
-        new Color("9", "Blueberry"),
-        new Color("10", "Basil"),
-        new Color("11", "Tomato"),
+        new Color("1", "Lavender", "#a4bdfc"),
+        new Color("2", "Sage", "#7ae7bf"),
+        new Color("3", "Grape", "#dbadff"),
+        new Color("4", "Flamingo", "#ff887c"),
+        new Color("5", "Banana", "#fbd75b"),
+        new Color("6", "Tangerine", "#ffb878"),
+        new Color("7", "Peacock", "#46d6db"),
+        new Color("8", "Graphite", "#e1e1e1"),
+        new Color("9", "Blueberry", "#5484ed"),
+        new Color("10", "Basil", "#51b749"),
+        new Color("11", "Tomato", "#dc2127"),
     };
+
+    public static string DisplayName(string? colorId)
+    {
+        if (string.IsNullOrEmpty(colorId))
+            return "Calendar default";
+
+        foreach (var c in All)
+            if (c.Id == colorId)
+                return c.Name;
+
+        return "Calendar default";
+    }
+
+    /// <summary>Hex for a valid id; otherwise null (calendar default / unknown).</summary>
+    public static string? HexFor(string? colorId)
+    {
+        if (string.IsNullOrEmpty(colorId))
+            return null;
+
+        foreach (var c in All)
+            if (c.Id == colorId)
+                return c.Hex;
+
+        return null;
+    }
 
     /// <summary>The most-red color in Google's palette — default for unmatched/no-project events.</summary>
     public const string DefaultUnmatchedColorId = "11";

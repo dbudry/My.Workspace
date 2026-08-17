@@ -1,6 +1,7 @@
 @using MudBlazor
 @using My.Client.Models
 @using My.Client.Components.Projects
+@using My.Shared.Rules
 @namespace My.Client.Components.TrackedTasks
 
 <MudDialog>
@@ -14,7 +15,7 @@
             </MudText>
 
             <MudTextField T="string" @bind-Value="editName" Label="Description" Margin="Margin.Dense"
-                          MaxLength="50" Counter="50" Immediate="true" />
+                          MaxLength="TaskDetailsRules.MaxLength" Counter="TaskDetailsRules.MaxLength" Immediate="true" />
 
             <MudDatePicker @bind-Date="editDate" Label="Date" Margin="Margin.Dense" />
 

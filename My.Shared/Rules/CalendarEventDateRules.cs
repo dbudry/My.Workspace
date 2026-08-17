@@ -46,6 +46,27 @@ public static class CalendarEventDateRules
         DateTime? timedStartUtc, DateTime? timedEndUtc,
         string? allDayStartString, string? allDayEndString)
     {
+        // All-day date strings are Google's explicit all-day shape. Prefer them even
+        // when the .NET client also fills DateTimeDateTimeOffset as midnight — that
+        // used to turn "[admin] Company Meeting" Aug 10–11 into a 48-hour timed
+        // event and blow up SQL time (or store 0h).
+        if (!string.IsNullOrWhiteSpace(allDayStartString) && !string.IsNullOrWhiteSpace(allDayEndString))
+        {
+            const DateTimeStyles styles =
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal;
+            if (!DateTime.TryParse(allDayStartString, CultureInfo.InvariantCulture, styles, out var allDayStart) ||
+                !DateTime.TryParse(allDayEndString, CultureInfo.InvariantCulture, styles, out var allDayEndExclusive))
+            {
+                return null;
+            }
+
+            var startDate = DateTime.SpecifyKind(allDayStart.Date, DateTimeKind.Utc);
+            var lastDay = allDayEndExclusive.Date.AddDays(-1);
+            if (lastDay < startDate.Date) lastDay = startDate.Date;
+            var endDate = DateTime.SpecifyKind(lastDay, DateTimeKind.Utc);
+            return new ParsedDates(startDate, endDate, IsAllDay: true);
+        }
+
         if (timedStartUtc.HasValue && timedEndUtc.HasValue)
         {
             return new ParsedDates(
@@ -54,21 +75,6 @@ public static class CalendarEventDateRules
                 IsAllDay: false);
         }
 
-        if (string.IsNullOrWhiteSpace(allDayStartString) || string.IsNullOrWhiteSpace(allDayEndString))
-            return null;
-
-        const DateTimeStyles styles =
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal;
-        if (!DateTime.TryParse(allDayStartString, CultureInfo.InvariantCulture, styles, out var allDayStart) ||
-            !DateTime.TryParse(allDayEndString, CultureInfo.InvariantCulture, styles, out var allDayEndExclusive))
-        {
-            return null;
-        }
-
-        var startDate = DateTime.SpecifyKind(allDayStart.Date, DateTimeKind.Utc);
-        var lastDay = allDayEndExclusive.Date.AddDays(-1);
-        if (lastDay < startDate.Date) lastDay = startDate.Date;
-        var endDate = DateTime.SpecifyKind(lastDay, DateTimeKind.Utc);
-        return new ParsedDates(startDate, endDate, IsAllDay: true);
+        return null;
     }
 }

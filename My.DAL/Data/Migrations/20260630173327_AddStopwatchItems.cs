@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -23,7 +23,7 @@ namespace My.DAL.Data.Migrations
                 {
                     StopwatchItemId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    Details = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     ProjectId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     LastWorkedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)

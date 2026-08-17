@@ -5,9 +5,11 @@ using My.Shared.Dtos.Contact;
 using My.Shared.Dtos.Intranet;
 using My.Shared.Dtos.Project;
 using My.Shared.Dtos.StopwatchItem;
+using My.Shared.Dtos.TimeSubmission;
 using My.Shared.Dtos.TrackedTask;
 using My.Shared.Validation;
 using Xunit;
+
 
 namespace My.Tests.Integration;
 
@@ -43,6 +45,8 @@ public class AzureFunctionsValidationDiTests
         Assert.IsType<CreateContactDtoValidator>(provider.GetRequiredService<IValidator<CreateContactDto>>());
         Assert.IsType<CreateProjectDtoValidator>(provider.GetRequiredService<IValidator<CreateProjectDto>>());
         Assert.IsType<CreateTrackedTaskDtoValidator>(provider.GetRequiredService<IValidator<CreateTrackedTaskDto>>());
+        Assert.IsType<CreateManagerTimeSubmissionDtoValidator>(
+            provider.GetRequiredService<IValidator<CreateManagerTimeSubmissionDto>>());
         Assert.IsType<UpdateAppSettingsRequestValidator>(provider.GetRequiredService<IValidator<List<AppSettingDto>>>());
         Assert.IsType<CreateIntranetPageDtoValidator>(provider.GetRequiredService<IValidator<CreateIntranetPageDto>>());
         Assert.IsType<ReorderPagesRequestValidator>(provider.GetRequiredService<ReorderPagesRequestValidator>());

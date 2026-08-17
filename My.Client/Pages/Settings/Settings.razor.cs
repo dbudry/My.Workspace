@@ -18,6 +18,12 @@ namespace My.Client.Pages.Settings
         private static readonly List<string> AllTimeZones =
             UserTimeZoneRules.GetSelectableTimeZoneIds().ToList();
 
+        private static string EventColorSelectStyle(string? colorId)
+        {
+            var hex = GoogleEventColors.HexFor(colorId) ?? "#9e9e9e";
+            return $"--event-color-swatch:{hex}";
+        }
+
         private bool isLoading = true;
         private bool isSaving;
         private bool use24HourTime;
@@ -204,8 +210,10 @@ namespace My.Client.Pages.Settings
                 }
                 else
                 {
-                    // So the next Connect / auto-connect is not blocked by a stale browser flag.
-                    await SettingsService.ClearGoogleAutoConnectAttemptedAsync();
+                    // Do not clear this flag — clearing it made Index auto-reconnect
+                    // on the next page load, which re-ran import over deleted Google
+                    // copies and wiped Tyme. Manual Connect from this page still works.
+                    await SettingsService.MarkGoogleCalendarDisconnectedAsync();
                     SettingsService.InvalidateCache();
                     Snackbar.Add("Disconnected from Google Calendar.", Severity.Success);
                     await LoadSettings();

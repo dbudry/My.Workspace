@@ -9,8 +9,8 @@ public static class WeekEntryGridRules
 {
     public const int DaysInWeek = 7;
     public const int BusinessDaysInWeek = 5;
-    public const int MaxTaskNameLength = 50;
-    public const int MinTaskNameLength = 2;
+    public const int MaxTaskNameLength = TaskDetailsRules.MaxLength;
+    public const int MinTaskNameLength = TaskDetailsRules.MinLength;
 
     public enum CellMutationKind
     {
@@ -27,7 +27,9 @@ public static class WeekEntryGridRules
         /// <summary>Exactly one editable manual timed entry — bind to it.</summary>
         Single,
         /// <summary>Multiple manual timed entries — do not auto-edit; show sum read-only.</summary>
-        Multiple
+        Multiple,
+        /// <summary>All-day entry covers this day — show workday hours read-only.</summary>
+        AllDay
     }
 
     public readonly record struct CellMutation(
@@ -191,8 +193,9 @@ public static class WeekEntryGridRules
     }
 
     /// <summary>
-    /// Soft filter while the user is typing or selecting text: digits and at most one colon,
-    /// max 2 hour digits and 2 minute digits. Does <b>not</b> re-pad or re-order the string
+    /// Soft filter while the user is typing or selecting text: digits, at most one colon
+    /// (including a leading <c>:</c> for minutes-only), and optional <c>h</c>/<c>m</c>
+    /// (<c>15m</c>, <c>2h</c>, <c>2h30m</c>). Does <b>not</b> re-pad or re-order the string
     /// (that fights caret/selection). Use <see cref="NormalizeDayDurationText"/> /
     /// <see cref="TryCommitDayDurationText"/> only on blur/save.
     /// </summary>
@@ -200,19 +203,24 @@ public static class WeekEntryGridRules
     {
         if (string.IsNullOrEmpty(raw)) return string.Empty;
 
-        Span<char> buf = stackalloc char[5]; // HH:MM
+        Span<char> buf = stackalloc char[7]; // 23h59m or HH:MM
         var n = 0;
         var colon = false;
+        var hasH = false;
+        var hasM = false;
         var digitsBefore = 0;
         var digitsAfter = 0;
 
         foreach (var c in raw)
         {
+            if (n == 7) break;
+
             if (c is >= '0' and <= '9')
             {
-                if (!colon)
+                if (hasM) continue;
+                if (!colon && !hasH)
                 {
-                    if (digitsBefore >= 2) continue;
+                    if (digitsBefore >= 4) continue;
                     digitsBefore++;
                 }
                 else
@@ -222,13 +230,22 @@ public static class WeekEntryGridRules
                 }
 
                 buf[n++] = c;
-                if (n == 5) break;
             }
-            else if (c == ':' && !colon && digitsBefore > 0)
+            else if (c == ':' && !colon && !hasH && !hasM)
             {
                 colon = true;
                 buf[n++] = c;
-                if (n == 5) break;
+            }
+            else if ((c is 'h' or 'H') && !hasH && !hasM && !colon)
+            {
+                hasH = true;
+                digitsAfter = 0;
+                buf[n++] = 'h';
+            }
+            else if ((c is 'm' or 'M') && !hasM && !colon)
+            {
+                hasM = true;
+                buf[n++] = 'm';
             }
         }
 
@@ -243,6 +260,10 @@ public static class WeekEntryGridRules
     public static string NormalizeDayDurationText(string? raw)
     {
         if (string.IsNullOrEmpty(raw)) return string.Empty;
+
+        if (ContainsHourOrMinuteSuffix(raw)
+            && TryParseHourMinuteSuffix(raw, requireComplete: false, out var fromSuffix))
+            return FormatDayDurationInput(fromSuffix);
 
         var colon = raw.IndexOf(':');
         if (colon >= 0)
@@ -308,7 +329,8 @@ public static class WeekEntryGridRules
 
     /// <summary>
     /// Parses a day-cell duration while typing. Accepts empty (zero) and complete
-    /// <c>H:MM</c> / <c>HH:MM</c> up to 23:59. Partials (e.g. <c>8</c>, <c>08:3</c>) return false
+    /// <c>:MM</c> / <c>H:MM</c> / <c>HH:MM</c> / <c>15m</c> / <c>2h</c> / <c>2h30m</c>
+    /// up to 23:59. Partials (e.g. <c>8</c>, <c>08:3</c>, <c>:1</c>) return false
     /// so autosave can wait — use <see cref="TryCommitDayDurationText"/> on blur/commit.
     /// </summary>
     public static bool TryParseDayDurationText(string? raw, out TimeSpan duration)
@@ -318,24 +340,45 @@ public static class WeekEntryGridRules
             return true;
 
         var s = raw.Trim();
-        // Complete HH:MM or H:MM only — partials (e.g. "8", "08:", "08:3") are not complete yet.
         var colon = s.IndexOf(':');
-        if (colon <= 0 || colon != s.LastIndexOf(':'))
+        if (colon < 0)
+            return TryParseHourMinuteSuffix(s, requireComplete: true, out duration);
+        if (colon != s.LastIndexOf(':'))
             return false;
 
         var hourPart = s[..colon];
         var minPart = s[(colon + 1)..];
-        if (hourPart.Length is < 1 or > 2 || minPart.Length != 2)
+        if (hourPart.Length > 2 || minPart.Length != 2)
             return false;
-        if (!int.TryParse(hourPart, out var h) || !int.TryParse(minPart, out var m))
+
+        var h = 0;
+        if (hourPart.Length > 0 && !int.TryParse(hourPart, out h))
+            return false;
+        if (!int.TryParse(minPart, out var m))
             return false;
         return TryBuildDayDuration(h, m, out duration);
+    }
+
+    /// <summary>
+    /// Whether the day-grid should debounce-save <b>while typing</b>.
+    /// Empty = user cleared the cell. Complete <c>H:MM</c>/<c>HH:MM</c> (two minute
+    /// digits) is finished. Partials like <c>00</c>, <c>00:</c>, <c>00:3</c>, or
+    /// bare <c>4</c> must wait for blur — otherwise save reformats <c>00:</c> to
+    /// empty and <c>00:3</c> to <c>00:03</c>, so 00:30 cannot be typed.
+    /// </summary>
+    public static bool ShouldAutosaveDayDurationText(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return true;
+
+        return TryParseDayDurationText(raw, out _);
     }
 
     /// <summary>
     /// Parses duration on blur/save. Accepts the same as <see cref="TryParseDayDurationText"/>,
     /// plus common partials people leave in the field:
     /// <list type="bullet">
+    ///   <item><c>:15</c> / <c>:5</c> / <c>15m</c> → 15 minutes / 5 minutes</item>
     ///   <item><c>4</c> / <c>04</c> → 4 hours</item>
     ///   <item><c>4:</c> → 4 hours</item>
     ///   <item><c>4:3</c> → 4 hours 3 minutes</item>
@@ -348,11 +391,14 @@ public static class WeekEntryGridRules
         if (string.IsNullOrWhiteSpace(raw))
             return true;
 
-        // Complete HH:MM / H:MM
+        // Complete HH:MM / H:MM / :MM / 15m / 2h / 2h30m
         if (TryParseDayDurationText(raw, out duration))
             return true;
 
         var s = raw.Trim();
+        if (TryParseHourMinuteSuffix(s, requireComplete: false, out duration))
+            return true;
+
         var colon = s.IndexOf(':');
 
         // Bare hours: "4", "04", "12"
@@ -363,8 +409,19 @@ public static class WeekEntryGridRules
             return TryBuildDayDuration(bareH, 0, out duration);
         }
 
-        if (colon == 0 || colon != s.LastIndexOf(':'))
+        if (colon != s.LastIndexOf(':'))
             return false;
+
+        // ":15" / ":5" → minutes only (leading colon). Lone ":" is still typing.
+        if (colon == 0)
+        {
+            var leadingMins = s[1..];
+            if (leadingMins.Length is < 1 or > 2)
+                return false;
+            if (!int.TryParse(leadingMins, out var leadingM))
+                return false;
+            return TryBuildDayDuration(0, leadingM, out duration);
+        }
 
         var hourPart = s[..colon];
         var minPart = s[(colon + 1)..];
@@ -383,6 +440,70 @@ public static class WeekEntryGridRules
         if (!int.TryParse(minPart, out var m))
             return false;
         return TryBuildDayDuration(h, m, out duration);
+    }
+
+    private static bool ContainsHourOrMinuteSuffix(string raw)
+    {
+        foreach (var c in raw)
+        {
+            if (c is 'h' or 'H' or 'm' or 'M')
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// <c>15m</c>, <c>2h</c>, <c>2h30m</c>. When <paramref name="requireComplete"/> is false,
+    /// <c>2h30</c> (no trailing m) is also accepted on blur.
+    /// </summary>
+    private static bool TryParseHourMinuteSuffix(string raw, bool requireComplete, out TimeSpan duration)
+    {
+        duration = TimeSpan.Zero;
+        var s = raw.Trim().ToLowerInvariant().Replace(" ", "");
+        if (s.Length == 0) return false;
+
+        if (s.EndsWith('m') && !s.Contains('h'))
+        {
+            var num = s[..^1];
+            if (num.Length is < 1 or > 4) return false;
+            if (!int.TryParse(num, out var mins)) return false;
+            return TryBuildFromTotalMinutes(mins, out duration);
+        }
+
+        if (s.EndsWith('h'))
+        {
+            var num = s[..^1];
+            if (num.Length is < 1 or > 2) return false;
+            if (!int.TryParse(num, out var hoursOnly)) return false;
+            return TryBuildDayDuration(hoursOnly, 0, out duration);
+        }
+
+        var hIdx = s.IndexOf('h');
+        if (hIdx <= 0) return false;
+
+        var hourPart = s[..hIdx];
+        var rest = s[(hIdx + 1)..];
+        if (requireComplete && !rest.EndsWith('m'))
+            return false;
+        if (rest.EndsWith('m'))
+            rest = rest[..^1];
+        if (hourPart.Length is < 1 or > 2 || rest.Length is < 1 or > 2)
+            return false;
+        if (!int.TryParse(hourPart, out var hh) || !int.TryParse(rest, out var mm))
+            return false;
+        return TryBuildDayDuration(hh, mm, out duration);
+    }
+
+    private static bool TryBuildFromTotalMinutes(int totalMinutes, out TimeSpan duration)
+    {
+        duration = TimeSpan.Zero;
+        if (totalMinutes < 0) return false;
+        var ts = TimeSpan.FromMinutes(totalMinutes);
+        if (!DurationStorageRules.IsWithinStorageLimit(ts))
+            return false;
+        duration = NormalizeDuration(ts);
+        return true;
     }
 
     private static bool TryBuildDayDuration(int hours, int minutes, out TimeSpan duration)
@@ -411,12 +532,15 @@ public static class WeekEntryGridRules
 
         var s = raw.Trim().ToLowerInvariant().Replace(" ", "");
 
-        // 2:30 or 02:30
+        // 2:30, 02:30, or :15 (minutes only)
         if (s.Contains(':'))
         {
             var parts = s.Split(':');
             if (parts.Length != 2) return false;
-            if (!int.TryParse(parts[0], out var h) || !int.TryParse(parts[1], out var m))
+            var h = 0;
+            if (!string.IsNullOrEmpty(parts[0]) && !int.TryParse(parts[0], out h))
+                return false;
+            if (!int.TryParse(parts[1], out var m))
                 return false;
             if (h < 0 || h > 99 || m < 0 || m > 59) return false;
             duration = DurationFromParts(h, m);
@@ -553,21 +677,43 @@ public static class WeekEntryGridRules
     /// Strip leading/trailing whitespace for storage and comparison.
     /// Always use this before persisting a task name.
     /// </summary>
-    public static string SanitizeTaskName(string? name) => (name ?? string.Empty).Trim();
+    public static string SanitizeTaskDetails(string? name) => (name ?? string.Empty).Trim();
 
     /// <summary>
-    /// Validate task name for create. Returns null when valid, otherwise an error message.
+    /// New Week → Day (and similar) draft rows: duration is allowed once a project
+    /// is chosen. Details are optional.
+    /// </summary>
+    public static bool CanEnterDraftDayDuration(bool hasProject) => hasProject;
+
+    /// <summary>
+    /// Case-insensitive substring match for Tasks search across week/project rows.
+    /// Empty query matches everything.
+    /// </summary>
+    public static bool MatchesEntrySearch(string? query, params string?[] fields)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return true;
+
+        var needle = query.Trim();
+        foreach (var field in fields)
+        {
+            if (!string.IsNullOrEmpty(field)
+                && field.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Validate task Details for create/update. Empty is allowed.
     /// Length rules apply to the trimmed name.
     /// </summary>
     public static string? ValidateTaskName(string? name)
     {
-        var trimmed = SanitizeTaskName(name);
-        if (trimmed.Length == 0)
-            return "Task name is required.";
-        if (trimmed.Length < MinTaskNameLength)
-            return $"Task name must be at least {MinTaskNameLength} characters.";
+        var trimmed = SanitizeTaskDetails(name);
         if (trimmed.Length > MaxTaskNameLength)
-            return $"Task name cannot exceed {MaxTaskNameLength} characters.";
+            return TaskDetailsRules.MaxLengthMessage;
         return null;
     }
 
@@ -583,11 +729,11 @@ public static class WeekEntryGridRules
     }
 
     /// <summary>Trim for display/create; empty becomes empty string.</summary>
-    public static string NormalizeTaskNameKey(string? name) => (name ?? string.Empty).Trim();
+    public static string NormalizeTaskDetailsKey(string? name) => (name ?? string.Empty).Trim();
 
     /// <summary>Case-insensitive task-name equality after trim.</summary>
     public static bool TaskNamesEqual(string? a, string? b) =>
-        string.Equals(NormalizeTaskNameKey(a), NormalizeTaskNameKey(b), StringComparison.OrdinalIgnoreCase);
+        string.Equals(NormalizeTaskDetailsKey(a), NormalizeTaskDetailsKey(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Distinct manual timed task names for a project inside [from,to] inclusive,
@@ -609,16 +755,16 @@ public static class WeekEntryGridRules
 
         foreach (var t in weekTasks)
         {
-            if (t.IsAllDay || !string.IsNullOrEmpty(t.StopwatchItemId))
+            if (!string.IsNullOrEmpty(t.StopwatchItemId))
                 continue;
             if (!string.Equals(t.ProjectId, projectId, StringComparison.Ordinal))
                 continue;
-            var sd = t.StartDate.Date;
-            if (sd < f || sd > end)
+            if (!OverlapsDayRange(t, f, end))
                 continue;
-            var key = NormalizeTaskNameKey(t.Name);
-            if (key.Length > 0)
-                names.Add(key);
+            // Details is optional — an empty name is still a real row (see the
+            // matching note in WeekDayAcrossGrid.RebuildRows). All-day entries
+            // belong here too so Week → Day can show their 8h and count them.
+            names.Add(NormalizeTaskDetailsKey(t.Details));
         }
 
         return names.ToList();
@@ -626,56 +772,84 @@ public static class WeekEntryGridRules
 
     /// <summary>
     /// Bind one day for the selected project from week tasks.
-    /// Only non-all-day, non-stopwatch manuals with matching project and same local calendar day
-    /// are editable candidates. Prefer <see cref="BindDayForTaskName"/> when the UI is multi-row.
+    /// Timed manuals are editable. All-day entries bind as <see cref="DayBindKind.AllDay"/>
+    /// (read-only workday hours). Stopwatch sessions stay out of the cell.
+    /// Prefer <see cref="BindDayForTaskDetails"/> when the UI is multi-row.
     /// </summary>
     public static DayBinding BindDay(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
         string? projectId,
         DateTime day) =>
-        BindDayForTaskName(weekTasks, projectId, taskName: null, day, matchAnyName: true);
+        BindDayForTaskDetails(weekTasks, projectId, taskName: null, day, matchAnyDetails: true);
 
     /// <summary>
     /// Bind one day for a specific task name under a project. When multiple manuals share the
     /// same project+name+day, returns <see cref="DayBindKind.Multiple"/> (read-only sum).
     /// </summary>
-    public static DayBinding BindDayForTaskName(
+    public static DayBinding BindDayForTaskDetails(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
         string? projectId,
         string? taskName,
         DateTime day,
-        bool matchAnyName = false)
+        bool matchAnyDetails = false)
     {
         if (string.IsNullOrEmpty(projectId))
             return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
 
-        if (!matchAnyName && string.IsNullOrWhiteSpace(taskName))
+        if (!matchAnyDetails && string.IsNullOrWhiteSpace(taskName))
             return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
 
         var dayDate = day.Date;
+        var workdayHours = AllDayEntryRules.DefaultWorkdayHours;
         var manuals = weekTasks
             .Where(t =>
                 !t.IsAllDay
                 && string.IsNullOrEmpty(t.StopwatchItemId)
                 && string.Equals(t.ProjectId, projectId, StringComparison.Ordinal)
                 && t.StartDate.Date == dayDate
-                && (matchAnyName || TaskNamesEqual(t.Name, taskName)))
+                && (matchAnyDetails || TaskNamesEqual(t.Details, taskName)))
             .OrderBy(t => t.StartDate)
             .ToList();
 
-        if (manuals.Count == 0)
-            return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
+        var allDays = weekTasks
+            .Where(t =>
+                t.IsAllDay
+                && string.Equals(t.ProjectId, projectId, StringComparison.Ordinal)
+                && AllDayCoversDate(t, dayDate)
+                && (matchAnyDetails || TaskNamesEqual(t.Details, taskName)))
+            .OrderBy(t => t.StartDate)
+            .ToList();
+
+        var allDayHours = TimeSpan.Zero;
+        foreach (var a in allDays)
+            allDayHours += HoursOnDay(a, dayDate, workdayHours);
 
         var totalManual = TimeSpan.Zero;
         foreach (var m in manuals)
             totalManual += m.Duration;
+        totalManual += allDayHours;
 
-        if (manuals.Count > 1)
+        if (manuals.Count == 0 && allDays.Count == 0)
+            return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
+
+        if (manuals.Count == 0)
+        {
+            var first = allDays[0];
+            return new DayBinding(
+                DayBindKind.AllDay,
+                first.TaskId,
+                first.Details,
+                first.StartDate,
+                TimeSpan.Zero,
+                NormalizeDuration(totalManual));
+        }
+
+        if (manuals.Count > 1 || allDays.Count > 0)
         {
             return new DayBinding(
                 DayBindKind.Multiple,
                 null,
-                manuals[0].Name,
+                manuals[0].Details,
                 null,
                 TimeSpan.Zero,
                 NormalizeDuration(totalManual));
@@ -685,10 +859,73 @@ public static class WeekEntryGridRules
         return new DayBinding(
             DayBindKind.Single,
             one.TaskId,
-            one.Name,
+            one.Details,
             one.StartDate,
             NormalizeDuration(one.Duration),
             NormalizeDuration(totalManual));
+    }
+
+    /// <summary>
+    /// Hours this task contributes to a calendar day. All-day entries count
+    /// <paramref name="workdayHours"/> on each weekday they cover (0 on weekends).
+    /// Timed entries count their duration on the start date only.
+    /// </summary>
+    public static TimeSpan HoursOnDay(
+        WeekEntryTaskSlice task,
+        DateTime day,
+        double workdayHours = AllDayEntryRules.DefaultWorkdayHours)
+    {
+        var dayDate = day.Date;
+        if (task.IsAllDay)
+        {
+            if (dayDate.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+                return TimeSpan.Zero;
+            if (!AllDayCoversDate(task, dayDate))
+                return TimeSpan.Zero;
+            var hours = workdayHours > 0 ? workdayHours : AllDayEntryRules.DefaultWorkdayHours;
+            return TimeSpan.FromHours(hours);
+        }
+
+        if (task.StartDate.Date != dayDate)
+            return TimeSpan.Zero;
+        return task.Duration < TimeSpan.Zero ? TimeSpan.Zero : task.Duration;
+    }
+
+    /// <summary>Sum of <see cref="HoursOnDay"/> for every task (timed, all-day, stopwatch).</summary>
+    public static TimeSpan SumDayDuration(
+        IEnumerable<WeekEntryTaskSlice> weekTasks,
+        DateTime day,
+        double workdayHours = AllDayEntryRules.DefaultWorkdayHours)
+    {
+        var total = TimeSpan.Zero;
+        foreach (var t in weekTasks)
+            total += HoursOnDay(t, day, workdayHours);
+        return NormalizeDuration(total);
+    }
+
+    public static bool AllDayCoversDate(WeekEntryTaskSlice task, DateTime day)
+    {
+        if (!task.IsAllDay)
+            return false;
+        var start = task.StartDate.Date;
+        var end = (task.EndDate ?? task.StartDate).Date;
+        var d = day.Date;
+        return d >= start && d <= end;
+    }
+
+    public static bool OverlapsDayRange(WeekEntryTaskSlice task, DateTime from, DateTime to)
+    {
+        var f = from.Date;
+        var end = to.Date;
+        if (task.IsAllDay)
+        {
+            var start = task.StartDate.Date;
+            var last = (task.EndDate ?? task.StartDate).Date;
+            return last >= f && start <= end;
+        }
+
+        var sd = task.StartDate.Date;
+        return sd >= f && sd <= end;
     }
 
     /// <summary>
@@ -745,10 +982,11 @@ public static class WeekEntryGridRules
     /// <summary>Minimal task shape for binding/totals without pulling client models into Shared.</summary>
     public readonly record struct WeekEntryTaskSlice(
         string TaskId,
-        string Name,
+        string Details,
         string? ProjectId,
         DateTime StartDate,
         TimeSpan Duration,
         bool IsAllDay,
-        string? StopwatchItemId);
+        string? StopwatchItemId,
+        DateTime? EndDate = null);
 }

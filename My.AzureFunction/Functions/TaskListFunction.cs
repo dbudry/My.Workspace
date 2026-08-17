@@ -7,6 +7,7 @@ using My.DAL.Data;
 using My.DAL.Models;
 using My.Functions.Authorization;
 using My.Functions.Helpers;
+using My.Shared.Constants;
 using My.Shared.Dtos.StopwatchItem;
 using My.Shared.Rules;
 
@@ -55,6 +56,9 @@ namespace My.Functions
             {
                 var taskIds = manualDtos.Select(t => t.TaskId).ToList();
                 var adjustmentContext = await TrackedTaskAdjustmentEnricher.LoadForTasksAsync(dbContext, taskIds);
+                var workdayRow = await dbContext.AppSettings.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
+                var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
                 // Re-load entities only if enricher needs them — we already have DTOs; enrich by id.
                 for (var i = 0; i < manualDtos.Count; i++)
                 {
@@ -62,7 +66,7 @@ namespace My.Functions
                     adjustmentContext.Aliases.TryGetValue(id, out var alias);
                     adjustmentContext.Audits.TryGetValue(id, out var audit);
                     TrackedTaskAdjustmentEnricher.ApplyEmployeeView(
-                        manualDtos[i], alias, audit, adjustmentContext, mapper);
+                        manualDtos[i], alias, audit, adjustmentContext, mapper, workdayHours);
                 }
 
                 var submitted = await GetSubmittedMonthsAsync(userId);
@@ -136,7 +140,7 @@ namespace My.Functions
             return new StopwatchItemDto
             {
                 StopwatchItemId = item.StopwatchItemId,
-                Name = item.Name,
+                    Details = item.Details,
                 ProjectId = item.ProjectId,
                 Project = item.Project == null ? null : mapper.ProjectToDto(item.Project),
                 TotalDuration = completedTotal,

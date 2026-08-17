@@ -126,7 +126,7 @@ namespace My.Functions
             var item = new StopwatchItem
             {
                 UserId = userId,
-                Name = dto.Name.Trim(),
+                Details = dto.Details.Trim(),
                 ProjectId = dto.ProjectId,
                 CreatedAt = now,
                 LastWorkedAt = now
@@ -165,7 +165,7 @@ namespace My.Functions
             var item = new StopwatchItem
             {
                 UserId = userId,
-                Name = dto.Name.Trim(),
+                Details = dto.Details.Trim(),
                 ProjectId = dto.ProjectId,
                 CreatedAt = now,
                 LastWorkedAt = now
@@ -206,15 +206,15 @@ namespace My.Functions
                     "Cannot change work item name or project while any session is in a submitted month. You can still edit duration on unlocked sessions.");
             }
 
-            var name = dto.Name.Trim();
-            item.Name = name;
+            var details = dto.Details.Trim();
+            item.Details = details;
             item.ProjectId = dto.ProjectId;
             await itemRepository.Update(item);
 
             // Propagate identity to every session (none are locked if we got here).
             foreach (var session in sessions)
             {
-                session.Name = name;
+                session.Details = details;
                 session.ProjectId = dto.ProjectId;
                 await taskRepository.Update(session);
             }
@@ -278,7 +278,7 @@ namespace My.Functions
             {
                 UserId = userId,
                 StopwatchItemId = id,
-                Name = item.Name,
+                Details = item.Details,
                 ProjectId = item.ProjectId,
                 StartDate = now,
                 Duration = TimeSpan.Zero,
@@ -400,8 +400,8 @@ namespace My.Functions
             return sortBy?.ToLowerInvariant() switch
             {
                 "name" => descending
-                    ? q => q.OrderByDescending(i => i.Name)
-                    : q => q.OrderBy(i => i.Name),
+                    ? q => q.OrderByDescending(i => i.Details)
+                    : q => q.OrderBy(i => i.Details),
                 "createdat" => descending
                     ? q => q.OrderByDescending(i => i.CreatedAt)
                     : q => q.OrderBy(i => i.CreatedAt),
@@ -426,7 +426,7 @@ namespace My.Functions
             return new StopwatchItemDto
             {
                 StopwatchItemId = item.StopwatchItemId,
-                Name = item.Name,
+                Details = item.Details,
                 ProjectId = item.ProjectId,
                 Project = item.Project == null ? null : mapper.ProjectToDto(item.Project),
                 TotalDuration = completedTotal,

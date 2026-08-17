@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using My.Shared.Constants;
 using My.Shared.Dtos.User;
+using My.Shared.Rules;
 
 namespace My.Client.Services;
 
@@ -24,6 +25,19 @@ public class CustomAccountFactory : AccountClaimsPrincipalFactory<RemoteUserAcco
     // 20-30s of "Completing login…" before the auto-navigate could fire. Now one
     // call serves all callers; cleared on logout/error so retries refetch.
     private Task<UserDto?>? _provisionTask;
+
+    /// <summary>
+    /// Last failed provision outcome for this browser session (shown on the dashboard
+    /// banner). Cleared on successful provision.
+    /// </summary>
+    public string? LastProvisionFailureMessage { get; private set; }
+
+    /// <summary>Machine code from <see cref="ProvisionFailureRules"/> when available.</summary>
+    public string? LastProvisionFailureCode { get; private set; }
+
+    /// <summary>HTTP status of the last failed provision attempt, if any.</summary>
+    public int? LastProvisionFailureStatus { get; private set; }
+
 
     /// <summary>
     /// Extra attempts after the first for transient cold-start failures.
@@ -89,6 +103,8 @@ public class CustomAccountFactory : AccountClaimsPrincipalFactory<RemoteUserAcco
             // without app roles; Dashboard detects missing app_user_id and offers Retry.
             _logger.LogWarning(ex, "User provision call failed after retries. User will have no roles until retry or next login.");
             _provisionTask = null;
+            if (string.IsNullOrEmpty(LastProvisionFailureMessage))
+                SetProvisionFailure(null, ProvisionFailureRules.CodeTransient, ProvisionFailureRules.MessageFor(ProvisionFailureRules.CodeTransient));
             return user;
         }
 
@@ -97,9 +113,15 @@ public class CustomAccountFactory : AccountClaimsPrincipalFactory<RemoteUserAcco
             // Permanent failure (4xx) or exhausted transient retries returning null.
             // Clear cache so a later RefreshAfterSelfRoleChangeAsync / Retry can re-hit provision.
             _provisionTask = null;
-            _logger.LogWarning("User provision returned no profile. User will have no app_user_id/roles until retry.");
+            _logger.LogWarning(
+                "User provision returned no profile (code={Code}, status={Status}). User will have no app_user_id/roles until retry.",
+                LastProvisionFailureCode ?? "?", LastProvisionFailureStatus);
+            if (string.IsNullOrEmpty(LastProvisionFailureMessage))
+                SetProvisionFailure(null, ProvisionFailureRules.CodeUnknown, ProvisionFailureRules.MessageFor(ProvisionFailureRules.CodeUnknown));
             return user;
         }
+
+        ClearProvisionFailure();
 
         if (userDto.Roles != null)
             RoleClaimsHelper.ApplyProvisionRoles(identity, userDto.Roles);
@@ -113,6 +135,7 @@ public class CustomAccountFactory : AccountClaimsPrincipalFactory<RemoteUserAcco
 
         return user;
     }
+
 
     /// <summary>Clears the coalesced provision task so the next <see cref="CreateUserAsync"/>
     /// call re-fetches roles from <c>POST /api/users/provision</c>.</summary>
@@ -142,15 +165,31 @@ public class CustomAccountFactory : AccountClaimsPrincipalFactory<RemoteUserAcco
                 {
                     var dto = await response.Content.ReadFromJsonAsync<UserDto>();
                     _logger.LogInformation("User provisioned successfully with {RoleCount} role(s).", dto?.Roles?.Count ?? 0);
+                    ClearProvisionFailure();
                     return dto;
                 }
 
                 var status = response.StatusCode;
+                var body = await TryReadProvisionErrorAsync(response);
+
                 if (!IsTransientProvisionStatus(status) || attempt >= MaxProvisionRetries)
                 {
+                    var code = body?.Code
+                        ?? (status == HttpStatusCode.Forbidden
+                            ? ProvisionFailureRules.CodeNotProvisioned
+                            : status == HttpStatusCode.Unauthorized
+                                ? ProvisionFailureRules.CodeUnauthorized
+                                : IsTransientProvisionStatus(status)
+                                    ? ProvisionFailureRules.CodeTransient
+                                    : ProvisionFailureRules.CodeServerError);
+                    var message = !string.IsNullOrWhiteSpace(body?.Message)
+                        ? body!.Message
+                        : ProvisionFailureRules.MessageFor(code);
+
+                    SetProvisionFailure((int)status, code, message);
                     _logger.LogWarning(
-                        "User provision returned {StatusCode} (attempt {Attempt}/{Max}). Giving up.",
-                        (int)status, attempt + 1, MaxProvisionRetries + 1);
+                        "User provision returned {StatusCode} (attempt {Attempt}/{Max}, code={Code}). Giving up. {Message}",
+                        (int)status, attempt + 1, MaxProvisionRetries + 1, code, message);
                     return null;
                 }
 
@@ -173,10 +212,53 @@ public class CustomAccountFactory : AccountClaimsPrincipalFactory<RemoteUserAcco
                     attempt + 1, MaxProvisionRetries + 1, ex.Message, delay);
                 await DelayAsync(delay, CancellationToken.None);
             }
+            catch (Exception ex)
+            {
+                SetProvisionFailure(null, ProvisionFailureRules.CodeServerError,
+                    $"{ProvisionFailureRules.MessageFor(ProvisionFailureRules.CodeServerError)} ({ex.Message})");
+                throw;
+            }
         }
 
+        SetProvisionFailure(null, ProvisionFailureRules.CodeTransient, ProvisionFailureRules.MessageFor(ProvisionFailureRules.CodeTransient));
         return null;
     }
+
+    private void SetProvisionFailure(int? status, string code, string message)
+    {
+        LastProvisionFailureStatus = status;
+        LastProvisionFailureCode = code;
+        LastProvisionFailureMessage = message;
+    }
+
+    private void ClearProvisionFailure()
+    {
+        LastProvisionFailureStatus = null;
+        LastProvisionFailureCode = null;
+        LastProvisionFailureMessage = null;
+    }
+
+    private static async Task<ProvisionErrorDto?> TryReadProvisionErrorAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var media = response.Content.Headers.ContentType?.MediaType;
+            if (media != null && media.Contains("json", StringComparison.OrdinalIgnoreCase))
+                return await response.Content.ReadFromJsonAsync<ProvisionErrorDto>();
+
+            // Some hosts still return JSON without a content-type we recognize.
+            var text = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(text) || text[0] != '{')
+                return null;
+            return System.Text.Json.JsonSerializer.Deserialize<ProvisionErrorDto>(text,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
 
     /// <summary>
     /// Transient statuses worth re-POSTing provision for. Unlike general

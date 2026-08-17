@@ -130,20 +130,45 @@
                     Connected as <strong>@googleEmail</strong>
                 </MudAlert>
 
-                <MudSwitch T="bool" @bind-Value="publishToGoogle" Label="Publish Tyme tasks to Google"
-                           Color="Color.Primary" Class="mb-2" />
-                <MudSwitch T="bool" @bind-Value="importFromGoogle" Label="Import slug-tagged Google events into Tyme"
-                           Color="Color.Primary" Class="mb-4" />
+                <MudSwitch T="bool" @bind-Value="publishToGoogle" Color="Color.Primary" Class="mb-0">
+                    Export Tyme tasks to Google Calendar
+                </MudSwitch>
+                <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                    By selecting this, every task you log in Tyme is copied to your Google Calendar.
+                    Edits and deletes in Tyme update that Google event. Turning it off stops sending
+                    new tasks; events already on Google stay there.
+                </MudText>
+
+                <MudSwitch T="bool" @bind-Value="importFromGoogle" Color="Color.Primary" Class="mb-0">
+                    Import Google Calendar events into Tyme
+                </MudSwitch>
+                <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                    By selecting this, Google events whose title includes a project
+                    <code>[slug]</code> (for example <code>[itsup] Laptop rebuild</code>) become Tyme
+                    tasks on that project. Events without a <code>[slug]</code> stay private and are
+                    never imported. Turning it off stops bringing new tagged events in; tasks already
+                    in Tyme stay.
+                </MudText>
 
                 <MudGrid Spacing="3" Class="mb-4">
                     <MudItem xs="12" md="6">
                         <MudSelect T="string" @bind-Value="matchedColorId"
                                    Label="Event color (with project)"
-                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                   ToStringFunc="GoogleEventColors.DisplayName"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Circle"
+                                   Class="event-color-select"
+                                   Style="@EventColorSelectStyle(matchedColorId)">
                             <MudSelectItem T="string" Value="@(null!)">Calendar default</MudSelectItem>
-                            @foreach (var c in My.Shared.Rules.GoogleEventColors.All)
+                            @foreach (var c in GoogleEventColors.All)
                             {
-                                <MudSelectItem T="string" Value="@c.Id">@c.Name</MudSelectItem>
+                                <MudSelectItem T="string" Value="@c.Id">
+                                    <span class="d-flex align-center gap-2">
+                                        <span class="google-event-color-swatch" style="background:@c.Hex"></span>
+                                        @c.Name
+                                    </span>
+                                </MudSelectItem>
                             }
                         </MudSelect>
                         <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
@@ -153,11 +178,21 @@
                     <MudItem xs="12" md="6">
                         <MudSelect T="string" @bind-Value="unmatchedColorId"
                                    Label="Event color (no project)"
-                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                   ToStringFunc="GoogleEventColors.DisplayName"
+                                   Adornment="Adornment.Start"
+                                   AdornmentIcon="@Icons.Material.Filled.Circle"
+                                   Class="event-color-select"
+                                   Style="@EventColorSelectStyle(unmatchedColorId)">
                             <MudSelectItem T="string" Value="@(null!)">Calendar default</MudSelectItem>
-                            @foreach (var c in My.Shared.Rules.GoogleEventColors.All)
+                            @foreach (var c in GoogleEventColors.All)
                             {
-                                <MudSelectItem T="string" Value="@c.Id">@c.Name</MudSelectItem>
+                                <MudSelectItem T="string" Value="@c.Id">
+                                    <span class="d-flex align-center gap-2">
+                                        <span class="google-event-color-swatch" style="background:@c.Hex"></span>
+                                        @c.Name
+                                    </span>
+                                </MudSelectItem>
                             }
                         </MudSelect>
                         <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
@@ -219,14 +254,43 @@
                         }
                         else
                         {
-                            <MudText Typo="Typo.body2">
-                                Scanned <strong>@pullResult.Scanned</strong> events:
-                                <strong>@pullResult.Created</strong> imported,
-                                <strong>@pullResult.Updated</strong> updated,
-                                <strong>@pullResult.Cancelled</strong> removed,
-                                <strong>@(pullResult.SkippedNoTag + pullResult.SkippedUnresolvedTag + pullResult.SkippedOurs + pullResult.SkippedNoDates + pullResult.SkippedDeclinedInvite + pullResult.SkippedMonthSubmitted)</strong> skipped,
-                                <strong>@pullResult.Failed</strong> failed.
+                            <MudText Typo="Typo.body2" Class="mb-2">
+                                @CalendarPullResultRules.Headline(pullResult)
                             </MudText>
+                            <MudStack Spacing="1">
+                                @foreach (var line in CalendarPullResultRules.DetailLines(pullResult))
+                                {
+                                    <MudText Typo="Typo.body2">@line</MudText>
+                                }
+                            </MudStack>
+                            @if (pullResult.UnresolvedTags.Count > 0)
+                            {
+                                <MudText Typo="Typo.body2" Class="mt-2">
+                                    These Google titles have a [tag] that does not match any project.
+                                    Fix the tag in Google, or set that slug on a project, then pull again.
+                                </MudText>
+                                <ul class="mt-1 mb-0">
+                                    @foreach (var note in pullResult.UnresolvedTags)
+                                    {
+                                        <li>
+                                            <MudText Typo="Typo.body2">
+                                                @note.Summary
+                                                @if (!string.IsNullOrEmpty(note.Tag))
+                                                {
+                                                    <text> — no project uses [@note.Tag]</text>
+                                                }
+                                            </MudText>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            @if (pullResult.Created + pullResult.Updated > 0)
+                            {
+                                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                           Class="mt-2 px-0" Href="tyme/tasks">
+                                    Open Tasks
+                                </MudButton>
+                            }
                         }
                     </MudAlert>
                 }

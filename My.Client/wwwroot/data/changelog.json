@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.3.0",
+    "date": "2026-08-17",
+    "changes": [
+      { "type": "Changed", "text": "Task and stopwatch free-text field is Details (not Name) end-to-end: API, UI, and database schema for greenfield installs." },
+      { "type": "Added", "text": "Managers can submit time on behalf of eligible team members when workspace setting allows it." },
+      { "type": "Added", "text": "Project-first task entry with optional Details; Task Details field component and week/day grids use the same rules." },
+      { "type": "Added", "text": "Google Calendar pull/disconnect improvements and webhook-based import worker for missed events." },
+      { "type": "Added", "text": "Organization archive/activate cluster rules and organization name picker filters." },
+      { "type": "Changed", "text": "Calendar OAuth uses the signed-in user's domain (no hard-coded hosted domain)." },
+      { "type": "Fixed", "text": "Provision and auth domain messaging stay multi-tenant and brand-neutral." }
+    ]
+  },
+  {
     "version": "1.2.1",
     "date": "2026-08-12",
     "changes": [

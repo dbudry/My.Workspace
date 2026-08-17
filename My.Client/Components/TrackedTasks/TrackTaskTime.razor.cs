@@ -35,7 +35,7 @@ namespace My.Client.Components.TrackedTasks
             {
                 var dto = new CreateStopwatchItemDto
                 {
-                    Name = newEntryModel.Name.Trim(),
+                    Details = newEntryModel.Details.Trim(),
                     ProjectId = SelectedProject.ProjectId
                 };
 

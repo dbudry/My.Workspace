@@ -270,6 +270,8 @@ namespace My.Shared.Constants
             public const string AllowProjectDelete = "AllowProjectDelete";
             public const string TymeSubmissionMonthInterval = "TymeSubmissionMonthInterval";
             public const string TymeAllowManagerTimeCorrection = "TymeAllowManagerTimeCorrection";
+            /// <summary>When true, Manager:Tyme+ can submit a month on behalf of another user (team scope).</summary>
+            public const string TymeAllowManagerSubmitOnBehalf = "TymeAllowManagerSubmitOnBehalf";
             /// <summary>Alias or Direct — workspace uses one mode only.</summary>
             public const string TymeManagerCorrectionMode = "TymeManagerCorrectionMode";
             /// <summary>
@@ -594,6 +596,9 @@ namespace My.Shared.Constants
 
                 /// <summary>POST — submit a single (Year, Month) for the current user.</summary>
                 public const string Create = Api;
+
+                /// <summary>POST — Manager:Tyme+ submit a month for another user (setting-gated).</summary>
+                public const string CreateOnBehalf = $"{Api}/onbehalf";
 
                 /// <summary>DELETE — unsubmit by id (Manager:Tyme / Admin:Tyme only). Global Admin does not satisfy this gate.</summary>
                 public const string Delete = $"{Api}/";

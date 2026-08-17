@@ -39,7 +39,7 @@ public class StopwatchItemTests
         var item = new StopwatchItem
         {
             UserId = userId,
-            Name = "Test stopwatch aggregation",
+                    Details = "Test stopwatch aggregation",
             CreatedAt = now,
             LastWorkedAt = now
         };
@@ -53,7 +53,7 @@ public class StopwatchItemTests
                 {
                     UserId = userId,
                     StopwatchItemId = item.StopwatchItemId,
-                    Name = item.Name,
+                    Details = item.Details,
                     StartDate = now.AddHours(-2),
                     EndDate = now.AddHours(-1),
                     Duration = TimeSpan.FromMinutes(30)
@@ -62,7 +62,7 @@ public class StopwatchItemTests
                 {
                     UserId = userId,
                     StopwatchItemId = item.StopwatchItemId,
-                    Name = item.Name,
+                    Details = item.Details,
                     StartDate = now.AddMinutes(-10),
                     EndDate = null,
                     Duration = TimeSpan.Zero
@@ -99,15 +99,15 @@ public class StopwatchItemTests
         var userId = await IntegrationTestFixtures.EnsureTestUserIdAsync(db);
 
         var now = DateTime.UtcNow;
-        var target = new StopwatchItem { UserId = userId, Name = "Delete target", CreatedAt = now, LastWorkedAt = now };
-        var keep = new StopwatchItem { UserId = userId, Name = "Keep me", CreatedAt = now, LastWorkedAt = now };
+        var target = new StopwatchItem { UserId = userId, Details = "Delete target", CreatedAt = now, LastWorkedAt = now };
+        var keep = new StopwatchItem { UserId = userId, Details = "Keep me", CreatedAt = now, LastWorkedAt = now };
         db.StopwatchItems.AddRange(target, keep);
         await db.SaveChangesAsync();
 
         db.TrackedTasks.AddRange(
-            new TrackedTask { UserId = userId, StopwatchItemId = target.StopwatchItemId, Name = target.Name, StartDate = now, Duration = TimeSpan.FromMinutes(5) },
-            new TrackedTask { UserId = userId, StopwatchItemId = target.StopwatchItemId, Name = target.Name, StartDate = now, Duration = TimeSpan.FromMinutes(5) },
-            new TrackedTask { UserId = userId, StopwatchItemId = keep.StopwatchItemId, Name = keep.Name, StartDate = now, Duration = TimeSpan.FromMinutes(5) });
+            new TrackedTask { UserId = userId, StopwatchItemId = target.StopwatchItemId, Details = target.Details, StartDate = now, Duration = TimeSpan.FromMinutes(5) },
+            new TrackedTask { UserId = userId, StopwatchItemId = target.StopwatchItemId, Details = target.Details, StartDate = now, Duration = TimeSpan.FromMinutes(5) },
+            new TrackedTask { UserId = userId, StopwatchItemId = keep.StopwatchItemId, Details = keep.Details, StartDate = now, Duration = TimeSpan.FromMinutes(5) });
         await db.SaveChangesAsync();
 
         try

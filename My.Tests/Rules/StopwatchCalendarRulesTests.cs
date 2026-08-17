@@ -15,7 +15,7 @@ public class StopwatchCalendarRulesTests
             {
                 TaskId = "t1",
                 StopwatchItemId = "sw-1",
-                Name = "Feature work",
+                    Details = "Feature work",
                 StartDate = day.AddHours(9),
                 EndDate = day.AddHours(9).AddMinutes(5),
                 Duration = TimeSpan.FromMinutes(1),
@@ -25,7 +25,7 @@ public class StopwatchCalendarRulesTests
             {
                 TaskId = "t2",
                 StopwatchItemId = "sw-1",
-                Name = "Feature work",
+                    Details = "Feature work",
                 StartDate = day.AddHours(14),
                 EndDate = day.AddHours(14).AddMinutes(10),
                 Duration = TimeSpan.FromMinutes(2),
@@ -35,7 +35,7 @@ public class StopwatchCalendarRulesTests
             {
                 TaskId = "t3",
                 StopwatchItemId = "sw-2",
-                Name = "Other task",
+                    Details = "Other task",
                 StartDate = day.AddHours(10),
                 EndDate = day.AddHours(10).AddMinutes(30),
                 Duration = TimeSpan.FromMinutes(30),
@@ -43,7 +43,7 @@ public class StopwatchCalendarRulesTests
             }
         };
 
-        var grouped = StopwatchCalendarRules.GroupByWorkItemAndDay(sessions).OrderBy(g => g.Name).ToList();
+        var grouped = StopwatchCalendarRules.GroupByWorkItemAndDay(sessions).OrderBy(g => g.Details).ToList();
 
         Assert.Equal(2, grouped.Count);
 

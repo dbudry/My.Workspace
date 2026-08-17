@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using MudBlazor;
 using My.Client.Extensions;
 using My.Client.Models;
@@ -41,6 +42,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         public bool IsReadOnly => IsMultiple || IsSubmitted;
         public string? DurationError { get; set; }
         public string? ErrorMessage { get; set; }
+        public string? HintTooltip { get; set; }
         public CellSaveStatus Status { get; set; }
         public int SaveGeneration { get; set; }
         public CancellationTokenSource? DebounceCts { get; set; }
@@ -61,14 +63,30 @@ public partial class WeekDayAcrossGrid : IDisposable
         public bool ShowDraftEditors => IsDraft && !HasPersistedData;
         public bool CanEnterDuration =>
             !ShowDraftEditors
-            || (DraftProject != null
-                && !string.IsNullOrWhiteSpace(WeekEntryGridRules.SanitizeTaskName(DraftTaskName)));
+            || WeekEntryGridRules.CanEnterDraftDayDuration(DraftProject != null);
     }
 
     [Parameter] public DateTime WeekStartMonday { get; set; }
     [Parameter] public bool BusinessWeekOnly { get; set; } = true;
     [Parameter] public EventCallback EntriesChanged { get; set; }
     [Parameter] public EventCallback<bool> LoadingChanged { get; set; }
+
+    /// <summary>Filters visible rows by project or Details. Draft rows stay visible.</summary>
+    [Parameter] public string? Search { get; set; }
+
+    private IEnumerable<RowVm> VisibleRows
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Search))
+                return rows;
+
+            return rows.Where(r =>
+                r.ShowDraftEditors
+                || WeekEntryGridRules.MatchesEntrySearch(
+                    Search, r.ProjectName, r.TaskName, r.DraftTaskName));
+        }
+    }
 
     [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
     [Inject] private TrackedTasksClient TrackedTasksClient { get; set; } = null!;
@@ -273,12 +291,14 @@ public partial class WeekDayAcrossGrid : IDisposable
             c.ProjectId = pid;
             c.ProjectName = pname;
         }
+        StateHasChanged();
     }
 
     private void OnDraftTaskNameChanged(RowVm row, string? value)
     {
         if (!row.ShowDraftEditors) return;
         row.DraftTaskName = value ?? "";
+        StateHasChanged();
     }
 
     private async Task<HashSet<(int Year, int Month)>> LoadSubmittedMonthsAsync(CancellationToken token)
@@ -320,12 +340,16 @@ public partial class WeekDayAcrossGrid : IDisposable
 
         foreach (var t in weekTasks)
         {
-            if (t.IsAllDay || !string.IsNullOrEmpty(t.StopwatchItemId))
+            if (!string.IsNullOrEmpty(t.StopwatchItemId))
                 continue;
-            var sd = t.StartDate.Date;
-            if (sd < from || sd > to) continue;
-            var name = WeekEntryGridRules.NormalizeTaskNameKey(t.Name);
-            if (name.Length == 0) continue;
+            var slice = ToSlice(t);
+            if (!WeekEntryGridRules.OverlapsDayRange(slice, from, to))
+                continue;
+            // Details is optional (see WeekEntryGridRules.ValidateTaskName) — an empty
+            // name is still a real row, not a filler. Excluding it here made tasks
+            // saved with no Details vanish from this grid on the next reload while
+            // remaining visible (and correctly saved) in All / Week List.
+            var name = WeekEntryGridRules.NormalizeTaskDetailsKey(t.Details);
             var pid = t.ProjectId ?? "";
             var pname = t.Project?.DisplayName ?? t.Project?.Name ?? "No project";
             keys.Add((pid, pname, name));
@@ -360,11 +384,13 @@ public partial class WeekDayAcrossGrid : IDisposable
                         Status = CellSaveStatus.Idle
                     };
                 }
-                else if (bind.Kind == WeekEntryGridRules.DayBindKind.Multiple)
+                else if (bind.Kind == WeekEntryGridRules.DayBindKind.Multiple
+                    || bind.Kind == WeekEntryGridRules.DayBindKind.AllDay)
                 {
                     cells[i] = new DayCellVm
                     {
                         Date = day,
+                        TaskId = bind.TaskId,
                         TaskName = key.TaskName,
                         ProjectId = projectId,
                         ProjectName = key.ProjectName,
@@ -374,7 +400,12 @@ public partial class WeekDayAcrossGrid : IDisposable
                         IsMultiple = true,
                         IsSubmitted = true, // treat as read-only
                         Status = CellSaveStatus.Idle,
-                        ErrorMessage = "Multiple — edit one at a time"
+                        ErrorMessage = bind.Kind == WeekEntryGridRules.DayBindKind.AllDay
+                            ? "All day"
+                            : "Multiple",
+                        HintTooltip = bind.Kind == WeekEntryGridRules.DayBindKind.AllDay
+                            ? "All-day entry. It counts as a full workday."
+                            : "More than one time entry on this day. Open List view to edit them one at a time."
                     };
                 }
                 else
@@ -426,7 +457,7 @@ public partial class WeekDayAcrossGrid : IDisposable
                     && string.IsNullOrEmpty(t.StopwatchItemId)
                     && string.IsNullOrEmpty(t.ProjectId)
                     && t.StartDate.Date == day.Date
-                    && WeekEntryGridRules.TaskNamesEqual(t.Name, taskName))
+                    && WeekEntryGridRules.TaskNamesEqual(t.Details, taskName))
                 .OrderBy(t => t.StartDate)
                 .ToList();
             return manuals.Count switch
@@ -434,7 +465,7 @@ public partial class WeekDayAcrossGrid : IDisposable
                 0 => new WeekEntryGridRules.DayBinding(
                     WeekEntryGridRules.DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero),
                 1 => new WeekEntryGridRules.DayBinding(
-                    WeekEntryGridRules.DayBindKind.Single, manuals[0].TaskId, manuals[0].Name,
+                    WeekEntryGridRules.DayBindKind.Single, manuals[0].TaskId, manuals[0].Details,
                     manuals[0].StartDate, manuals[0].Duration, manuals[0].Duration),
                 _ => new WeekEntryGridRules.DayBinding(
                     WeekEntryGridRules.DayBindKind.Multiple, null, taskName, null, TimeSpan.Zero,
@@ -442,11 +473,11 @@ public partial class WeekDayAcrossGrid : IDisposable
             };
         }
 
-        return WeekEntryGridRules.BindDayForTaskName(slices, projectId, taskName, day);
+        return WeekEntryGridRules.BindDayForTaskDetails(slices, projectId, taskName, day);
     }
 
     private static WeekEntryGridRules.WeekEntryTaskSlice ToSlice(TrackedTask t) =>
-        new(t.TaskId, t.Name, t.ProjectId, t.StartDate, t.Duration, t.IsAllDay, t.StopwatchItemId);
+        new(t.TaskId, t.Details, t.ProjectId, t.StartDate, t.Duration, t.IsAllDay, t.StopwatchItemId, t.EndDate);
 
     private static string DayHeader(DateTime day) =>
         $"{day:ddd} {day.Day}";
@@ -462,7 +493,7 @@ public partial class WeekDayAcrossGrid : IDisposable
     private string DayColumnTotalLabel(int dayIndex)
     {
         var t = TimeSpan.Zero;
-        foreach (var row in rows)
+        foreach (var row in VisibleRows)
         {
             if (dayIndex >= 0 && dayIndex < row.Cells.Length)
                 t += CellDuration(row.Cells[dayIndex]);
@@ -475,7 +506,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         get
         {
             var t = TimeSpan.Zero;
-            foreach (var row in rows)
+            foreach (var row in VisibleRows)
             foreach (var c in row.Cells)
                 t += CellDuration(c);
             return WeekEntryGridRules.FormatDuration(t);
@@ -510,9 +541,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         cell.DurationText = WeekEntryGridRules.FilterDurationInputChars(value);
         cell.DurationError = null;
 
-        // Debounce when empty (clear) or when commit would accept (incl. bare "4").
-        if (string.IsNullOrEmpty(cell.DurationText)
-            || WeekEntryGridRules.TryCommitDayDurationText(cell.DurationText, out _))
+        if (WeekEntryGridRules.ShouldAutosaveDayDurationText(cell.DurationText))
         {
             ScheduleSave(row, dayIndex);
             return;
@@ -520,6 +549,25 @@ public partial class WeekDayAcrossGrid : IDisposable
 
         cell.DebounceCts?.Cancel();
         cell.Status = CellSaveStatus.Idle;
+    }
+
+    private void OnDurationBlur(RowVm row, int dayIndex)
+    {
+        if (dayIndex < 0 || dayIndex >= row.Cells.Length) return;
+        var cell = row.Cells[dayIndex];
+        if (cell.IsReadOnly) return;
+        ScheduleSave(row, dayIndex);
+    }
+
+    private void OnDurationKeyDown(RowVm row, int dayIndex, KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        if (dayIndex < 0 || dayIndex >= row.Cells.Length) return;
+        var cell = row.Cells[dayIndex];
+        if (cell.IsReadOnly) return;
+        cell.DebounceCts?.Cancel();
+        var generation = ++cell.SaveGeneration;
+        _ = SaveCellAsync(row, dayIndex, generation);
     }
 
     private void ScheduleSave(RowVm row, int dayIndex)
@@ -587,7 +635,7 @@ public partial class WeekDayAcrossGrid : IDisposable
                     return;
                 }
 
-                var draftName = WeekEntryGridRules.SanitizeTaskName(row.DraftTaskName);
+                var draftName = WeekEntryGridRules.SanitizeTaskDetails(row.DraftTaskName);
                 var nameError = WeekEntryGridRules.ValidateTaskName(draftName);
                 if (nameError != null)
                 {
@@ -677,7 +725,7 @@ public partial class WeekDayAcrossGrid : IDisposable
             : cell.ProjectId;
         var dto = new CreateTrackedTaskDto
         {
-            Name = WeekEntryGridRules.SanitizeTaskName(
+                    Details = WeekEntryGridRules.SanitizeTaskDetails(
                 string.IsNullOrWhiteSpace(cell.TaskName) ? row.TaskName : cell.TaskName),
             StartDate = SettingsService.ConvertFromUserTime(startLocal),
             Duration = duration,
@@ -718,7 +766,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         var dto = new UpdateTrackedTaskDto
         {
             TaskId = cell.TaskId,
-            Name = WeekEntryGridRules.SanitizeTaskName(taskName),
+                    Details = WeekEntryGridRules.SanitizeTaskDetails(taskName),
             StartDate = SettingsService.ConvertFromUserTime(start),
             EndDate = SettingsService.ConvertFromUserTime(end),
             Duration = duration,
@@ -736,7 +784,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         var existing = weekTasks.FirstOrDefault(t => t.TaskId == cell.TaskId);
         if (existing != null)
         {
-            existing.Name = dto.Name;
+            existing.Details = dto.Details;
             existing.StartDate = start;
             existing.EndDate = end;
             existing.Duration = duration;
@@ -834,7 +882,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         {
             { x => x.Mode, mode },
             { x => x.TaskId, task.TaskId },
-            { x => x.TaskName, task.Name },
+            { x => x.TaskName, task.Details },
             { x => x.ProjectId, task.ProjectId },
             { x => x.ProjectName, task.Project?.DisplayName },
             { x => x.StartDate, task.StartDate },
@@ -846,7 +894,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         };
 
         var dialog = await DialogService.ShowAsync<TrackedTaskDialog>(
-            task.Name,
+            task.Details,
             parameters,
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
         var result = await dialog.Result;

@@ -71,7 +71,7 @@ public class TrackedTaskStopwatchLinkOwnershipTests
         var ownersItem = new StopwatchItem
         {
             UserId = owner.Id,
-            Name = "Owner's private work item",
+                    Details = "Owner's private work item",
             CreatedAt = now,
             LastWorkedAt = now
         };

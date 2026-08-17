@@ -82,6 +82,9 @@ var host = new HostBuilder()
         // Google Calendar integration
         services.AddSingleton<GoogleTokenEncryptor>();
         services.AddSingleton<GoogleCalendarService>();
+        // Webhook HTTP trigger enqueues; this worker imports so Google always gets 200.
+        services.AddSingleton<GoogleCalendarWebhookImportQueue>();
+        services.AddHostedService<GoogleCalendarWebhookImportWorker>();
         // Scoped because it depends on the DbContext (per-request).
         services.AddScoped<TeamAvailabilityPublisher>();
 

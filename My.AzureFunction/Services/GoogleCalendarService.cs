@@ -47,12 +47,17 @@ namespace My.Functions.Services
         public bool IsConfigured => !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret);
 
         /// <summary>
-        /// Builds the consent URL the user must visit to authorize Tyme to manage their calendar.
+        /// Builds the consent URL the user must visit to authorize calendar access.
         /// Pass <paramref name="loginHint"/> (the user's email) to skip Google's account chooser
         /// and force the OAuth to bind to the same account they signed into the app with.
-        /// Optional <c>hd</c> comes from configured allowed email domains when exactly one domain is set.
+        /// When a single hosted domain is configured, or the login hint has a domain,
+        /// the <c>hd</c> param is set so Google prefers that workspace.
         /// </summary>
-        public string BuildAuthorizationUrl(string redirectUri, string state, string? loginHint = null, string? allowedEmailDomains = null)
+        public string BuildAuthorizationUrl(
+            string redirectUri,
+            string state,
+            string? loginHint = null,
+            string? hostedDomain = null)
         {
             var flow = CreateFlow();
             var req = flow.CreateAuthorizationCodeRequest(redirectUri);
@@ -65,16 +70,25 @@ namespace My.Functions.Services
             }
             var url = req.Build().ToString();
 
-            // Append login_hint + optional hd to skip the account chooser. The Google client library
-            // doesn't expose these on the request object, so we tack them on the built URL.
+            // Append login_hint + optional hd. The Google client library doesn't expose
+            // these on the request object, so we tack them on the built URL.
             var sep = url.Contains('?') ? "&" : "?";
-            var hd = GoogleIdentityRules.GetSingleHostedDomainHint(
-                allowedEmailDomains ?? GoogleIdentityRules.ResolveConfiguredDomains());
-            if (!string.IsNullOrEmpty(hd))
+            var hd = hostedDomain;
+            if (string.IsNullOrWhiteSpace(hd)
+                && !string.IsNullOrWhiteSpace(loginHint)
+                && loginHint.Contains('@'))
             {
-                url += $"{sep}hd={Uri.EscapeDataString(hd)}";
+                var at = loginHint.LastIndexOf('@');
+                if (at >= 0 && at < loginHint.Length - 1)
+                    hd = loginHint[(at + 1)..].Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(hd))
+            {
+                url += $"{sep}hd={Uri.EscapeDataString(hd.Trim())}";
                 sep = "&";
             }
+
             if (!string.IsNullOrEmpty(loginHint))
                 url += $"{sep}login_hint={Uri.EscapeDataString(loginHint)}";
 
@@ -325,7 +339,7 @@ namespace My.Functions.Services
             // round-trip correctly: inbound sync (or a user manually editing in Google
             // Calendar) can re-route via the same tag.
             var hasSlug = !string.IsNullOrEmpty(projectSlug);
-            var summary = hasSlug ? $"[{projectSlug}] {task.Name}" : task.Name;
+            var summary = hasSlug ? $"[{projectSlug}] {task.Details}" : task.Details;
 
             var ev = new Event
             {

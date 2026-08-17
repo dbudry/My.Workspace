@@ -172,22 +172,23 @@ public class CalendarEventDateRulesTests
         Assert.Null(CalendarEventDateRules.Parse(null, null, "2026-05-21", "garbage"));
     }
 
-    // ---------- Timed event preferred over all-day when both shapes present ----------
+    // ---------- All-day dates win when both shapes present ----------
     //
-    // Google shouldn't send both, but if it does the timed values are the authoritative
-    // ones — they carry timezone offset information that the all-day strings throw away.
+    // The .NET Google client often fills DateTimeDateTimeOffset as midnight on
+    // all-day events. Preferring those used to turn a Mon–Tue all-day meeting
+    // into a 48-hour timed row.
 
     [Fact]
-    public void Timed_takes_precedence_when_both_shapes_present()
+    public void All_day_dates_win_when_both_shapes_present()
     {
-        var start = new DateTime(2026, 5, 21, 14, 0, 0, DateTimeKind.Utc);
-        var end = new DateTime(2026, 5, 21, 15, 0, 0, DateTimeKind.Utc);
+        var midnightStart = new DateTime(2026, 8, 10, 0, 0, 0, DateTimeKind.Utc);
+        var midnightEnd = new DateTime(2026, 8, 12, 0, 0, 0, DateTimeKind.Utc);
 
-        var parsed = CalendarEventDateRules.Parse(start, end, "2026-05-21", "2026-05-22");
+        var parsed = CalendarEventDateRules.Parse(midnightStart, midnightEnd, "2026-08-10", "2026-08-12");
 
         Assert.NotNull(parsed);
-        Assert.False(parsed!.IsAllDay);
-        Assert.Equal(start, parsed.StartDate);
-        Assert.Equal(end, parsed.EndDate);
+        Assert.True(parsed!.IsAllDay);
+        Assert.Equal(new DateTime(2026, 8, 10, 0, 0, 0, DateTimeKind.Utc), parsed.StartDate);
+        Assert.Equal(new DateTime(2026, 8, 11, 0, 0, 0, DateTimeKind.Utc), parsed.EndDate);
     }
 }

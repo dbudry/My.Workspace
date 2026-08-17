@@ -54,6 +54,20 @@ public class TaskInlineFieldValidatorsTests
     }
 
     [Fact]
+    public void Duration_accepts_leading_colon_minutes()
+    {
+        var result = _duration.Validate(new TaskDurationText { Value = ":15" });
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
+    public void Duration_accepts_minutes_suffix()
+    {
+        var result = _duration.Validate(new TaskDurationText { Value = "15m" });
+        Assert.True(result.IsValid);
+    }
+
+    [Fact]
     public void Duration_clamps_over_storage_max_to_valid_value()
     {
         var result = _duration.Validate(new TaskDurationText { Value = "25:00" });
@@ -62,10 +76,10 @@ public class TaskInlineFieldValidatorsTests
     }
 
     [Fact]
-    public void Name_rejects_whitespace_only()
+    public void Name_allows_whitespace_only()
     {
         var result = _name.Validate(new TaskNameText { Value = "   " });
-        Assert.False(result.IsValid);
+        Assert.True(result.IsValid);
     }
 
     [Fact]

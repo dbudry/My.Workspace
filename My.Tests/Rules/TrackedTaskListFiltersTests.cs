@@ -17,7 +17,7 @@ public class TrackedTaskListFiltersTests
         {
             UserId = "user-1",
             StopwatchItemId = "sw-1",
-            Name = "Session",
+                    Details = "Session",
             StartDate = DateTime.UtcNow
         }));
 
@@ -25,7 +25,7 @@ public class TrackedTaskListFiltersTests
         {
             UserId = "user-1",
             StopwatchItemId = null,
-            Name = "Manual",
+                    Details = "Manual",
             StartDate = DateTime.UtcNow
         }));
     }
@@ -40,7 +40,7 @@ public class TrackedTaskListFiltersTests
         {
             UserId = "user-1",
             StopwatchItemId = "sw-1",
-            Name = "Session",
+                    Details = "Session",
             StartDate = DateTime.UtcNow
         }));
     }

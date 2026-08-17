@@ -28,6 +28,20 @@ public class CalendarImportRulesTests
         Assert.Equal(CalendarImportRules.InviteImportDecision.Import, decision);
     }
 
+    [Theory]
+    [InlineData("needsAction")]
+    [InlineData("")]
+    [InlineData("declined")]
+    public void Organizer_imports_even_when_self_attendee_row_is_not_accepted(string status)
+    {
+        // Google lists the organizer on Company Meeting with Self=true and
+        // needsAction. That used to skip the event. A self-made [itsup] block
+        // has no attendee list and imported; the meeting did not.
+        var decision = CalendarImportRules.EvaluateInvite(status, isOrganizer: true);
+
+        Assert.Equal(CalendarImportRules.InviteImportDecision.Import, decision);
+    }
+
     // ---------- Accepting responses → Import ----------
 
     [Theory]
@@ -50,13 +64,22 @@ public class CalendarImportRulesTests
     [Theory]
     [InlineData("declined")]
     [InlineData("DECLINED")]
-    [InlineData("needsAction")]
-    [InlineData("NEEDSACTION")]
-    public void Declined_and_needsAction_skip(string status)
+    public void Declined_skips(string status)
     {
         var decision = CalendarImportRules.EvaluateInvite(status);
 
         Assert.Equal(CalendarImportRules.InviteImportDecision.Skip, decision);
+    }
+
+    [Theory]
+    [InlineData("needsAction")]
+    [InlineData("NEEDSACTION")]
+    [InlineData("")]
+    public void NeedsAction_and_empty_import_once_a_slug_matched(string status)
+    {
+        var decision = CalendarImportRules.EvaluateInvite(status);
+
+        Assert.Equal(CalendarImportRules.InviteImportDecision.Import, decision);
     }
 
     // ---------- Defensive: unknown / malformed values → Skip ----------
@@ -66,16 +89,14 @@ public class CalendarImportRulesTests
     // owner's day than to invent attendance from a string we don't understand.
 
     [Theory]
-    [InlineData("")]
-    [InlineData("  ")]
     [InlineData("maybe")]
     [InlineData("yes")]
     [InlineData("attending")]
-    public void Empty_or_unknown_response_status_skips(string status)
+    public void Unknown_status_imports_once_a_slug_matched(string status)
     {
         var decision = CalendarImportRules.EvaluateInvite(status);
 
-        Assert.Equal(CalendarImportRules.InviteImportDecision.Skip, decision);
+        Assert.Equal(CalendarImportRules.InviteImportDecision.Import, decision);
     }
 
     // ---------- Round-trip: an accepted invite that flips to declined ----------
@@ -100,4 +121,12 @@ public class CalendarImportRulesTests
         Assert.Equal(CalendarImportRules.InviteImportDecision.Skip,
             CalendarImportRules.EvaluateInvite("declined"));
     }
+
+    [Fact]
+    public void Incremental_webhook_still_deletes_tyme_on_google_cancel() =>
+        Assert.True(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(incrementalSync: true));
+
+    [Fact]
+    public void Initial_or_range_sync_does_not_delete_tyme_on_google_cancel() =>
+        Assert.False(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(incrementalSync: false));
 }

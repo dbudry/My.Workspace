@@ -158,8 +158,8 @@ public class ProjectColorRulesTests
     [Fact]
     public void ResolveLabel_returns_group_name_for_GroupThenOrg_when_group_color_set()
     {
-        Assert.Equal("Profit Network",
-            ProjectColorRules.ResolveLabel("Ball", "Profit Network", OrgRed, GroupBlue,
+        Assert.Equal("Acme Network",
+            ProjectColorRules.ResolveLabel("Ball", "Acme Network", OrgRed, GroupBlue,
                 ProjectColorSource.GroupThenOrganization));
     }
 
@@ -169,7 +169,7 @@ public class ProjectColorRulesTests
         // Color resolution fell back to org → label must follow it; the user shouldn't
         // see the group's name on a bar drawn with the org's color.
         Assert.Equal("Ball",
-            ProjectColorRules.ResolveLabel("Ball", "Profit Network", OrgRed, null,
+            ProjectColorRules.ResolveLabel("Ball", "Acme Network", OrgRed, null,
                 ProjectColorSource.GroupThenOrganization));
     }
 
@@ -177,15 +177,15 @@ public class ProjectColorRulesTests
     public void ResolveLabel_returns_org_name_for_Organization_source()
     {
         Assert.Equal("Ball",
-            ProjectColorRules.ResolveLabel("Ball", "Profit Network", OrgRed, GroupBlue,
+            ProjectColorRules.ResolveLabel("Ball", "Acme Network", OrgRed, GroupBlue,
                 ProjectColorSource.Organization));
     }
 
     [Fact]
     public void ResolveLabel_returns_group_name_for_ProjectGroup_source()
     {
-        Assert.Equal("Profit Network",
-            ProjectColorRules.ResolveLabel("Ball", "Profit Network", OrgRed, GroupBlue,
+        Assert.Equal("Acme Network",
+            ProjectColorRules.ResolveLabel("Ball", "Acme Network", OrgRed, GroupBlue,
                 ProjectColorSource.ProjectGroup));
     }
 
@@ -193,14 +193,14 @@ public class ProjectColorRulesTests
     [InlineData(ProjectColorSource.None)]
     public void ResolveLabel_returns_null_for_None(ProjectColorSource source)
     {
-        Assert.Null(ProjectColorRules.ResolveLabel("Ball", "Profit Network", OrgRed, GroupBlue, source));
+        Assert.Null(ProjectColorRules.ResolveLabel("Ball", "Acme Network", OrgRed, GroupBlue, source));
     }
 
     [Fact]
     public void ResolveLabel_returns_null_when_no_color_would_be_drawn()
     {
         // No color → no label. The bar wouldn't be rendered, so there's nothing to tooltip.
-        Assert.Null(ProjectColorRules.ResolveLabel("Ball", "Profit Network", null, null,
+        Assert.Null(ProjectColorRules.ResolveLabel("Ball", "Acme Network", null, null,
             ProjectColorSource.GroupThenOrganization));
     }
 

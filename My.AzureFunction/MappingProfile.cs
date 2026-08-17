@@ -220,7 +220,8 @@ namespace My.Functions
                 FavoriteIntranetPageIds = string.IsNullOrWhiteSpace(settings.FavoriteIntranetPageIdsJson)
                     ? new List<string>()
                     : System.Text.Json.JsonSerializer.Deserialize<List<string>>(settings.FavoriteIntranetPageIdsJson) ?? new List<string>(),
-                CalendarBackfillPromptAcknowledged = settings.CalendarBackfillAcknowledgedUtc != null
+                CalendarBackfillPromptAcknowledged = settings.CalendarBackfillAcknowledgedUtc != null,
+                GoogleCalendarAutoConnectOptOut = settings.GoogleCalendarAutoConnectOptOut
             };
         }
 
@@ -236,6 +237,7 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleChannelExpiresAt))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleSyncToken))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.CalendarBackfillAcknowledgedUtc))]
+        [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleCalendarAutoConnectOptOut))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.FavoriteIntranetPageIdsJson))]
         [MapperIgnoreSource(nameof(UpdateUserSettingsDto.FavoriteIntranetPageIds))]
         public partial void UpdateUserSettingsFromDto(UpdateUserSettingsDto dto, DAL.Models.UserSettings target);

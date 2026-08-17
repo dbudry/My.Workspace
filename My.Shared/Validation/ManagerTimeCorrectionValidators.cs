@@ -1,5 +1,6 @@
 using FluentValidation;
 using My.Shared.Dtos.TrackedTask;
+using My.Shared.Rules;
 
 namespace My.Shared.Validation;
 
@@ -7,9 +8,9 @@ public class ManagerTimeCorrectionDtoValidator : AbstractValidator<ManagerTimeCo
 {
     public ManagerTimeCorrectionDtoValidator()
     {
-        RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Name is required.")
-            .MinimumLength(2).WithMessage("Name must be at least 2 characters.")
-            .MaximumLength(50).WithMessage("Name cannot exceed 50 characters.");
+        RuleFor(x => x.Details)
+            .NotEmpty().WithMessage(TaskDetailsRules.RequiredMessage)
+            .MinimumLength(TaskDetailsRules.MinLength).WithMessage(TaskDetailsRules.MinLengthMessage)
+            .MaximumLength(TaskDetailsRules.MaxLength).WithMessage(TaskDetailsRules.MaxLengthMessage);
     }
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
@@ -58,6 +58,11 @@ namespace My.Functions
                 includeProperties: "Project.Organization,Project.ProjectGroup,Project.Department");
 
             var taskList = tasks.ToList();
+            var workdayRow = await dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
+            var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
+            TimeSpan HoursOf(TrackedTask t) => AllDayEntryRules.EffectiveDuration(
+                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
 
             // This month / last month boundaries
             var thisMonthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -73,7 +78,7 @@ namespace My.Functions
                 .Select(g => new WorkTimePerMonthDto
                 {
                     Time = new DateTime(g.Key.Year, g.Key.Month, 1).ToString("yyyy MMM"),
-                    WorkTimeInSeconds = g.Sum(t => t.Duration.TotalSeconds)
+                    WorkTimeInSeconds = g.Sum(t => HoursOf(t).TotalSeconds)
                 })
                 .ToList();
 
@@ -84,7 +89,7 @@ namespace My.Functions
                 .GroupBy(t => new
                 {
                     Id = t.ProjectId ?? "None",
-                    Name = t.Project?.Name ?? "None",
+                    Details = t.Project?.Name ?? "None",
                     OrgId = t.Project?.OrganizationId,
                     OrgName = t.Project?.Organization?.Name,
                     OrgColor = t.Project?.Organization?.Color,
@@ -95,8 +100,8 @@ namespace My.Functions
                 .Select(g => new ProjectDataItemDto
                 {
                     ProjectId = g.Key.Id,
-                    ProjectName = g.Key.Name,
-                    Time = TimeSpan.FromSeconds(g.Sum(t => t.Duration.TotalSeconds)),
+                    ProjectName = g.Key.Details,
+                    Time = TimeSpan.FromSeconds(g.Sum(t => HoursOf(t).TotalSeconds)),
                     OrganizationId = g.Key.OrgId,
                     OrganizationName = g.Key.OrgName,
                     OrganizationColor = g.Key.OrgColor,
@@ -109,8 +114,8 @@ namespace My.Functions
 
             var dashboard = new DashboardDto
             {
-                ThisMonth = BuildMonthSummary(thisMonthTasks),
-                LastMonth = BuildMonthSummary(lastMonthTasks),
+                ThisMonth = BuildMonthSummary(thisMonthTasks, workdayHours),
+                LastMonth = BuildMonthSummary(lastMonthTasks, workdayHours),
                 MonthlyChart = monthlyChart,
                 ProjectChart = projectChart
             };
@@ -118,10 +123,11 @@ namespace My.Functions
             return new OkObjectResult(dashboard);
         }
 
-        private AmountOfWorkTimeDto BuildMonthSummary(List<TrackedTask> tasks)
+        private AmountOfWorkTimeDto BuildMonthSummary(List<TrackedTask> tasks, double workdayHours)
         {
-            double totalSeconds = tasks.Sum(t => t.Duration.TotalSeconds);
-            var (topName, topSeconds) = FindTopProject(tasks);
+            double totalSeconds = tasks.Sum(t => AllDayEntryRules.EffectiveDuration(
+                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours).TotalSeconds);
+            var (topName, topSeconds) = FindTopProject(tasks, workdayHours);
 
             return new AmountOfWorkTimeDto
             {
@@ -259,11 +265,13 @@ namespace My.Functions
                 .Select(a => a.PreviousProjectId!)
                 .Distinct()
                 .ToList();
-            var prevProjectNames = prevProjectIds.Count == 0
-                ? new Dictionary<string, string>()
+            var prevProjectsById = prevProjectIds.Count == 0
+                ? new Dictionary<string, Project>()
                 : await dbContext.Projects.AsNoTracking()
+                    .Include(p => p.Organization)
+                    .Include(p => p.ProjectGroup)
                     .Where(p => prevProjectIds.Contains(p.ProjectId))
-                    .ToDictionaryAsync(p => p.ProjectId, p => p.Name);
+                    .ToDictionaryAsync(p => p.ProjectId);
 
             // Submission lookup to mark each row as IsMonthSubmitted (controls who can edit).
             var userIds = tasks.Select(x => x.UserId).Distinct().ToList();
@@ -275,6 +283,17 @@ namespace My.Functions
 
             var rolesByUser = await LoadRolesByUserAsync(userIds);
 
+            var workdayRow = await dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
+            var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
+            // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store that) —
+            // always read the real value through EffectiveDuration, never the raw column.
+            TimeSpan ActualDuration(TrackedTask t) => AllDayEntryRules.EffectiveDuration(
+                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
+            // Same idea for a Direct-correction audit's "previous" snapshot.
+            TimeSpan ActualPreviousDuration(TrackedTaskCorrectionAudit a) => AllDayEntryRules.EffectiveDuration(
+                a.PreviousIsAllDay, a.PreviousStartDate, a.PreviousEndDate, a.PreviousDuration, workdayHours);
+
             var result = tasks.Where(task =>
             {
                 var roles = rolesByUser.TryGetValue(task.UserId, out var rs) ? rs : Array.Empty<string>();
@@ -283,18 +302,45 @@ namespace My.Functions
             {
                 aliasByTaskId.TryGetValue(task.TaskId, out var alias);
                 auditByTaskId.TryGetValue(task.TaskId, out var audit);
-                var effectiveName = alias?.Name ?? task.Name;
+                var effectiveName = alias?.Details ?? task.Details;
                 var effectiveStart = alias?.StartDate ?? task.StartDate;
-                var effectiveDuration = alias?.Duration ?? task.Duration;
+                var effectiveDuration = alias?.Duration ?? ActualDuration(task);
                 var effectiveProject = alias?.Project ?? task.Project;
                 var effectiveProjectId = alias?.ProjectId ?? task.ProjectId;
                 var effectiveIsBillable = alias?.IsBillable ?? task.IsBillable;
                 var monthSubmitted = submittedSet.Contains((task.UserId, task.StartDate.Year, task.StartDate.Month));
 
+                string? originalProjectId = alias != null
+                    ? task.ProjectId
+                    : audit?.PreviousProjectId;
+                string? originalProjectName = null;
+                string? originalOrganizationName = null;
+                string? originalProjectGroupName = null;
+                if (alias != null)
+                {
+                    originalProjectName = task.Project?.Name ?? "None";
+                    originalOrganizationName = task.Project?.Organization?.Name;
+                    originalProjectGroupName = task.Project?.ProjectGroup?.Name;
+                }
+                else if (audit != null)
+                {
+                    if (!string.IsNullOrEmpty(audit.PreviousProjectId)
+                        && prevProjectsById.TryGetValue(audit.PreviousProjectId, out var prevProject))
+                    {
+                        originalProjectName = prevProject.Name;
+                        originalOrganizationName = prevProject.Organization?.Name;
+                        originalProjectGroupName = prevProject.ProjectGroup?.Name;
+                    }
+                    else
+                    {
+                        originalProjectName = "None";
+                    }
+                }
+
                 return new
                 {
                     task.TaskId,
-                    Name = effectiveName,
+                    Details = effectiveName,
                     Duration = effectiveDuration.TotalSeconds,
                     StartDate = effectiveStart,
                     EndDate = effectiveDuration > TimeSpan.Zero ? (DateTime?)(effectiveStart + effectiveDuration) : null,
@@ -315,22 +361,15 @@ namespace My.Functions
                         ? (DateTime?)task.StartDate
                         : audit != null ? audit.PreviousStartDate : null,
                     OriginalDurationSeconds = alias != null
-                        ? (double?)task.Duration.TotalSeconds
-                        : audit != null ? audit.PreviousDuration.TotalSeconds : null,
-                    OriginalProjectId = alias != null
-                        ? task.ProjectId
-                        : audit?.PreviousProjectId,
-                    OriginalProjectName = alias != null
-                        ? (task.Project?.Name ?? "None")
-                        : audit != null
-                            ? (audit.PreviousProjectId != null
-                                && prevProjectNames.TryGetValue(audit.PreviousProjectId, out var prevName)
-                                ? prevName
-                                : "None")
-                            : null,
-                    OriginalName = alias != null
-                        ? task.Name
-                        : audit?.PreviousName,
+                        ? (double?)ActualDuration(task).TotalSeconds
+                        : audit != null ? ActualPreviousDuration(audit).TotalSeconds : null,
+                    OriginalProjectId = originalProjectId,
+                    OriginalProjectName = originalProjectName,
+                    OriginalOrganizationName = originalOrganizationName,
+                    OriginalProjectGroupName = originalProjectGroupName,
+                    OriginalDetails = alias != null
+                        ? task.Details
+                        : audit?.PreviousDetails,
                     OriginalIsBillable = alias != null
                         ? (bool?)task.IsBillable
                         : audit != null ? audit.PreviousIsBillable : null
@@ -356,19 +395,20 @@ namespace My.Functions
                 .ToDictionary(g => g.Key, g => (IList<string>)g.Select(x => x.RoleName).ToList());
         }
 
-        private static (string Name, double Seconds) FindTopProject(IEnumerable<TrackedTask> tasks)
+        private static (string Name, double Seconds) FindTopProject(IEnumerable<TrackedTask> tasks, double workdayHours)
         {
             var top = tasks
                 .GroupBy(t => t.ProjectId)
                 .Select(g => new
                 {
-                    Name = g.First().Project?.Name ?? "None",
-                    Seconds = g.Sum(t => t.Duration.TotalSeconds)
+                    Details = g.First().Project?.Name ?? "None",
+                    Seconds = g.Sum(t => AllDayEntryRules.EffectiveDuration(
+                        t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours).TotalSeconds)
                 })
                 .OrderByDescending(p => p.Seconds)
                 .FirstOrDefault();
 
-            return top != null ? (top.Name, top.Seconds) : ("None", 0);
+            return top != null ? (top.Details, top.Seconds) : ("None", 0);
         }
 
         private static string GetAmountWorkTimeFormatted(double secondsSum)

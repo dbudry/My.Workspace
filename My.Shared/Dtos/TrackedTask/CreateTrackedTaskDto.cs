@@ -1,13 +1,11 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using My.Shared.Dtos.Project;
 
 namespace My.Shared.Dtos.TrackedTask
 {
     public class CreateTrackedTaskDto
     {
-        [Required]
-        [StringLength(50, ErrorMessage = "Name of project is too long.", MinimumLength = 2)]
-        public string Name { get; set; } = null!;
+        public string? Details { get; set; }
 
         [Required]
         public DateTime StartDate { get; set; }

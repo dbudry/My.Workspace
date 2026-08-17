@@ -40,5 +40,11 @@ namespace My.Shared.Dtos.UserSettings
 
         /// <summary>True after the user has seen and answered the post-connect calendar backfill prompt.</summary>
         public bool CalendarBackfillPromptAcknowledged { get; set; }
+
+        /// <summary>
+        /// True after an explicit Calendar disconnect. Dashboard sign-in must not
+        /// start Google Calendar OAuth until they connect again from Settings.
+        /// </summary>
+        public bool GoogleCalendarAutoConnectOptOut { get; set; }
     }
 }

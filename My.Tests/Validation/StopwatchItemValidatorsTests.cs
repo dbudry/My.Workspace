@@ -12,7 +12,7 @@ public class StopwatchItemValidatorsTests
     [Fact]
     public async Task Create_rejects_missing_project()
     {
-        var dto = new CreateStopwatchItemDto { Name = "Valid name", ProjectId = "" };
+        var dto = new CreateStopwatchItemDto { Details = "Valid name", ProjectId = "" };
 
         var result = await _createValidator.ValidateAsync(dto);
 
@@ -23,18 +23,18 @@ public class StopwatchItemValidatorsTests
     [Fact]
     public async Task Create_rejects_short_name()
     {
-        var dto = new CreateStopwatchItemDto { Name = "A", ProjectId = "proj-1" };
+        var dto = new CreateStopwatchItemDto { Details = "A", ProjectId = "proj-1" };
 
         var result = await _createValidator.ValidateAsync(dto);
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateStopwatchItemDto.Name));
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateStopwatchItemDto.Details));
     }
 
     [Fact]
     public async Task Create_accepts_valid_payload()
     {
-        var dto = new CreateStopwatchItemDto { Name = "Write docs", ProjectId = "proj-1" };
+        var dto = new CreateStopwatchItemDto { Details = "Write docs", ProjectId = "proj-1" };
 
         var result = await _createValidator.ValidateAsync(dto);
 
@@ -47,7 +47,7 @@ public class StopwatchItemValidatorsTests
         var dto = new UpdateStopwatchItemDto
         {
             StopwatchItemId = "",
-            Name = "Write docs",
+            Details = "Write docs",
             ProjectId = "proj-1"
         };
 

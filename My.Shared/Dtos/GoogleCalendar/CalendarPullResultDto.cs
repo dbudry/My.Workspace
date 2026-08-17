@@ -49,5 +49,17 @@ namespace My.Shared.Dtos.GoogleCalendar
 
         /// <summary>Top-level error (auth, calendar not connected, etc). Per-event failures go in <see cref="Failed"/>.</summary>
         public string? Error { get; set; }
+
+        /// <summary>
+        /// Google titles whose <c>[tag]</c> did not match any active project.
+        /// Capped so the payload stays small; count is still <see cref="SkippedUnresolvedTag"/>.
+        /// </summary>
+        public List<CalendarPullSkipNoteDto> UnresolvedTags { get; set; } = new();
+    }
+
+    public class CalendarPullSkipNoteDto
+    {
+        public string Summary { get; set; } = "";
+        public string Tag { get; set; } = "";
     }
 }

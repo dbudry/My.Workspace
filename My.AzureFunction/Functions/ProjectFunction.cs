@@ -356,9 +356,20 @@ namespace My.Functions
             if (project == null)
                 return new NotFoundObjectResult("Project not found!");
 
-            project.IsArchived = !project.IsArchived;
-            if (project.IsArchived)
-                project.IsActive = false;
+            if (!project.IsArchived)
+            {
+                ArchiveClusterApplier.ArchiveFromProject(project);
+            }
+            else
+            {
+                Organization? org = null;
+                Department? dept = null;
+                if (!string.IsNullOrEmpty(project.OrganizationId))
+                    org = await organizationRepository.GetById(project.OrganizationId);
+                if (!string.IsNullOrEmpty(project.DepartmentId))
+                    dept = await dbContext.Departments.FirstOrDefaultAsync(d => d.DepartmentId == project.DepartmentId);
+                ArchiveClusterApplier.UnarchiveFromProject(project, org, dept, setActive: true);
+            }
 
             await projectRepository.Update(project);
             logger.LogInformation("Project {Id} IsArchived set to {IsArchived}", id, project.IsArchived);

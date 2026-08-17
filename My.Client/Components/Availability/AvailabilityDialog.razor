@@ -1,5 +1,7 @@
 @namespace My.Client.Components.Availability
+@using My.Client.Components.Projects
 @using My.Client.Models
+@using My.Shared.Rules
 
 <MudDialog>
     <DialogContent>
@@ -32,40 +34,27 @@
                               HelperText="2–5 chars, lowercase letters and digits — used as [slug] in Google Calendar event titles."
                               MaxLength="5" Immediate="true" />
 
-                <MudSelect T="string" Value="Model.ProjectGroupId" Label="Project group"
-                           ValueChanged="@(v => Model.ProjectGroupId = v)"
-                           HelperText="Group these categories together for reporting. We default to 'Time Off' so PTO totals show up as a single segment.">
-                    <MudSelectItem T="string" Value="@((string?)null)">No group</MudSelectItem>
-                    @foreach (var group in Groups)
-                    {
-                        <MudSelectItem T="string" Value="@group.ProjectGroupId">@group.Name</MudSelectItem>
-                    }
-                </MudSelect>
+                <MudAutocomplete T="ProjectGroup"
+                                 Value="_selectedGroup"
+                                 ValueChanged="OnGroupChanged"
+                                 Label="Project group"
+                                 SearchFunc="SearchGroups"
+                                 ToStringFunc="@(g => g?.Name ?? string.Empty)"
+                                 Clearable="true"
+                                 OpenOnFocus="true"
+                                 CoerceText="false"
+                                 ResetValueOnEmptyText="true"
+                                 MaxItems="50"
+                                 MaxHeight="300"
+                                 HelperText="Group these categories together for reporting. We default to 'Time Off' so PTO totals show up as a single segment." />
 
-                <MudSelect T="string" Value="Model.OrganizationId" Label="Bill to organization (optional)"
-                           ValueChanged="@(v => { Model.OrganizationId = v; Model.DepartmentId = null; })"
-                           HelperText="When set, time logged against this category is attributed to that org on reports.">
-                    <MudSelectItem T="string" Value="@((string?)null)">None</MudSelectItem>
-                    @foreach (var org in OrganizationPickerOptions)
-                    {
-                        <MudSelectItem T="string" Value="@org.OrganizationId">@org.Name</MudSelectItem>
-                    }
-                </MudSelect>
-
-                @{
-                    var selectedOrg = ResolveSelectedOrganization();
-                    var depts = selectedOrg?.Departments;
-                }
-                @if (depts != null && depts.Any())
-                {
-                    <MudSelect T="string" @bind-Value="Model.DepartmentId" Label="Department (optional)">
-                        <MudSelectItem T="string" Value="@((string?)null)">None</MudSelectItem>
-                        @foreach (var dept in depts)
-                        {
-                            <MudSelectItem T="string" Value="@dept.DepartmentId">@dept.Name</MudSelectItem>
-                        }
-                    </MudSelect>
-                }
+                <OrganizationPickerFields @bind-OrganizationId="Model.OrganizationId"
+                                          @bind-DepartmentId="Model.DepartmentId"
+                                          OrganizationName="@Model.OrganizationName"
+                                          Organizations="Organizations"
+                                          OrganizationLabel="Bill to organization (optional)"
+                                          DepartmentLabel="Department (optional)"
+                                          OrganizationHelperText="When set, time logged against this category is attributed to that org on reports." />
             </DialogFormStack>
         </MudForm>
     </DialogContent>
@@ -84,57 +73,22 @@
     [Parameter] public string SubmitLabel { get; set; } = "Save";
 
     private MudForm? form;
+    private ProjectGroup? _selectedGroup;
 
-    private IEnumerable<Organization> OrganizationPickerOptions
+    protected override void OnParametersSet()
     {
-        get
-        {
-            var options = Organizations
-                .Where(o => o.IsActive && !o.IsArchived)
-                .ToList();
-
-            if (string.IsNullOrEmpty(Model.OrganizationId))
-                return options;
-
-            if (options.Any(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId)))
-                return options;
-
-            var linked = Organizations.FirstOrDefault(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId));
-            var label = linked?.Name
-                ?? Model.OrganizationName
-                ?? "Unknown organization";
-
-            if (linked is { IsArchived: true } or { IsActive: false })
-                label += " (inactive)";
-
-            options.Insert(0, new Organization
-            {
-                OrganizationId = Model.OrganizationId,
-                Name = label,
-                IsActive = linked?.IsActive ?? true,
-                IsArchived = linked?.IsArchived ?? false,
-                Departments = linked?.Departments
-            });
-
-            return options;
-        }
+        _selectedGroup = Groups.FirstOrDefault(g =>
+            string.Equals(g.ProjectGroupId, Model.ProjectGroupId, StringComparison.OrdinalIgnoreCase));
     }
 
-    private Organization? ResolveSelectedOrganization()
+    private void OnGroupChanged(ProjectGroup? group)
     {
-        if (string.IsNullOrEmpty(Model.OrganizationId))
-            return null;
-
-        return Organizations.FirstOrDefault(o => OrgIdEquals(o.OrganizationId, Model.OrganizationId))
-            ?? new Organization
-            {
-                OrganizationId = Model.OrganizationId,
-                Name = Model.OrganizationName ?? "Unknown organization"
-            };
+        _selectedGroup = group;
+        Model.ProjectGroupId = group?.ProjectGroupId;
     }
 
-    private static bool OrgIdEquals(string? left, string? right)
-        => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+    private Task<IEnumerable<ProjectGroup>> SearchGroups(string? value, CancellationToken token) =>
+        Task.FromResult<IEnumerable<ProjectGroup>>(PickerNameFilter.Match(Groups, value, g => g.Name));
 
     private async Task Submit()
     {

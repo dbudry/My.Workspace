@@ -5,15 +5,8 @@
 <MudDialog>
     <DialogContent>
         <DialogFormStack>
-            @* Name + project on one row; stacks on narrow widths. *@
+            @* Project on top, Details underneath so multiline details have full width. *@
             <div class="stopwatch-item-dialog-fields">
-                <MudTextField @bind-Value="name"
-                              Label="Work item"
-                              Required="true"
-                              RequiredError="Work item name is required"
-                              Variant="Variant.Outlined"
-                              Margin="Margin.Dense"
-                              Class="stopwatch-item-dialog-name" />
                 <ProjectAutocomplete @bind-Value="selectedProject"
                                      Label="Project"
                                      Variant="Variant.Outlined"
@@ -22,6 +15,11 @@
                                      PreferOpenUpward="true"
                                      SearchFunc="SearchProjects"
                                      Class="stopwatch-item-dialog-project" />
+                <TaskDetailsField @bind-Value="name"
+                                  Label="What are you working on"
+                                  Required="true"
+                                  Class="stopwatch-item-dialog-name"
+                                  OnEnter="Submit" />
             </div>
             @if (selectedProject == null)
             {

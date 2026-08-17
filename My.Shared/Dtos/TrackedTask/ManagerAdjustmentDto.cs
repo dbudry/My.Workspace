@@ -6,7 +6,7 @@ namespace My.Shared.Dtos.TrackedTask;
 /// </summary>
 public class ManagerAdjustmentDto
 {
-    public string Name { get; set; } = null!;
+    public string Details { get; set; } = null!;
     public DateTime StartDate { get; set; }
     public TimeSpan Duration { get; set; }
     public string? ProjectId { get; set; }

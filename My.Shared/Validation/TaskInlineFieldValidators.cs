@@ -58,7 +58,7 @@ namespace My.Shared.Validation
                         if (!WeekEntryGridRules.TryCommitDayDurationText(filtered, out duration)
                             || duration <= TimeSpan.Zero)
                         {
-                            context.AddFailure("Enter HH:MM (e.g. 02:30), max 23:59.");
+                            context.AddFailure("Enter HH:MM (e.g. 02:30), :15, or 15m, max 23:59.");
                             return;
                         }
                     }

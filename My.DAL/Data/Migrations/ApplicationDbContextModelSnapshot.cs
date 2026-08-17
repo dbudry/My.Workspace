@@ -822,13 +822,13 @@ namespace My.DAL.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTime>("LastWorkedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(450)");
@@ -883,6 +883,10 @@ namespace My.DAL.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("Details")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<TimeSpan>("Duration")
                         .HasColumnType("time");
 
@@ -897,10 +901,6 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<bool>("IsBillable")
                         .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(450)");
@@ -942,15 +942,16 @@ namespace My.DAL.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<TimeSpan>("Duration")
                         .HasColumnType("time");
 
                     b.Property<bool>("IsBillable")
                         .HasColumnType("bit");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(450)");
@@ -988,15 +989,15 @@ namespace My.DAL.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("NewDetails")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<TimeSpan>("NewDuration")
                         .HasColumnType("time");
 
                     b.Property<bool>("NewIsBillable")
                         .HasColumnType("bit");
-
-                    b.Property<string>("NewName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("NewProjectId")
                         .HasColumnType("nvarchar(max)");
@@ -1004,15 +1005,21 @@ namespace My.DAL.Data.Migrations
                     b.Property<DateTime>("NewStartDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("PreviousDetails")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<TimeSpan>("PreviousDuration")
                         .HasColumnType("time");
 
-                    b.Property<bool>("PreviousIsBillable")
+                    b.Property<DateTime?>("PreviousEndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("PreviousIsAllDay")
                         .HasColumnType("bit");
 
-                    b.Property<string>("PreviousName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<bool>("PreviousIsBillable")
+                        .HasColumnType("bit");
 
                     b.Property<string>("PreviousProjectId")
                         .HasColumnType("nvarchar(max)");
@@ -1046,6 +1053,9 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<string>("FavoriteIntranetPageIdsJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("GoogleCalendarAutoConnectOptOut")
+                        .HasColumnType("bit");
 
                     b.Property<string>("GoogleCalendarEmail")
                         .HasColumnType("nvarchar(max)");

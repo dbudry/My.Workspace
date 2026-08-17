@@ -15,7 +15,7 @@ namespace My.Client.Models
     {
         public TaskListRowKind Kind { get; init; }
 
-        public string Name { get; init; } = null!;
+        public string Details { get; init; } = null!;
 
         /// <summary>Bare project name (no group prefix). Prefer for row primary text.</summary>
         public string? ProjectName { get; init; }
@@ -59,7 +59,7 @@ namespace My.Client.Models
         /// <summary>Overlay-only snapshot — ManualTask keeps the employee's original fields.</summary>
         public string? OverlayProjectId { get; init; }
 
-        public string? OverlayName { get; init; }
+        public string? OverlayDetails { get; init; }
 
         public DateTime? OverlayStartDate { get; init; }
 

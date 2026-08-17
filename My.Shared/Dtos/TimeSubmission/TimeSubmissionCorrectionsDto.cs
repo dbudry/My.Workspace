@@ -4,12 +4,12 @@ public class TimeSubmissionCorrectionItemDto
 {
     public string TaskId { get; set; } = null!;
     public string Kind { get; set; } = null!;
-    public string TaskName { get; set; } = null!;
-    public string OriginalName { get; set; } = null!;
+    public string TaskDetails { get; set; } = null!;
+    public string OriginalDetails { get; set; } = null!;
     public DateTime OriginalStartDate { get; set; }
     public double OriginalDurationSeconds { get; set; }
     public string? OriginalProjectName { get; set; }
-    public string AdjustedName { get; set; } = null!;
+    public string AdjustedDetails { get; set; } = null!;
     public DateTime AdjustedStartDate { get; set; }
     public double AdjustedDurationSeconds { get; set; }
     public string? AdjustedProjectName { get; set; }

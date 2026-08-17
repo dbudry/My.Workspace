@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using MudBlazor;
 using My.Client.Components.TrackedTasks;
 using My.Client.Extensions;
@@ -140,12 +141,22 @@ namespace My.Client.Pages.Tyme
         private bool IsEditing(string taskId, string field) =>
             string.Equals(activeInlineEditKey, InlineEditKey(taskId, field), StringComparison.Ordinal);
 
+        private DateTime inlineEditOpenedUtc;
+
         private void BeginInlineEdit(string taskId, string field)
         {
             activeInlineEditKey = InlineEditKey(taskId, field);
+            inlineEditOpenedUtc = DateTime.UtcNow;
             // Ensure re-render even when called from dblclick (MudTable can swallow updates).
             _ = InvokeAsync(StateHasChanged);
         }
+
+        /// <summary>
+        /// The click that opens an inline field can blur the new input in the same
+        /// gesture and immediately commit/close it. Ignore that first blur.
+        /// </summary>
+        private bool ShouldIgnorePrematureInlineBlur() =>
+            (DateTime.UtcNow - inlineEditOpenedUtc).TotalMilliseconds < 400;
 
         private void EndInlineEdit(string? taskId = null)
         {
@@ -183,7 +194,7 @@ namespace My.Client.Pages.Tyme
         {
             if (nameDrafts.TryGetValue(task.TaskId, out var draft))
                 return draft;
-            return task.Name ?? string.Empty;
+            return task.Details ?? string.Empty;
         }
 
         private void SetNameDraft(TrackedTask task, string? value) =>
@@ -226,7 +237,7 @@ namespace My.Client.Pages.Tyme
         }
 
         private static string FormatRowDisplayName(TaskListRow row) =>
-            row.ManualTask?.Name ?? row.Name;
+            row.ManualTask?.Details ?? row.Details;
 
         private static DateTime FormatRowDisplayDate(TaskListRow row) =>
             row.ManualTask?.StartDate ?? row.DisplayDate;
@@ -257,8 +268,9 @@ namespace My.Client.Pages.Tyme
                 if (!CanInlineEdit(row)) { await ExitInlineEditSafeAsync(null); return; }
                 var task = row.ManualTask!;
                 if (!IsEditing(task.TaskId, "name")) return;
+                if (ShouldIgnorePrematureInlineBlur()) return;
 
-                var name = WeekEntryGridRules.SanitizeTaskName(GetNameDraft(task));
+                var name = WeekEntryGridRules.SanitizeTaskDetails(GetNameDraft(task));
                 SetNameDraft(task, name);
 
                 var result = await NameValidator.ValidateAsync(new TaskNameText { Value = name });
@@ -270,7 +282,7 @@ namespace My.Client.Pages.Tyme
                 }
 
                 SetInlineFieldError(task.TaskId, "name", null);
-                task.Name = name;
+                task.Details = name;
                 await SaveInlineAsync(row);
                 await ExitInlineEditSafeAsync(task.TaskId);
             }
@@ -315,6 +327,8 @@ namespace My.Client.Pages.Tyme
                 if (!CanInlineEdit(row) || !date.HasValue) return;
                 var task = row.ManualTask!;
                 var day = date.Value.Date;
+                if (task.StartDate.Date == day)
+                    return;
 
                 if (task.IsAllDay)
                 {
@@ -352,6 +366,7 @@ namespace My.Client.Pages.Tyme
                 }
                 var task = row.ManualTask!;
                 if (!IsEditing(task.TaskId, "time")) return;
+                if (ShouldIgnorePrematureInlineBlur()) return;
 
                 var text = GetStartTimeDraft(task);
                 var result = await StartTimeValidator.ValidateAsync(new TaskStartTimeText
@@ -390,6 +405,12 @@ namespace My.Client.Pages.Tyme
             }
         }
 
+        private Task OnInlineDurationKeyDown(TaskListRow row, KeyboardEventArgs e) =>
+            e.Key == "Enter" ? CommitInlineDurationAsync(row) : Task.CompletedTask;
+
+        private Task OnInlineStartTimeKeyDown(TaskListRow row, KeyboardEventArgs e) =>
+            e.Key == "Enter" ? CommitInlineStartTimeAsync(row) : Task.CompletedTask;
+
         private async Task CommitInlineDurationAsync(TaskListRow row)
         {
             try
@@ -397,6 +418,7 @@ namespace My.Client.Pages.Tyme
                 if (!CanInlineEdit(row) || row.IsAllDay) { await ExitInlineEditSafeAsync(null); return; }
                 var task = row.ManualTask!;
                 if (!IsEditing(task.TaskId, "duration")) return;
+                if (ShouldIgnorePrematureInlineBlur()) return;
 
                 // Blur: soft-filter → commit ("4"→4h). Normalize only if needed to clamp mins/24h.
                 var text = WeekEntryGridRules.FilterDurationInputChars(GetDurationDraft(task));
@@ -478,14 +500,14 @@ namespace My.Client.Pages.Tyme
                 var dto = new UpdateTrackedTaskDto
                 {
                     TaskId = task.TaskId,
-                    Name = WeekEntryGridRules.SanitizeTaskName(task.Name),
+                    Details = WeekEntryGridRules.SanitizeTaskDetails(task.Details),
                     StartDate = startDate,
                     EndDate = endDate,
                     Duration = task.Duration,
                     IsAllDay = task.IsAllDay,
                     ProjectId = task.ProjectId
                 };
-                task.Name = dto.Name;
+                task.Details = dto.Details;
 
                 var response = await client.PutAsJsonAsync(Constants.API.TrackedTask.Update, dto);
                 if (!response.IsSuccessStatusCode)
@@ -946,11 +968,35 @@ namespace My.Client.Pages.Tyme
             await RefreshCurrentViewAsync();
         }
 
+        private IReadOnlyList<TaskListRow> DisplayedWeeklyRows
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(searchString))
+                    return weeklyRows;
+
+                return weeklyRows
+                    .Where(r => WeekEntryGridRules.MatchesEntrySearch(
+                        searchString,
+                        r.Details,
+                        r.ProjectName,
+                        r.ProjectDisplayName,
+                        r.OrganizationName,
+                        r.ProjectGroupName,
+                        r.OverlayDetails,
+                        r.ManualTask?.Project?.Slug))
+                    .ToList();
+            }
+        }
+
         private async Task OnSearchChanged(string value)
         {
             searchString = value;
             await PersistPreferencesAsync();
-            await ReloadAsync();
+            if (viewMode == TasksViewMode.Grid)
+                await ReloadAsync();
+            else
+                await InvokeAsync(StateHasChanged);
         }
 
         /// <summary>
@@ -961,6 +1007,8 @@ namespace My.Client.Pages.Tyme
         {
             if (row.Kind == TaskListRowKind.Stopwatch && row.StopwatchItem != null)
                 await OpenStopwatchSessionsAsync(row.StopwatchItem);
+            else if (row.IsLocked && row.ManualTask != null)
+                await OpenTaskDialog(row);
         }
 
         private static string FormatDuration(TaskListRow row) => FormatRowDuration(row);
@@ -970,14 +1018,14 @@ namespace My.Client.Pages.Tyme
             var parameters = new DialogParameters<StopwatchSessionsDialog>
             {
                 { x => x.ItemId, item.StopwatchItemId },
-                { x => x.ItemName, item.Name },
+                { x => x.ItemName, item.Details },
                 { x => x.ItemProjectId, item.ProjectId },
                 { x => x.ItemProjectName, ProjectDisplayHelper.FromDto(item.Project) },
                 { x => x.HttpClient, client }
             };
 
             var dialog = await DialogService.ShowAsync<StopwatchSessionsDialog>(
-                item.Name,
+                item.Details,
                 parameters,
                 new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
             var result = await dialog.Result;
@@ -1001,7 +1049,7 @@ namespace My.Client.Pages.Tyme
 
             if (isOverlay)
             {
-                name = row.OverlayName ?? row.Name;
+                name = row.OverlayDetails ?? row.Details;
                 projectId = row.OverlayProjectId;
                 projectName = row.ProjectDisplayName;
                 start = row.OverlayStartDate ?? row.DisplayDate;
@@ -1011,7 +1059,7 @@ namespace My.Client.Pages.Tyme
             }
             else
             {
-                name = task.Name;
+                name = task.Details;
                 projectId = task.ProjectId;
                 projectName = task.Project?.DisplayName;
                 start = task.StartDate;
@@ -1042,7 +1090,7 @@ namespace My.Client.Pages.Tyme
 
             if (isOverlay)
             {
-                parameters.Add(x => x.OriginalTaskName, task.Name);
+                parameters.Add(x => x.OriginalTaskName, task.Details);
                 parameters.Add(x => x.OriginalProjectName, task.Project?.DisplayName);
                 parameters.Add(x => x.OriginalStartDate, task.StartDate);
                 parameters.Add(x => x.OriginalEndDate,
@@ -1118,7 +1166,7 @@ namespace My.Client.Pages.Tyme
         {
             var result = await DialogService.ShowMessageBoxAsync(
                 "Confirm Delete",
-                $"Are you sure you want to delete \"{trackedTask.Name}\"?",
+                $"Are you sure you want to delete \"{trackedTask.Details}\"?",
                 yesText: "Delete", cancelText: "Cancel");
 
             if (result != true) return;
@@ -1154,7 +1202,7 @@ namespace My.Client.Pages.Tyme
 
             var result = await DialogService.ShowMessageBoxAsync(
                 "Delete work item",
-                $"Delete \"{item.Name}\" and all of its logged sessions? This can't be undone.",
+                $"Delete \"{item.Details}\" and all of its logged sessions? This can't be undone.",
                 yesText: "Delete", cancelText: "Cancel");
 
             if (result != true) return;

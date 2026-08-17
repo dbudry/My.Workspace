@@ -83,7 +83,7 @@ internal static class IntegrationTestFixtures
             {
                 TaskId = taskId,
                 UserId = userId,
-                Name = "Integration mapping fixture",
+                Details = "Integration mapping fixture",
                 StartDate = now.AddHours(-1),
                 EndDate = now,
                 Duration = TimeSpan.FromHours(1)

@@ -41,7 +41,7 @@ public class TrackedTaskListMappingTests
             {
                 TaskId = taskId,
                 UserId = userId,
-                Name = $"Mapping fixture {stamp}",
+                    Details = $"Mapping fixture {stamp}",
                 StartDate = now.AddHours(-1),
                 EndDate = now,
                 Duration = TimeSpan.FromHours(1)

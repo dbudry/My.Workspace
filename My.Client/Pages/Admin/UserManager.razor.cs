@@ -10,6 +10,7 @@ using My.Shared.Constants;
 using My.Shared.Dtos;
 using My.Shared.Dtos.GoogleCalendar;
 using My.Shared.Dtos.User;
+using My.Shared.Rules;
 
 namespace My.Client.Pages.Admin
 {
@@ -523,9 +524,7 @@ namespace My.Client.Pages.Admin
                     }
                     else if (result != null)
                     {
-                        Snackbar.Add(
-                            $"Scanned {result.Scanned}: {result.Created} imported, {result.Updated} updated, {result.Cancelled} removed, {result.Failed} failed.",
-                            Severity.Success);
+                        Snackbar.Add(CalendarPullResultRules.AdminSnackbar(result), Severity.Success);
                     }
                 }
                 else

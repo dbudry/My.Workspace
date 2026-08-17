@@ -19,7 +19,7 @@ namespace My.Client.Helpers
             return new TaskListRow
             {
                 Kind = TaskListRowKind.Stopwatch,
-                Name = item.Name,
+                    Details = item.Details,
                 ProjectName = item.Project?.Name,
                 ProjectDisplayName = ProjectDisplayHelper.FromDto(item.Project),
                 OrganizationName = item.Project?.OrganizationName,
@@ -38,7 +38,7 @@ namespace My.Client.Helpers
             new()
             {
                 Kind = TaskListRowKind.Manual,
-                Name = task.Name,
+                    Details = task.Details,
                 ProjectName = task.Project?.Name,
                 ProjectDisplayName = task.Project?.DisplayName,
                 OrganizationName = task.Project?.OrganizationName,
@@ -66,7 +66,7 @@ namespace My.Client.Helpers
             return new TaskListRow
             {
                 Kind = TaskListRowKind.Manual,
-                Name = adjustment.Name,
+                    Details = adjustment.Details,
                 ProjectName = adjustment.ProjectName,
                 ProjectDisplayName = adjustment.ProjectName,
                 OrganizationName = adjustment.OrganizationName,
@@ -87,7 +87,7 @@ namespace My.Client.Helpers
                     ? startLocal + adjustment.Duration
                     : null,
                 OverlayDuration = adjustment.Duration,
-                OverlayName = adjustment.Name
+                OverlayDetails = adjustment.Details
             };
         }
 
@@ -122,7 +122,7 @@ namespace My.Client.Helpers
             var rows = new List<TaskListRow>();
             foreach (var task in tasks
                          .OrderBy(t => t.StartDate)
-                         .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+                         .ThenBy(t => t.Details, StringComparer.OrdinalIgnoreCase))
             {
                 if (!string.IsNullOrEmpty(task.StopwatchItemId))
                 {

@@ -48,7 +48,7 @@ namespace My.Tests.Components
                 dialogService.ShowAsync<StopwatchItemDialog>("Edit work item", parameters));
 
             // Dialog mounted with ProjectAutocomplete — avoid deep MudBlazor FindComponent walks.
-            Assert.Contains("Work item", provider.Markup, StringComparison.Ordinal);
+            Assert.Contains("What are you working on", provider.Markup, StringComparison.Ordinal);
             Assert.Contains("Project", provider.Markup, StringComparison.Ordinal);
             Assert.Contains("mud-input", provider.Markup, StringComparison.OrdinalIgnoreCase);
         }

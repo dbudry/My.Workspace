@@ -82,6 +82,12 @@ namespace My.DAL.Models
         /// </summary>
         public DateTime? CalendarBackfillAcknowledgedUtc { get; set; }
 
+        /// <summary>
+        /// True after an explicit Disconnect in Settings. Login must not auto-start
+        /// Google Calendar OAuth. Cleared when the user connects again from Settings.
+        /// </summary>
+        public bool GoogleCalendarAutoConnectOptOut { get; set; }
+
         public ApplicationUser User { get; set; } = null!;
     }
 }

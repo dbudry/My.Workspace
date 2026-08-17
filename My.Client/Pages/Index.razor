@@ -2,6 +2,7 @@
 @using My.Client.Components.Dashboard
 @using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using My.Client.Services
+@using My.Shared.Rules
 
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -102,24 +103,24 @@ else
                 {
                     // Connection is stored server-side; mirror that in localStorage so clearing
                     // browser cache does not re-trigger OAuth when the DB already has a token.
-                    // Disconnect clears this key so Connect / auto-connect can run again.
                     await JS.InvokeVoidAsync("localStorage.setItem",
                         UserSettingsService.GoogleAutoConnectAttemptedKey, "connected");
                 }
-                else
+                else if (GoogleCalendarConnectRules.ShouldAutoConnectOnLogin(
+                             isCalendarConnected: false,
+                             autoConnectOptOut: UserSettings.GoogleCalendarAutoConnectOptOut))
                 {
                     var attempted = await JS.InvokeAsync<string?>(
                         "localStorage.getItem", UserSettingsService.GoogleAutoConnectAttemptedKey);
                     if (string.IsNullOrWhiteSpace(attempted))
                     {
-                        // Mark that we attempted in this browser context so we don't immediately re-prompt
-                        // if the user cancels the Google consent screen. Cleared on disconnect / logout.
+                        // Mark that we attempted in this browser so we don't immediately re-prompt
+                        // if the user cancels the Google consent screen.
                         await JS.InvokeVoidAsync("localStorage.setItem",
                             UserSettingsService.GoogleAutoConnectAttemptedKey, DateTime.UtcNow.ToString("o"));
 
-                        // Trigger the (existing) Google OAuth consent flow. This is what makes
-                        // Calendar + Drive "automatic" as part of signing in (route 2).
-                        // Pass current URL so we can return here after the /settings callback processes the grant + backfill.
+                        // First-time users only. After Settings → Disconnect, AutoConnectOptOut
+                        // is stored on the account so login does not bounce through Calendar OAuth.
                         try
                         {
                             await UserSettings.InitiateGoogleConnectAsync(Navigation.Uri);
@@ -127,8 +128,6 @@ else
                         }
                         catch
                         {
-                            // Auto-connect is best-effort; user can connect from Settings.
-                            // Clear the attempt flag so a later Settings connect is not blocked.
                             await UserSettings.ClearGoogleAutoConnectAttemptedAsync();
                         }
                     }

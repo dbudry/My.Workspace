@@ -123,21 +123,12 @@
                     <MudTable Items="@taskDetailRows" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
                         <HeaderContent>
                             <MudTh>Date</MudTh>
-                            <MudTh>Task</MudTh>
                             <MudTh>Project</MudTh>
+                            <MudTh>Details</MudTh>
                             <MudTh>Duration</MudTh>
                         </HeaderContent>
                         <RowTemplate>
-                            <MudTd DataLabel="Date">@context.StartDate.ToLocalTime().ToString("MM/dd/yyyy")</MudTd>
-                            <MudTd DataLabel="Task">
-                                <div class="d-flex align-center" style="gap: 8px;">
-                                    @if (context.AdjustmentKind is "AliasOverlay" or "DirectOverlay")
-                                    {
-                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
-                                    }
-                                    <span>@context.Name</span>
-                                </div>
-                            </MudTd>
+                            <MudTd DataLabel="Date">@FormatReportDate(context.StartDate)</MudTd>
                             <MudTd DataLabel="Project">
                                 <ProjectAffiliationDisplay ProjectName="@context.Project?.Name"
                                                            DisplayName="@context.Project?.DisplayName"
@@ -145,6 +136,15 @@
                                                            OrganizationColor="@context.Project?.OrganizationColor"
                                                            ProjectGroupName="@context.Project?.ProjectGroupName"
                                                            ProjectGroupColor="@context.Project?.ProjectGroupColor" />
+                            </MudTd>
+                            <MudTd DataLabel="Details">
+                                <div class="d-flex align-center" style="gap: 8px;">
+                                    @if (context.AdjustmentKind is "AliasOverlay" or "DirectOverlay")
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning">Adjusted</MudChip>
+                                    }
+                                    <span>@context.Details</span>
+                                </div>
                             </MudTd>
                             <MudTd DataLabel="Duration">@($"{(int)context.Duration.TotalHours:00}:{context.Duration.Minutes:00}")</MudTd>
                         </RowTemplate>

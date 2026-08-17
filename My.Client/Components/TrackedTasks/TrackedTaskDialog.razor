@@ -22,7 +22,7 @@
                     </thead>
                     <tbody>
                         <tr>
-                            <td><strong>Task</strong></td>
+                            <td><strong>Details</strong></td>
                             <td>@(OriginalTaskName ?? "—")</td>
                             <td>@TaskName</td>
                         </tr>
@@ -57,7 +57,7 @@
                 <MudSimpleTable Dense="true" Hover="true" Bordered="false" Style="overflow: hidden;">
                     <tbody>
                         <tr>
-                            <td><strong>Task</strong></td>
+                            <td><strong>Details</strong></td>
                             <td>@TaskName</td>
                         </tr>
                         <tr>
@@ -125,12 +125,11 @@
                 }
                 else
                 {
-                    <MudTextField @bind-Value="editName" Label="Task Name" Margin="Margin.Dense"
-                                  Immediate="true" AutoFocus="true" />
-
                     <ProjectAutocomplete Value="selectedProject" ValueChanged="OnProjectChanged"
                                          Label="Project" SearchFunc="SearchProjects"
                                          PreferOpenUpward="true" />
+
+                    <TaskDetailsField @bind-Value="editName" AutoFocus="true" OnEnter="SaveAsync" />
 
                     <MudSwitch T="bool" Value="editIsAllDay" Label="All Day" Color="Color.Primary"
                                ValueChanged="OnAllDayChanged" />

@@ -253,7 +253,11 @@ namespace My.Client.Pages.Tyme
                 };
 
                 var response = await client.PostAsJsonAsync(Constants.API.Organization.Create, dto);
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't create organization."), Severity.Error);
+                    return;
+                }
 
                 Snackbar.Add("Organization created.", Severity.Success);
                 InvalidateAfterOrgMutation();
@@ -337,7 +341,11 @@ namespace My.Client.Pages.Tyme
                 };
 
                 var response = await client.PutAsJsonAsync(Constants.API.Organization.Update, dto);
-                response.EnsureSuccessStatusCode();
+                if (!response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't update organization."), Severity.Error);
+                    return;
+                }
 
                 Snackbar.Add("Organization updated.", Severity.Success);
                 InvalidateAfterOrgMutation();
@@ -351,48 +359,148 @@ namespace My.Client.Pages.Tyme
 
         private async Task ToggleActive(Organization org)
         {
-            var action = org.IsActive ? "deactivate" : "activate";
-            var confirmed = await DialogService.ShowMessageBoxAsync(
-                "Confirm", $"Are you sure you want to {action} \"{org.Name}\"?",
-                yesText: "Yes", cancelText: "Cancel");
+            if (org.IsActive)
+            {
+                var confirmed = await DialogService.ShowMessageBoxAsync(
+                    "Deactivate organization",
+                    $"Deactivate \"{org.Name}\"? Departments under this organization will also be marked inactive.",
+                    yesText: "Deactivate", cancelText: "Cancel");
+                if (confirmed != true) return;
 
-            if (confirmed != true) return;
+                var cascadeProjects = await ConfirmCascadeProjectsAsync(org.Name);
+                if (cascadeProjects is null) return;
+
+                try
+                {
+                    var response = await client.PostAsJsonAsync(
+                        $"{Constants.API.Organization.SetActive}/{org.OrganizationId}/setactive",
+                        new SetActiveOrganizationRequestDto { CascadeProjects = cascadeProjects == true });
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't deactivate organization."), Severity.Error);
+                        return;
+                    }
+
+                    Snackbar.Add("Organization deactivated.", Severity.Success);
+                    InvalidateAfterOrgMutation();
+                    await ReloadTableAsync();
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.AddApiError(ex, "Couldn't deactivate organization.");
+                }
+
+                return;
+            }
+
+            var activate = await DialogService.ShowMessageBoxAsync(
+                "Confirm", $"Are you sure you want to activate \"{org.Name}\"?",
+                yesText: "Yes", cancelText: "Cancel");
+            if (activate != true) return;
 
             try
             {
                 var response = await client.PostAsync($"{Constants.API.Organization.SetActive}/{org.OrganizationId}/setactive", null);
                 response.EnsureSuccessStatusCode();
-                Snackbar.Add($"Organization {action}d.", Severity.Success);
+                Snackbar.Add("Organization activated.", Severity.Success);
                 InvalidateAfterOrgMutation();
                 await ReloadTableAsync();
             }
             catch (Exception ex)
             {
-                Snackbar.AddApiError(ex, $"Couldn't {action} organization.");
+                Snackbar.AddApiError(ex, "Couldn't activate organization.");
             }
         }
 
         private async Task ArchiveOrganization(Organization org)
         {
-            var action = org.IsArchived ? "unarchive" : "archive";
-            var confirmed = await DialogService.ShowMessageBoxAsync(
-                "Confirm", $"Are you sure you want to {action} \"{org.Name}\"?",
-                yesText: "Yes", cancelText: "Cancel");
+            if (org.IsArchived)
+            {
+                var choice = await DialogService.ShowMessageBoxAsync(
+                    "Unarchive organization",
+                    $"Unarchive \"{org.Name}\"? This also unarchives its departments and projects (time on those projects comes back with them). By default they will be Active.",
+                    yesText: "Unarchive as Active",
+                    noText: "Unarchive as Inactive",
+                    cancelText: "Cancel");
+                if (choice is null) return;
 
+                try
+                {
+                    var response = await client.PostAsJsonAsync(
+                        $"{Constants.API.Organization.Archive}/{org.OrganizationId}/archive",
+                        new ArchiveOrganizationRequestDto { SetActive = choice == true });
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't unarchive organization."), Severity.Error);
+                        return;
+                    }
+
+                    Snackbar.Add(choice == true
+                        ? "Organization, departments, and projects unarchived and set Active."
+                        : "Organization, departments, and projects unarchived (inactive).", Severity.Success);
+                    InvalidateAfterOrgMutation();
+                    await ReloadTableAsync();
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.AddApiError(ex, "Couldn't unarchive organization.");
+                }
+
+                return;
+            }
+
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Archive organization",
+                $"Archive \"{org.Name}\"? This archives the organization, its departments, and its projects together. Time on those projects stays with them and cannot be used until unarchived. They will not show in normal lists unless you turn on Show archived.",
+                yesText: "Archive", cancelText: "Cancel");
             if (confirmed != true) return;
 
             try
             {
-                var response = await client.PostAsync($"{Constants.API.Organization.Archive}/{org.OrganizationId}/archive", null);
-                response.EnsureSuccessStatusCode();
-                Snackbar.Add($"Organization {action}d.", Severity.Success);
+                var response = await client.PostAsJsonAsync(
+                    $"{Constants.API.Organization.Archive}/{org.OrganizationId}/archive",
+                    new ArchiveOrganizationRequestDto());
+                if (!response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't archive organization."), Severity.Error);
+                    return;
+                }
+
+                Snackbar.Add("Organization archived with its departments and projects.", Severity.Success);
                 InvalidateAfterOrgMutation();
                 await ReloadTableAsync();
             }
             catch (Exception ex)
             {
-                Snackbar.AddApiError(ex, $"Couldn't {action} organization.");
+                Snackbar.AddApiError(ex, "Couldn't archive organization.");
             }
+        }
+
+        /// <summary>
+        /// Ask whether to mark projects under the org inactive. Cancel aborts the parent action.
+        /// Departments always go inactive with the org — they are not part of this prompt.
+        /// </summary>
+        private async Task<bool?> ConfirmCascadeProjectsAsync(string orgName)
+        {
+            return await DialogService.ShowMessageBoxAsync(
+                "Projects under this organization",
+                $"Also mark projects under \"{orgName}\" inactive? Time cannot be logged while the organization is inactive either way.",
+                yesText: "Yes, inactivate projects",
+                noText: "No, leave projects",
+                cancelText: "Cancel");
+        }
+
+        private static async Task<string> ReadApiMessageAsync(HttpResponseMessage response, string fallback)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(text))
+                return fallback;
+
+            text = text.Trim();
+            if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
+                text = text[1..^1];
+
+            return string.IsNullOrWhiteSpace(text) ? fallback : text;
         }
 
         private async Task DeleteOrganization(Organization org)
@@ -565,9 +673,12 @@ namespace My.Client.Pages.Tyme
         private async Task ArchiveDepartment(DepartmentModel dept)
         {
             var action = dept.IsArchived ? "unarchive" : "archive";
+            var detail = dept.IsArchived
+                ? $"Unarchive \"{dept.Name}\"? This also unarchives the organization and projects under this department."
+                : $"Archive \"{dept.Name}\"? This also archives projects under this department. Time on those projects stays with them.";
             var confirmed = await DialogService.ShowMessageBoxAsync(
-                "Confirm", $"Are you sure you want to {action} \"{dept.Name}\"?",
-                yesText: "Yes", cancelText: "Cancel");
+                "Confirm", detail,
+                yesText: dept.IsArchived ? "Unarchive" : "Archive", cancelText: "Cancel");
 
             if (confirmed != true) return;
 
