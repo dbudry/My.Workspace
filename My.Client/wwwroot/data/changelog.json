@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.1.2",
+    "date": "2026-08-18",
+    "changes": [
+      { "type": "Fixed", "text": "CI: development → master version check no longer fails (or emails) when both branches already share the same version after a promote." }
+    ]
+  },
+  {
     "version": "1.1.1",
     "date": "2026-08-18",
     "changes": [
