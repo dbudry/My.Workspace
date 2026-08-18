@@ -1,0 +1,53 @@
+.project-autocomplete {
+    position: relative;
+    width: 100%;
+    /* List is portaled via MudPopover Fixed — row height must not grow with results. */
+    overflow: visible;
+    z-index: 5;
+}
+
+.project-autocomplete-open {
+    z-index: 100;
+}
+
+/* Portaled panel — only .project-autocomplete-scroll may show a scrollbar. */
+.project-autocomplete-popover,
+.project-autocomplete-popover.mud-popover {
+    min-width: 18rem !important;
+    max-width: min(28rem, 92vw) !important;
+    z-index: 3000 !important;
+    margin-top: 2px;
+    overflow: hidden !important;
+    max-height: none !important;
+    scrollbar-gutter: auto !important;
+}
+
+.project-autocomplete-popover .mud-list,
+.project-autocomplete-popover .project-autocomplete-list {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    overflow: visible;
+    max-height: none;
+}
+
+.project-autocomplete-popover .mud-list-item {
+    min-height: 0;
+}
+
+.project-autocomplete-scroll {
+    max-height: min(280px, 40vh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: auto;
+}
+
+.project-autocomplete-popover-up .project-autocomplete-scroll {
+    max-height: min(240px, 36vh);
+}
+
+.project-autocomplete-popover .mud-popover-content,
+.project-autocomplete-popover .mud-paper {
+    overflow: hidden !important;
+    max-height: none !important;
+}

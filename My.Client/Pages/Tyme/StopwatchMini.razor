@@ -1,0 +1,21 @@
+@page "/tyme/stopwatch-mini"
+@* Tyme module surface (mini popup). Requires a Tyme-scoped role (even for global Admins).
+   Matches the Intranet scoping model. *@
+@attribute [Authorize(Policy = "Tyme:User:Scoped")]
+@layout MiniLayout
+@using My.Client.Components.TrackedTasks
+@using My.Client.Layout
+
+<PageTitle>Stopwatch</PageTitle>
+
+<TrackTaskTime OnWorkItemStarted="@HandleWorkItemStarted" />
+<StopwatchItemList @ref="stopwatchItemListComponent" />
+
+@code {
+    private StopwatchItemList stopwatchItemListComponent = null!;
+
+    private async Task HandleWorkItemStarted(My.Shared.Dtos.StopwatchItem.StopwatchItemDto item)
+    {
+        await stopwatchItemListComponent.UpsertFromServerAsync(item);
+    }
+}

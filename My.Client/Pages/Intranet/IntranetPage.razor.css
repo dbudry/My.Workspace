@@ -1,0 +1,18 @@
+.intranet-page-header {
+    width: 100%;
+    gap: 0.75rem 1rem;
+}
+
+.intranet-page-title-row {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.intranet-page-title {
+    min-width: 0;
+}
+
+.intranet-page-edit-btn {
+    flex: 0 0 auto;
+    margin-left: auto;
+}

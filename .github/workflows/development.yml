@@ -1,0 +1,191 @@
+# Push to development — graph is only the promote path.
+#
+#   Build & Test
+#     → Check version vs master
+#     → Create development >> master PR  (fails red if version not ahead)
+
+name: Development
+
+on:
+  push:
+    branches: [ development ]
+
+run-name: Development — build, version gate, promote PR
+
+concurrency:
+  group: development
+  cancel-in-progress: true
+
+env:
+  CSPROJ_PATH: My.Client/My.Client.csproj
+
+jobs:
+  build:
+    name: Build & Test
+    uses: ./.github/workflows/_build-and-test.yml
+
+  # always() required when depending on a reusable-workflow job.
+  check-version-vs-master:
+    name: Check version vs master
+    needs: [ build ]
+    if: always() && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      version_ready: ${{ steps.compare.outputs.version_ready }}
+      head_version: ${{ steps.compare.outputs.head_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compare HEAD <Version> to master
+        id: compare
+        shell: bash
+        run: |
+          set -euo pipefail
+          extract() { grep -oP '(?<=<Version>)[^<]+' "$1" 2>/dev/null | head -n1 || true; }
+
+          HEAD_V=$(extract "$CSPROJ_PATH")
+          git fetch origin master --depth=1 2>/dev/null || true
+          git show "origin/master:$CSPROJ_PATH" > /tmp/master.csproj 2>/dev/null || echo "" > /tmp/master.csproj
+          MASTER_V=$(extract /tmp/master.csproj)
+
+          echo "development <Version>: ${HEAD_V:-<none>}"
+          echo "master <Version>:      ${MASTER_V:-<none>}"
+          echo "head_version=${HEAD_V}" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "$HEAD_V" ]]; then
+            echo "::notice::No <Version> in ${CSPROJ_PATH}. No promotion PR."
+            echo "version_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$MASTER_V" ]]; then
+            echo "::notice::Master has no version yet (bootstrap). Promotion allowed."
+            echo "version_ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$HEAD_V" == "$MASTER_V" ]]; then
+            echo "::notice::Version ${HEAD_V} equals master — bump <Version> to promote."
+            echo "version_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SMALLER=$(printf '%s\n%s\n' "$MASTER_V" "$HEAD_V" | sort -V | head -n1)
+          if [[ "$SMALLER" != "$MASTER_V" ]]; then
+            echo "::notice::Version ${HEAD_V} is behind master ${MASTER_V}."
+            echo "version_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "OK: v${HEAD_V} is ahead of master v${MASTER_V}."
+          echo "version_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Close stale development >> master PR if version not ready
+        if: steps.compare.outputs.version_ready != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh pr list --base master --head development --state open \
+                       --json number --jq '.[0].number' || true)
+          if [[ -z "$EXISTING" ]]; then
+            echo "No open development >> master PR."
+            exit 0
+          fi
+          gh pr close "$EXISTING" --comment "Closed automatically: development is green, but client <Version> is not ahead of master. A promotion PR opens only after a green development build with a bumped version."
+          echo "Closed stale PR #$EXISTING"
+
+  create-pr-to-master:
+    name: Create PR development → master
+    needs: [ build, check-version-vs-master ]
+    if: >-
+      always()
+      && needs.build.result == 'success'
+      && needs.check-version-vs-master.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Require version bump before promotion PR
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          READY="${{ needs.check-version-vs-master.outputs.version_ready }}"
+          VERSION="${{ needs.check-version-vs-master.outputs.head_version }}"
+          echo "version_ready=${READY}"
+          echo "head_version=${VERSION}"
+          if [[ "$READY" != "true" ]]; then
+            echo "::error title=Version not incremented::Client <Version> (${VERSION:-unknown}) is not ahead of master. Bump <Version> in My.Client/My.Client.csproj (e.g. 1.2.4 → 1.2.5), commit to development, and re-run. No development → master PR until the version is higher than master."
+            {
+              echo "## Promotion blocked"
+              echo "Bump \`My.Client/My.Client.csproj\` \`<Version>\` above master, then push again."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "should_create=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Version ready (v${VERSION})"
+            echo "Opening or keeping the development → master promotion PR."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.should_create == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Verify master branch exists
+        if: steps.gate.outputs.should_create == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git ls-remote --heads origin master | grep -q 'refs/heads/master$'; then
+            echo "::error::Remote branch 'master' does not exist."
+            exit 1
+          fi
+
+      - name: Open development → master PR
+        if: steps.gate.outputs.should_create == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin master --depth=100
+          AHEAD=$(git rev-list --count "origin/master..HEAD")
+          if [[ "$AHEAD" -eq 0 ]]; then
+            echo "development is not ahead of master on commits; nothing to PR"
+            exit 0
+          fi
+
+          EXISTING=$(gh pr list --base master --head development --state open \
+                       --json number --jq '.[0].number' || true)
+          if [[ -n "$EXISTING" ]]; then
+            echo "PR #$EXISTING already open (version-ready); leaving it"
+            exit 0
+          fi
+
+          VERSION="${{ needs.check-version-vs-master.outputs.head_version }}"
+          gh pr create \
+            --base master \
+            --head development \
+            --title "development → master (v$VERSION)" \
+            --body "$(cat <<EOF
+          ## Production promotion (v$VERSION)
+
+          Opened only after a **green** development Build & Test with \`<Version>\` **ahead** of master.
+
+          ### What green checks on this PR mean
+          Version bump + Build & Test passed. **Merge this PR** to deploy production.
+
+          ### After you merge
+          The **Master** workflow runs: Build → Publish Azure → Create GitHub Release \`v$VERSION\`.
+
+          There is no further job on the PR graph — **merge is the next step**.
+          EOF
+          )"

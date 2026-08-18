@@ -1,0 +1,8 @@
+@* Consistent vertical spacing between dialog form fields. *@
+<MudStack Spacing="3" Class="dialog-form-stack">
+    @ChildContent
+</MudStack>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

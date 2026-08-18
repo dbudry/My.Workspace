@@ -1,0 +1,7 @@
+.section-card {
+    background-color: var(--mud-palette-surface);
+}
+
+.section-card-description {
+    color: var(--mud-palette-text-secondary);
+}

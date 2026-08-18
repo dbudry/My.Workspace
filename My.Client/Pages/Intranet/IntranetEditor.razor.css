@@ -1,0 +1,231 @@
+.intranet-editor-shell {
+    border-radius: 12px;
+    overflow: visible;
+    margin: 0 -4px;
+}
+
+/*
+ * Title/save row stays in normal document flow (not sticky).
+ * Sticky topbar was covering the Content / Attachments / Page Settings tabs
+ * (higher z-index + top: 3.5rem). Formatting stays reachable because Quill
+ * scrolls inside the editor pane with a pinned toolbar.
+ */
+.intranet-editor-topbar {
+    position: relative;
+    z-index: 1;
+    background: var(--mud-palette-surface);
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    padding: 12px 16px;
+}
+
+/* Keep tab headers above the editor frame; never under the title row. */
+.intranet-editor-shell ::deep .mud-tabs-toolbar,
+.intranet-editor-shell ::deep .mud-tabs-tabbar,
+.intranet-editor-shell ::deep .mud-tabs .mud-tabs-panels {
+    position: relative;
+    z-index: 0;
+}
+
+.intranet-editor-shell ::deep .mud-tabs-toolbar,
+.intranet-editor-shell ::deep .mud-tabs-tabbar {
+    background: var(--mud-palette-surface);
+}
+
+.intranet-editor-title-field {
+    flex: 0 1 420px;
+    min-width: 200px;
+    max-width: 420px;
+}
+
+.intranet-editor-frame {
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--mud-palette-surface);
+}
+
+.intranet-editor-tab-panel {
+    padding: 16px 4px 20px;
+}
+
+.intranet-settings-panel {
+    max-width: 640px;
+}
+
+/*
+ * Pin the Quill toolbar at the top of the editor pane and scroll the document
+ * body inside. Scrolling the whole page used to drag the toolbar off-screen so
+ * formatting long articles meant constant up/down trips.
+ *
+ * Height is viewport-based so the toolbar stays in view on typical laptop screens
+ * without covering the sticky app bar + editor topbar.
+ */
+.intranet-quill-host {
+    --intranet-quill-chrome: 12.5rem; /* app bar + topbar + tabs + caption approx */
+    display: flex;
+    flex-direction: column;
+    min-height: min(50vh, 420px);
+    height: calc(100vh - var(--intranet-quill-chrome));
+    max-height: calc(100vh - var(--intranet-quill-chrome));
+}
+
+.intranet-quill-host ::deep .ql-toolbar {
+    border: none;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    background: var(--mud-palette-background-grey);
+    padding: 8px 10px;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.intranet-quill-host ::deep .ql-container {
+    border: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    font-family: inherit;
+    font-size: 1rem;
+    background: var(--mud-palette-surface);
+}
+
+.intranet-quill-host ::deep .ql-container.intranet-quill-resize-container {
+    position: relative;
+}
+
+.intranet-quill-host ::deep .ql-editor {
+    --intranet-quill-pad-x: 32px;
+    --intranet-quill-pad-y: 28px;
+    /* Grow with content so the container scrolls; keep a usable empty height. */
+    min-height: 100%;
+    padding: var(--intranet-quill-pad-y) var(--intranet-quill-pad-x);
+    line-height: 1.7;
+    color: var(--mud-palette-text-primary);
+    background: var(--mud-palette-surface);
+}
+
+/* Quill snow positions the placeholder with fixed 15px insets — match editor padding. */
+.intranet-quill-host ::deep .ql-editor.ql-blank::before {
+    color: var(--mud-palette-text-secondary);
+    font-style: italic;
+    left: var(--intranet-quill-pad-x);
+    right: var(--intranet-quill-pad-x);
+    top: var(--intranet-quill-pad-y);
+}
+
+.intranet-quill-host ::deep .ql-snow .ql-picker {
+    color: var(--mud-palette-text-primary);
+}
+
+.intranet-quill-host ::deep .ql-snow .ql-picker-options {
+    background-color: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    border: 1px solid var(--mud-palette-lines-default);
+}
+
+.intranet-quill-host ::deep .ql-snow .ql-stroke {
+    stroke: var(--mud-palette-text-secondary);
+}
+
+.intranet-quill-host ::deep .ql-snow .ql-fill {
+    fill: var(--mud-palette-text-secondary);
+}
+
+.intranet-quill-host ::deep .ql-snow.ql-toolbar button:hover .ql-stroke,
+.intranet-quill-host ::deep .ql-snow .ql-toolbar button:hover .ql-stroke,
+.intranet-quill-host ::deep .ql-snow.ql-toolbar button.ql-active .ql-stroke,
+.intranet-quill-host ::deep .ql-snow .ql-toolbar button.ql-active .ql-stroke,
+.intranet-quill-host ::deep .ql-snow.ql-toolbar button:hover .ql-fill,
+.intranet-quill-host ::deep .ql-snow .ql-toolbar button:hover .ql-fill,
+.intranet-quill-host ::deep .ql-snow.ql-toolbar button.ql-active .ql-fill,
+.intranet-quill-host ::deep .ql-snow .ql-toolbar button.ql-active .ql-fill {
+    stroke: var(--mud-palette-primary);
+    fill: var(--mud-palette-primary);
+}
+
+.intranet-quill-host ::deep .ql-editor ul,
+.intranet-quill-host ::deep .ql-editor ol {
+    padding-left: 1.5rem;
+}
+
+.intranet-quill-host ::deep .ql-editor img {
+    cursor: pointer;
+}
+
+.intranet-quill-host ::deep .ql-editor img.intranet-pending-media[data-intranet-hydrated="false"] {
+    cursor: wait;
+    display: block;
+    min-height: 120px;
+    min-width: 120px;
+    background: linear-gradient(
+        90deg,
+        var(--mud-palette-background-grey) 0%,
+        color-mix(in srgb, var(--mud-palette-background-grey) 70%, var(--mud-palette-surface)) 50%,
+        var(--mud-palette-background-grey) 100%
+    );
+    background-size: 200% 100%;
+    animation: intranet-media-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes intranet-media-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.intranet-quill-host ::deep .intranet-img-resize-overlay {
+    position: absolute;
+    border: 2px solid var(--mud-palette-primary);
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.intranet-quill-host ::deep .intranet-img-resize-handle {
+    position: absolute;
+    right: -7px;
+    bottom: -7px;
+    width: 14px;
+    height: 14px;
+    background: var(--mud-palette-primary);
+    border: 2px solid var(--mud-palette-surface);
+    border-radius: 2px;
+    cursor: nwse-resize;
+    pointer-events: auto;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.intranet-quill-host ::deep .ql-toolbar button .ql-material-icon,
+.intranet-quill-host ::deep .ql-toolbar .ql-material-icon {
+    font-family: 'Material Icons' !important;
+    font-size: 18px;
+    line-height: 1;
+    display: inline-block;
+    font-style: normal;
+    font-weight: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+}
+
+@media (max-width: 600px) {
+    .intranet-editor-title-field {
+        flex: 1 1 100%;
+        max-width: 100%;
+    }
+
+    .intranet-quill-host {
+        --intranet-quill-chrome: 14.5rem;
+        min-height: 40vh;
+    }
+
+    .intranet-quill-host ::deep .ql-editor {
+        --intranet-quill-pad-x: 16px;
+        --intranet-quill-pad-y: 20px;
+        padding: var(--intranet-quill-pad-y) var(--intranet-quill-pad-x);
+    }
+}

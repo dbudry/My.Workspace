@@ -1,0 +1,218 @@
+@using My.Shared
+@using My.Shared.Dtos.Intranet
+@using My.Shared.Navigation
+@using Microsoft.AspNetCore.Components.Routing
+@implements IDisposable
+
+@if (VisibleChildren.Count > 0)
+{
+    @if (!string.IsNullOrWhiteSpace(Href))
+    {
+        <div class="@($"{GroupClass} curated-nav-group-with-page")" style="@(IsTopLevel ? null : DepthStyle)">
+            <div class="curated-nav-group-header curated-nav-row @TopLevelRowClass @(IsPageActive ? "curated-nav-header-active" : null)" style="@DepthStyle">
+                <MudNavLink Href="@Href" Icon="@MaterialIcon(Item, "article")"
+                            Match="@NavLinkMatch.All"
+                            Class="@GetLinkClass()"
+                            Target="@(string.IsNullOrWhiteSpace(Item.ExternalUrl) ? null : "_blank")"
+                            OnClick="@ExternalNavClick">
+                    @Item.Title
+                </MudNavLink>
+                <button type="button"
+                        class="curated-nav-expand-btn"
+                        @onclick:stopPropagation="true"
+                        @onclick="ToggleExpandAsync"
+                        aria-expanded="@IsGroupExpanded.ToString().ToLowerInvariant()"
+                        aria-label="@($"Toggle {Item.Title} sub-menu")">
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Class="@ExpandIconClass" />
+                </button>
+            </div>
+            <MudCollapse Expanded="@IsGroupExpanded" Class="curated-nav-group-collapse">
+                <MudNavMenu>
+                    @foreach (var child in VisibleChildren)
+                    {
+                        <CuratedNavItem @key="child.Id"
+                                        Item="child"
+                                        IsTopLevel="false"
+                                        Depth="@(Depth + 1)"
+                                        ParentNavGroupKey="@NavGroupKey"
+                                        ExpandedCuratedNavGroupKey="@ExpandedCuratedNavGroupKey"
+                                        ExpandedChildNavGroupKeyByParent="@ExpandedChildNavGroupKeyByParent"
+                                        ActiveCuratedNavItemId="@ActiveCuratedNavItemId"
+                                        OnCuratedNavItemActivated="OnCuratedNavItemActivated"
+                                        OnNavGroupExpanded="OnNavGroupExpanded" />
+                    }
+                </MudNavMenu>
+            </MudCollapse>
+        </div>
+    }
+    else if (IsTopLevel)
+    {
+        <MudNavGroup Title="@Item.Title"
+                     Icon="@MaterialIcon(Item, "folder")"
+                     Class="@FolderGroupClass"
+                     Expanded="@IsGroupExpanded"
+                     ExpandedChanged="OnGroupExpandedChanged">
+            <ChildContent>
+                @foreach (var child in VisibleChildren)
+                {
+                    <CuratedNavItem @key="child.Id"
+                                    Item="child"
+                                    IsTopLevel="false"
+                                    Depth="@(Depth + 1)"
+                                    ParentNavGroupKey="@NavGroupKey"
+                                    ExpandedCuratedNavGroupKey="@ExpandedCuratedNavGroupKey"
+                                    ExpandedChildNavGroupKeyByParent="@ExpandedChildNavGroupKeyByParent"
+                                    ActiveCuratedNavItemId="@ActiveCuratedNavItemId"
+                                    OnCuratedNavItemActivated="OnCuratedNavItemActivated"
+                                    OnNavGroupExpanded="OnNavGroupExpanded" />
+                }
+            </ChildContent>
+        </MudNavGroup>
+    }
+    else
+    {
+        <div class="curated-nav-folder-row curated-nav-row" style="@DepthStyle">
+            <MudNavGroup Title="@Item.Title"
+                         Icon="@MaterialIcon(Item, "folder")"
+                         Class="@FolderGroupClass"
+                         Expanded="@IsGroupExpanded"
+                         ExpandedChanged="OnGroupExpandedChanged">
+                <ChildContent>
+                    @foreach (var child in VisibleChildren)
+                    {
+                        <CuratedNavItem @key="child.Id"
+                                        Item="child"
+                                        IsTopLevel="false"
+                                        Depth="@(Depth + 1)"
+                                        ParentNavGroupKey="@NavGroupKey"
+                                        ExpandedCuratedNavGroupKey="@ExpandedCuratedNavGroupKey"
+                                        ExpandedChildNavGroupKeyByParent="@ExpandedChildNavGroupKeyByParent"
+                                        ActiveCuratedNavItemId="@ActiveCuratedNavItemId"
+                                        OnCuratedNavItemActivated="OnCuratedNavItemActivated"
+                                        OnNavGroupExpanded="OnNavGroupExpanded" />
+                    }
+                </ChildContent>
+            </MudNavGroup>
+        </div>
+    }
+}
+else
+{
+    <div class="curated-nav-leaf-row curated-nav-row" style="@DepthStyle">
+        <MudNavLink Href="@Href" Class="@GetLinkClass()" Icon="@MaterialIcon(Item, "article")"
+                    Match="@(string.IsNullOrWhiteSpace(Item.ExternalUrl) ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+                    Target="@(string.IsNullOrWhiteSpace(Item.ExternalUrl) ? null : "_blank")"
+                    OnClick="@ExternalNavClick">
+            @Item.Title
+        </MudNavLink>
+    </div>
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    [Parameter, EditorRequired] public IntranetNavigationItemDto Item { get; set; } = null!;
+    [Parameter] public bool IsTopLevel { get; set; }
+    [Parameter] public int Depth { get; set; }
+    [Parameter] public string? ParentNavGroupKey { get; set; }
+    [Parameter] public string? ExpandedCuratedNavGroupKey { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string> ExpandedChildNavGroupKeyByParent { get; set; } = new Dictionary<string, string>();
+    [Parameter] public string? ActiveCuratedNavItemId { get; set; }
+    [Parameter] public EventCallback<string> OnCuratedNavItemActivated { get; set; }
+    [Parameter] public EventCallback<(string? ParentNavGroupKey, string GroupKey, bool Expanded)> OnNavGroupExpanded { get; set; }
+
+    private string NavGroupKey => $"nav:{Item.Id}";
+
+    private string GroupClass => IsTopLevel ? "nav-top-level curated-nav-group" : "curated-nav-group";
+
+    private string FolderGroupClass =>
+        IsTopLevel ? "nav-top-level curated-nav-group" : "curated-nav-group curated-nav-nested";
+
+    private string TopLevelRowClass => IsTopLevel ? "nav-top-level" : string.Empty;
+
+    private string ExpandIconClass =>
+        IsGroupExpanded ? "mud-nav-link-expand-icon mud-transform" : "mud-nav-link-expand-icon";
+
+    private string DepthStyle => CuratedNavRenderRules.GetDepthStyle(Depth);
+
+    private bool IsPageActive =>
+        !string.IsNullOrWhiteSpace(Href)
+        && string.IsNullOrWhiteSpace(Item.ExternalUrl)
+        && string.Equals(
+            Navigation.ToBaseRelativePath(Navigation.Uri).Trim('/'),
+            Navigation.ToBaseRelativePath(Navigation.ToAbsoluteUri(Href).ToString()).Trim('/'),
+            StringComparison.OrdinalIgnoreCase);
+
+    private bool IsGroupExpanded =>
+        IsTopLevel
+            ? string.Equals(ExpandedCuratedNavGroupKey, NavGroupKey, StringComparison.Ordinal)
+            : ParentNavGroupKey != null
+                && ExpandedChildNavGroupKeyByParent.TryGetValue(ParentNavGroupKey, out var key)
+                && key == NavGroupKey;
+
+    private List<IntranetNavigationItemDto> VisibleChildren =>
+        (Item.Children ?? new())
+            .Where(c => c.IsVisible)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Title)
+            .ToList();
+
+    private string? Href
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Item.ExternalUrl))
+                return Item.ExternalUrl;
+            if (string.IsNullOrWhiteSpace(Item.PageId))
+                return null;
+            return IntranetPageUrlHelper.GetViewPath(Item.PageId, Item.PageSlug);
+        }
+    }
+
+    /// <summary>
+    /// MudNavLink renders a real NavLink only when OnClick has no delegate. External URLs need
+    /// OnClick for manual active tracking; internal pages must leave this unset so route matching
+    /// applies the active highlight (light and dark themes use --mud-palette-primary in CSS).
+    /// </summary>
+    private EventCallback<MouseEventArgs> ExternalNavClick =>
+        string.IsNullOrWhiteSpace(Item.ExternalUrl)
+            ? default
+            : EventCallback.Factory.Create<MouseEventArgs>(this, OnNavigate);
+
+    private string GetLinkClass()
+    {
+        var classes = "curated-nav-link";
+        if (IsTopLevel)
+            classes += " nav-top-level";
+        if (!string.IsNullOrWhiteSpace(Item.ExternalUrl) && ActiveCuratedNavItemId == Item.Id)
+            classes += " active";
+        return classes;
+    }
+
+    private Task OnGroupExpandedChanged(bool expanded) =>
+        OnNavGroupExpanded.InvokeAsync((ParentNavGroupKey, NavGroupKey, expanded));
+
+    private Task ToggleExpandAsync(MouseEventArgs _) =>
+        OnGroupExpandedChanged(!IsGroupExpanded);
+
+    private async Task OnNavigate()
+    {
+        if (!string.IsNullOrWhiteSpace(Item.ExternalUrl) && OnCuratedNavItemActivated.HasDelegate)
+            await OnCuratedNavItemActivated.InvokeAsync(Item.Id);
+    }
+
+    private static string MaterialIcon(IntranetNavigationItemDto item, string fallback) =>
+        $"material-icons/{GetMaterialIconName(item.Icon, fallback)}";
+
+    private static string GetMaterialIconName(string? icon, string fallback) =>
+        string.IsNullOrWhiteSpace(icon) ? fallback : icon.Trim();
+
+    protected override void OnInitialized() =>
+        Navigation.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        InvokeAsync(StateHasChanged);
+
+    public void Dispose() =>
+        Navigation.LocationChanged -= OnLocationChanged;
+}

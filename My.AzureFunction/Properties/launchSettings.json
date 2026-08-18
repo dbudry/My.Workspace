@@ -1,0 +1,33 @@
+{
+  "profiles": {
+    "My.AzureFunction": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7074 --useHttps",
+      "launchBrowser": false
+      // NOTE: Direct F5 debugging from this profile often hits gRPC worker startup timeouts
+      // in .NET Isolated Functions because the debugger attach + symbol load adds latency
+      // before the worker can signal "ready" to the host.
+      //
+      // This profile now defaults to port 7074 + --useHttps to match the Blazor client's
+      // https://localhost:7074/api/ expectation in appsettings.Development.json (and .Debug.json).
+      //
+      // Recommended workflows for reliable debugging (especially with HTTPS + Intranet work):
+      // 1. Use the helper (now defaults to HTTPS): .\Scripts\Dev-StartFunctionHost.ps1 -Port 7074
+      //    or .\Scripts\Dev-StartDebugSession.ps1
+      // 2. Ctrl+F5 (Start Without Debugging) here, then use Debug > Attach to Process
+      //    once you see "Worker process started and initialized." in the console.
+      // 3. Run plain `func start --port 7074 --useHttps` from a terminal (with Azurite), then attach.
+      // 4. After the host is healthy, attach to the correct dotnet worker process.
+      //
+      // Breakpoints in IntranetFunction, Google*Service, etc. work normally after attach.
+      //
+      // HTTPS dev cert is now auto-handled by the Dev-StartFunctionHost.ps1 / Dev-StartDebugSession.ps1 scripts
+      // (they run `dotnet dev-certs https --trust` before `func start --useHttps`).
+      // If you still see "Auto cert generation is currently not working...", run the script as Administrator
+      // or manually execute:
+      //   dotnet dev-certs https --clean
+      //   dotnet dev-certs https --trust
+      // Then visit https://localhost:7074 once in a browser to accept the self-signed cert.
+    }
+  }
+}

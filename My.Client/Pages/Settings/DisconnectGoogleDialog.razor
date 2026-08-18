@@ -1,0 +1,34 @@
+@namespace My.Client.Pages.Settings
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            <MudText>
+                Disconnecting will stop two-way sync with your primary Google calendar.
+                Events already pushed by Tyme stay on your calendar — we don't remove them.
+                Your Tyme tracked tasks also stay where they are; only the link between
+                them is severed.
+            </MudText>
+            <MudText>
+                You can reconnect any time.
+            </MudText>
+            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                My Workspace will remain listed under your Google account's connected apps.
+                To remove that connection entirely, visit
+                <MudLink Href="https://myaccount.google.com/connections" Target="_blank" Underline="Underline.Always">myaccount.google.com → Connections</MudLink>.
+            </MudText>
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="Confirm">Disconnect</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance Dialog { get; set; } = null!;
+
+    private void Confirm() => Dialog.Close(DialogResult.Ok(true));
+    private void Cancel() => Dialog.Cancel();
+}

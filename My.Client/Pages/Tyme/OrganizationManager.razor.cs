@@ -1,0 +1,757 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using MudBlazor;
+using System.Net.Http.Json;
+using My.Client.Extensions;
+using My.Client.Models;
+using My.Client.Components.Organizations;
+using My.Client.Services;
+using My.Shared.Dtos.Organization;
+using My.Shared.Dtos.Department;
+using My.Shared.Dtos.Paging;
+using My.Shared.Constants;
+using My.Shared.Dtos;
+using My.Shared.Helpers;
+
+namespace My.Client.Pages.Tyme
+{
+    public partial class OrganizationManager
+    {
+        List<Organization> organizationsList { get; set; } = new();
+
+        MudTable<OrgDisplayRow> table = null!;
+
+        bool allowOrgDelete = false;
+        // Global-Admin-only now — there is no scoped Admin:Organizations role (see
+        // Constants.Roles.Assignable). Gates structural changes: set active/inactive,
+        // archive/unarchive, delete — for both organizations and departments.
+        bool canManage = false;
+        // Editor:Organizations (or canManage, which already implies it): create/edit
+        // organizations and departments, but not the structural actions above.
+        bool canEditOrganizations = false;
+
+        HttpClient client = null!;
+
+        string searchString = "";
+
+        [CascadingParameter]
+        private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
+
+        [CascadingParameter(Name = "SetPageTitle")]
+        private Action<string>? SetPageTitle { get; set; }
+
+        #region Dependency Injection
+
+        [Inject]
+        protected NavigationManager Navigation { get; set; } = null!;
+
+        [Inject]
+        private IHttpClientFactory ClientFactory { get; set; } = null!;
+
+        [Inject]
+        private ISnackbar Snackbar { get; set; } = null!;
+
+        [Inject]
+        private IDialogService DialogService { get; set; } = null!;
+
+        [Inject]
+        private OrganizationsCache OrganizationsCache { get; set; } = null!;
+
+        [Inject]
+        private ProjectsCache ProjectsCache { get; set; } = null!;
+
+        [Inject]
+        private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
+        #endregion
+
+        protected override async Task OnInitializedAsync()
+        {
+            var authState = await AuthenticationStateTask;
+            var user = authState.User;
+
+            if (user.Identity != null && !user.Identity.IsAuthenticated)
+                Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
+
+            // Organizations dropped Tyme's Manager/Admin tiers entirely — see
+            // AuthGates.RequireOrganizations / RequireOrganizationsAdminOnly on the server.
+            // Global Admin gets full control automatically (no separate Admin:Organizations
+            // role exists); everyone else needs the scoped Editor role to edit.
+            canManage = Constants.Roles.IsGlobalAdmin(user);
+            canEditOrganizations = canManage
+                || Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Editor);
+
+            client = ClientFactory.CreateClient(Constants.API.ClientName);
+
+            SetPageTitle?.Invoke(canManage || canEditOrganizations ? "Manage Organizations" : "Organizations");
+
+            await LoadAppSettings();
+        }
+
+        private async Task LoadAppSettings()
+        {
+            try
+            {
+                var settings = await AppSettingsCache.GetAsync();
+                var val = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.AllowOrganizationDelete);
+                if (val != null && bool.TryParse(val.Value, out var parsed))
+                    allowOrgDelete = parsed;
+            }
+            catch { }
+        }
+
+        private async Task<TableData<OrgDisplayRow>> LoadServerData(TableState state, CancellationToken cancellationToken)
+        {
+            try
+            {
+                var query = new ListQueryParameters
+                {
+                    PageNumber = state.Page + 1,
+                    PageSize = state.PageSize,
+                    Search = searchString,
+                    SortBy = state.SortLabel ?? "Name",
+                    SortDescending = state.SortDirection == SortDirection.Descending,
+                    IncludeArchived = showArchived,
+                    IncludeInactive = showInactive
+                };
+
+                var url = ListQueryUrlBuilder.Build(Constants.API.Organization.Get, query);
+                var response = await client.GetFromJsonAsync<PagedResponse<OrganizationDto>>(url, cancellationToken);
+
+                organizationsList = response?.Items.Select(d => new Organization(d)).ToList() ?? new List<Organization>();
+                var rows = BuildDisplayRows(organizationsList);
+
+                return new TableData<OrgDisplayRow>
+                {
+                    Items = rows,
+                    TotalItems = response?.TotalCount ?? 0
+                };
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // MudTable cancels the previous in-flight request when paging/search/sort changes.
+                return new TableData<OrgDisplayRow> { Items = Array.Empty<OrgDisplayRow>(), TotalItems = 0 };
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't load organizations.");
+                return new TableData<OrgDisplayRow> { Items = Array.Empty<OrgDisplayRow>(), TotalItems = 0 };
+            }
+        }
+
+        private async Task<Organization?> FetchOrganizationDetailsAsync(string organizationId)
+        {
+            var dto = await client.GetFromJsonAsync<OrganizationDto>(
+                $"{Constants.API.Organization.GetById}{organizationId}?includeArchived=true");
+            return dto == null ? null : new Organization(dto);
+        }
+
+        private void InvalidateAfterOrgMutation()
+        {
+            OrganizationsCache.Invalidate();
+            ProjectsCache.Invalidate();
+        }
+
+        private async Task ReloadTableAsync()
+        {
+            if (table != null)
+                await table.ReloadServerData();
+        }
+
+        private static List<OrgDisplayRow> BuildDisplayRows(IEnumerable<Organization> orgs)
+        {
+            var rows = new List<OrgDisplayRow>();
+            foreach (var org in orgs)
+            {
+                rows.Add(new OrgDisplayRow(org));
+                if (org.Departments != null)
+                {
+                    foreach (var dept in org.Departments)
+                        rows.Add(new OrgDisplayRow(org, dept));
+                }
+            }
+            return rows;
+        }
+
+        bool showArchived = false;
+        bool showInactive = false;
+
+        private async Task OnShowArchivedChanged(bool value)
+        {
+            showArchived = value;
+            await ReloadTableAsync();
+        }
+
+        private async Task OnShowInactiveChanged(bool value)
+        {
+            showInactive = value;
+            await ReloadTableAsync();
+        }
+
+        private async Task OnSearchChanged(string value)
+        {
+            searchString = value;
+            await ReloadTableAsync();
+        }
+
+        private string GetEmptyMessage()
+        {
+            if (!string.IsNullOrWhiteSpace(searchString))
+                return "No organizations match your search.";
+            if (showArchived)
+                return "No archived organizations match.";
+            return "Add an organization to get started.";
+        }
+
+        #region Organization CRUD
+
+        private async Task ViewOrganization(Organization org)
+        {
+            try
+            {
+                var detailed = await FetchOrganizationDetailsAsync(org.OrganizationId) ?? org;
+                var parameters = new DialogParameters<ViewOrganizationDialog>
+                {
+                    { x => x.Model, detailed },
+                    { x => x.CanEdit, canManage || canEditOrganizations }
+                };
+
+                var dialog = await DialogService.ShowAsync<ViewOrganizationDialog>(detailed.Name, parameters,
+                    new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true, CloseButton = true });
+
+                // The dialog closes with DialogResult.Ok(true) when the viewer clicked
+                // "Edit" — hand off to the same edit flow the row's "..." menu uses, so
+                // clicking into an organization gives Editor:Organizations users (and
+                // Admins) a real path to editing contacts/details, not just a read-only view.
+                var result = await dialog.Result;
+                if (result != null && !result.Canceled && result.Data is true)
+                    await EditOrganization(detailed);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't load organization details.");
+            }
+        }
+
+        private async Task AddOrganization()
+        {
+            var model = new Organization();
+            var parameters = new DialogParameters<OrganizationDialog>
+            {
+                { x => x.Model, model },
+                { x => x.SubmitLabel, "Create" }
+            };
+
+            var dialog = await DialogService.ShowAsync<OrganizationDialog>("New Organization", parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+            var result = await dialog.Result;
+
+            if (result == null || result.Canceled)
+                return;
+
+            var org = (Organization)result.Data!;
+
+            try
+            {
+                var dto = new CreateOrganizationDto
+                {
+                    Name = org.Name,
+                    Address = org.Address,
+                    City = org.City,
+                    State = org.State,
+                    PostalCode = org.PostalCode,
+                    Country = org.Country,
+                    Note = org.Note,
+                    Color = org.Color
+                };
+
+                var response = await client.PostAsJsonAsync(Constants.API.Organization.Create, dto);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't create organization."), Severity.Error);
+                    return;
+                }
+
+                Snackbar.Add("Organization created.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't create organization.");
+            }
+        }
+
+        private async Task EditOrganization(Organization org)
+        {
+            Organization source;
+            try
+            {
+                source = await FetchOrganizationDetailsAsync(org.OrganizationId) ?? org;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't load organization details.");
+                return;
+            }
+
+            var model = new Organization
+            {
+                OrganizationId = source.OrganizationId,
+                Name = source.Name,
+                Address = source.Address,
+                City = source.City,
+                State = source.State,
+                PostalCode = source.PostalCode,
+                Country = source.Country,
+                Note = source.Note,
+                Color = source.Color,
+                Contacts = source.Contacts?.Select(c => new ContactModel
+                {
+                    ContactId = c.ContactId,
+                    Name = c.Name,
+                    ContactType = c.ContactType,
+                    Title = c.Title,
+                    PhoneNumber = c.PhoneNumber,
+                    Email = c.Email,
+                    OrganizationId = c.OrganizationId,
+                    DepartmentId = c.DepartmentId
+                }).ToList()
+            };
+
+            var parameters = new DialogParameters<OrganizationDialog>
+            {
+                { x => x.Model, model },
+                { x => x.SubmitLabel, "Save" }
+            };
+
+            var dialog = await DialogService.ShowAsync<OrganizationDialog>("Edit Organization", parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+            var result = await dialog.Result;
+
+            if (result == null || result.Canceled)
+            {
+                OrganizationsCache.Invalidate();
+                await ReloadTableAsync();
+                return;
+            }
+
+            var edited = (Organization)result.Data!;
+
+            try
+            {
+                var dto = new UpdateOrganizationDto
+                {
+                    OrganizationId = org.OrganizationId,
+                    Name = edited.Name,
+                    Address = edited.Address,
+                    City = edited.City,
+                    State = edited.State,
+                    PostalCode = edited.PostalCode,
+                    Country = edited.Country,
+                    Note = edited.Note,
+                    Color = edited.Color
+                };
+
+                var response = await client.PutAsJsonAsync(Constants.API.Organization.Update, dto);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't update organization."), Severity.Error);
+                    return;
+                }
+
+                Snackbar.Add("Organization updated.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't update organization.");
+            }
+        }
+
+        private async Task ToggleActive(Organization org)
+        {
+            if (org.IsActive)
+            {
+                var confirmed = await DialogService.ShowMessageBoxAsync(
+                    "Deactivate organization",
+                    $"Deactivate \"{org.Name}\"? Departments under this organization will also be marked inactive.",
+                    yesText: "Deactivate", cancelText: "Cancel");
+                if (confirmed != true) return;
+
+                var cascadeProjects = await ConfirmCascadeProjectsAsync(org.Name);
+                if (cascadeProjects is null) return;
+
+                try
+                {
+                    var response = await client.PostAsJsonAsync(
+                        $"{Constants.API.Organization.SetActive}/{org.OrganizationId}/setactive",
+                        new SetActiveOrganizationRequestDto { CascadeProjects = cascadeProjects == true });
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't deactivate organization."), Severity.Error);
+                        return;
+                    }
+
+                    Snackbar.Add("Organization deactivated.", Severity.Success);
+                    InvalidateAfterOrgMutation();
+                    await ReloadTableAsync();
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.AddApiError(ex, "Couldn't deactivate organization.");
+                }
+
+                return;
+            }
+
+            var activate = await DialogService.ShowMessageBoxAsync(
+                "Confirm", $"Are you sure you want to activate \"{org.Name}\"?",
+                yesText: "Yes", cancelText: "Cancel");
+            if (activate != true) return;
+
+            try
+            {
+                var response = await client.PostAsync($"{Constants.API.Organization.SetActive}/{org.OrganizationId}/setactive", null);
+                response.EnsureSuccessStatusCode();
+                Snackbar.Add("Organization activated.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't activate organization.");
+            }
+        }
+
+        private async Task ArchiveOrganization(Organization org)
+        {
+            if (org.IsArchived)
+            {
+                var choice = await DialogService.ShowMessageBoxAsync(
+                    "Unarchive organization",
+                    $"Unarchive \"{org.Name}\"? This also unarchives its departments and projects (time on those projects comes back with them). By default they will be Active.",
+                    yesText: "Unarchive as Active",
+                    noText: "Unarchive as Inactive",
+                    cancelText: "Cancel");
+                if (choice is null) return;
+
+                try
+                {
+                    var response = await client.PostAsJsonAsync(
+                        $"{Constants.API.Organization.Archive}/{org.OrganizationId}/archive",
+                        new ArchiveOrganizationRequestDto { SetActive = choice == true });
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't unarchive organization."), Severity.Error);
+                        return;
+                    }
+
+                    Snackbar.Add(choice == true
+                        ? "Organization, departments, and projects unarchived and set Active."
+                        : "Organization, departments, and projects unarchived (inactive).", Severity.Success);
+                    InvalidateAfterOrgMutation();
+                    await ReloadTableAsync();
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.AddApiError(ex, "Couldn't unarchive organization.");
+                }
+
+                return;
+            }
+
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Archive organization",
+                $"Archive \"{org.Name}\"? This archives the organization, its departments, and its projects together. Time on those projects stays with them and cannot be used until unarchived. They will not show in normal lists unless you turn on Show archived.",
+                yesText: "Archive", cancelText: "Cancel");
+            if (confirmed != true) return;
+
+            try
+            {
+                var response = await client.PostAsJsonAsync(
+                    $"{Constants.API.Organization.Archive}/{org.OrganizationId}/archive",
+                    new ArchiveOrganizationRequestDto());
+                if (!response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't archive organization."), Severity.Error);
+                    return;
+                }
+
+                Snackbar.Add("Organization archived with its departments and projects.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't archive organization.");
+            }
+        }
+
+        /// <summary>
+        /// Ask whether to mark projects under the org inactive. Cancel aborts the parent action.
+        /// Departments always go inactive with the org — they are not part of this prompt.
+        /// </summary>
+        private async Task<bool?> ConfirmCascadeProjectsAsync(string orgName)
+        {
+            return await DialogService.ShowMessageBoxAsync(
+                "Projects under this organization",
+                $"Also mark projects under \"{orgName}\" inactive? Time cannot be logged while the organization is inactive either way.",
+                yesText: "Yes, inactivate projects",
+                noText: "No, leave projects",
+                cancelText: "Cancel");
+        }
+
+        private static async Task<string> ReadApiMessageAsync(HttpResponseMessage response, string fallback)
+        {
+            var text = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(text))
+                return fallback;
+
+            text = text.Trim();
+            if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
+                text = text[1..^1];
+
+            return string.IsNullOrWhiteSpace(text) ? fallback : text;
+        }
+
+        private async Task DeleteOrganization(Organization org)
+        {
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Confirm Delete", $"Are you sure you want to permanently delete \"{org.Name}\"? This cannot be undone.",
+                yesText: "Delete", cancelText: "Cancel");
+
+            if (confirmed != true) return;
+
+            try
+            {
+                var response = await client.DeleteAsync($"{Constants.API.Organization.Delete}/{org.OrganizationId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Organization deleted.", Severity.Success);
+                    InvalidateAfterOrgMutation();
+                    await ReloadTableAsync();
+                }
+                else
+                {
+                    var msg = await response.Content.ReadAsStringAsync();
+                    Snackbar.Add(msg, Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't delete organization.");
+            }
+        }
+
+        #endregion
+
+        #region Department CRUD
+
+        private async Task ViewDepartment(Organization org, DepartmentModel dept)
+        {
+            var parameters = new DialogParameters<ViewDepartmentDialog>
+            {
+                { x => x.Model, dept }
+            };
+
+            await DialogService.ShowAsync<ViewDepartmentDialog>(dept.Name, parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true, CloseButton = true });
+        }
+
+        private async Task AddDepartment(Organization org)
+        {
+            var model = new DepartmentModel { OrganizationId = org.OrganizationId };
+            var parameters = new DialogParameters<DepartmentDialog>
+            {
+                { x => x.Model, model },
+                { x => x.SubmitLabel, "Create" }
+            };
+
+            var dialog = await DialogService.ShowAsync<DepartmentDialog>($"New Department for {org.Name}", parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+            var result = await dialog.Result;
+
+            if (result == null || result.Canceled)
+                return;
+
+            var dept = (DepartmentModel)result.Data!;
+
+            try
+            {
+                var dto = new CreateDepartmentDto
+                {
+                    Name = dept.Name,
+                    OrganizationId = org.OrganizationId
+                };
+
+                var response = await client.PostAsJsonAsync(Constants.API.Department.Create, dto);
+                response.EnsureSuccessStatusCode();
+
+                Snackbar.Add("Department created.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't create department.");
+            }
+        }
+
+        private async Task EditDepartment(Organization org, DepartmentModel dept)
+        {
+            var model = new DepartmentModel
+            {
+                DepartmentId = dept.DepartmentId,
+                Name = dept.Name,
+                OrganizationId = dept.OrganizationId,
+                Contacts = dept.Contacts?.Select(c => new ContactModel
+                {
+                    ContactId = c.ContactId,
+                    Name = c.Name,
+                    ContactType = c.ContactType,
+                    Title = c.Title,
+                    PhoneNumber = c.PhoneNumber,
+                    Email = c.Email,
+                    OrganizationId = c.OrganizationId,
+                    DepartmentId = c.DepartmentId
+                }).ToList()
+            };
+
+            var parameters = new DialogParameters<DepartmentDialog>
+            {
+                { x => x.Model, model },
+                { x => x.SubmitLabel, "Save" }
+            };
+
+            var dialog = await DialogService.ShowAsync<DepartmentDialog>($"Edit Department - {org.Name}", parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+            var result = await dialog.Result;
+
+            if (result == null || result.Canceled)
+            {
+                OrganizationsCache.Invalidate();
+                await ReloadTableAsync();
+                return;
+            }
+
+            var edited = (DepartmentModel)result.Data!;
+
+            try
+            {
+                var dto = new UpdateDepartmentDto
+                {
+                    DepartmentId = dept.DepartmentId,
+                    Name = edited.Name,
+                    OrganizationId = dept.OrganizationId
+                };
+
+                var response = await client.PutAsJsonAsync(Constants.API.Department.Update, dto);
+                response.EnsureSuccessStatusCode();
+
+                Snackbar.Add("Department updated.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't update department.");
+            }
+        }
+
+        private async Task ToggleDepartmentActive(DepartmentModel dept)
+        {
+            var action = dept.IsActive ? "deactivate" : "activate";
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Confirm", $"Are you sure you want to {action} \"{dept.Name}\"?",
+                yesText: "Yes", cancelText: "Cancel");
+
+            if (confirmed != true) return;
+
+            try
+            {
+                var response = await client.PostAsync($"{Constants.API.Department.SetActive}/{dept.DepartmentId}/setactive", null);
+                response.EnsureSuccessStatusCode();
+                Snackbar.Add($"Department {action}d.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, $"Couldn't {action} department.");
+            }
+        }
+
+        private async Task ArchiveDepartment(DepartmentModel dept)
+        {
+            var action = dept.IsArchived ? "unarchive" : "archive";
+            var detail = dept.IsArchived
+                ? $"Unarchive \"{dept.Name}\"? This also unarchives the organization and projects under this department."
+                : $"Archive \"{dept.Name}\"? This also archives projects under this department. Time on those projects stays with them.";
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Confirm", detail,
+                yesText: dept.IsArchived ? "Unarchive" : "Archive", cancelText: "Cancel");
+
+            if (confirmed != true) return;
+
+            try
+            {
+                var response = await client.PostAsync($"{Constants.API.Department.Archive}/{dept.DepartmentId}/archive", null);
+                response.EnsureSuccessStatusCode();
+                Snackbar.Add($"Department {action}d.", Severity.Success);
+                InvalidateAfterOrgMutation();
+                await ReloadTableAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, $"Couldn't {action} department.");
+            }
+        }
+
+        private async Task DeleteDepartment(DepartmentModel dept)
+        {
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Confirm Delete", $"Are you sure you want to delete department \"{dept.Name}\"?",
+                yesText: "Delete", cancelText: "Cancel");
+
+            if (confirmed != true) return;
+
+            try
+            {
+                var response = await client.DeleteAsync($"{Constants.API.Department.Delete}/{dept.DepartmentId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    Snackbar.Add("Department deleted.", Severity.Success);
+                    InvalidateAfterOrgMutation();
+                    await ReloadTableAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't delete department.");
+            }
+        }
+
+        #endregion
+    }
+
+    public class OrgDisplayRow
+    {
+        public Organization? Organization { get; }
+        public DepartmentModel? Department { get; }
+        public bool IsOrgRow => Department == null;
+        public string SortKey => Organization?.Name ?? "";
+
+        public OrgDisplayRow(Organization org)
+        {
+            Organization = org;
+        }
+
+        public OrgDisplayRow(Organization org, DepartmentModel dept)
+        {
+            Organization = org;
+            Department = dept;
+        }
+    }
+}

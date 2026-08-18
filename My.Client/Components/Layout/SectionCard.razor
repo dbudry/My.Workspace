@@ -1,0 +1,46 @@
+@*
+    Section card: outlined MudPaper with consistent padding and an optional header
+    (title + description + right-side actions). Replaces ad-hoc <MudPaper Class="pa-4 mb-4">.
+*@
+
+<MudPaper Class="@($"section-card pa-4 mb-4 {Class}")" Elevation="0" Outlined="true">
+    @if (!string.IsNullOrEmpty(Title) || HeaderActions is not null || !string.IsNullOrEmpty(Description) || !string.IsNullOrEmpty(Icon))
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween"
+                  Spacing="2" Class="section-card-header mb-3 flex-wrap">
+            <div>
+                @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Icon))
+                {
+                    <div class="d-flex align-center">
+                        @if (!string.IsNullOrEmpty(Icon))
+                        {
+                            <MudIcon Icon="@Icon" Size="Size.Small" Class="mr-2" />
+                        }
+                        @if (!string.IsNullOrEmpty(Title))
+                        {
+                            <MudText Typo="Typo.h6">@Title</MudText>
+                        }
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(Description))
+                {
+                    <MudText Typo="Typo.body2" Class="section-card-description mt-1">@Description</MudText>
+                }
+            </div>
+            @if (HeaderActions is not null)
+            {
+                <div class="d-flex gap-2 align-center flex-wrap">@HeaderActions</div>
+            }
+        </MudStack>
+    }
+    @ChildContent
+</MudPaper>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

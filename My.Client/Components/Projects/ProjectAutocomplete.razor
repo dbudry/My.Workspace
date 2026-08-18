@@ -1,0 +1,463 @@
+@namespace My.Client.Components.Projects
+@using My.Client.Helpers
+@using My.Client.Models
+@using My.Client.Services
+@using My.Shared.Dtos.Paging
+@implements IDisposable
+@inject ProjectsCache ProjectsCache
+@inject IJSRuntime Js
+
+@*
+    Project picker with free-text field + popover list.
+    Active projects load one page at a time; scroll to the bottom loads the next page.
+    Typing filters via server search (still paged). SearchFunc is optional and unused for
+    paging — pickers share ProjectsCache.LookupActivePageAsync (active, non-archived only).
+*@
+
+<div class="project-autocomplete @Class @(_open ? "project-autocomplete-open" : null)" style="@Style" @onfocusin="OnFocusIn">
+    <MudTextField @ref="_textField"
+                  T="string"
+                  Value="_text"
+                  ValueChanged="OnTextChanged"
+                  Label="@Label"
+                  Variant="@Variant"
+                  Margin="@Margin"
+                  Immediate="true"
+                  Clearable="true"
+                  Placeholder="@Placeholder"
+                  AutoFocus="@AutoFocus"
+                  Adornment="Adornment.End"
+                  AdornmentIcon="@Icons.Material.Filled.Search"
+                  AdornmentColor="Color.Default"
+                  OnClearButtonClick="ClearAsync"
+                  OnBlur="OnBlur"
+                  OnKeyDown="OnKeyDown" />
+
+    @* Do not set MaxHeight on MudPopover — that steals scroll from our inner list.
+       PreferOpenUpward: use in dialogs so the list is not clipped by the bottom of the screen. *@
+    <MudPopover Open="_open"
+                Fixed="true"
+                Paper="true"
+                Elevation="8"
+                RelativeWidth="DropdownWidth.Ignore"
+                OverflowBehavior="OverflowBehavior.FlipOnOpen"
+                AnchorOrigin="@(PreferOpenUpward ? Origin.TopLeft : Origin.BottomLeft)"
+                TransformOrigin="@(PreferOpenUpward ? Origin.BottomLeft : Origin.TopLeft)"
+                Class="@($"project-autocomplete-popover{(PreferOpenUpward ? " project-autocomplete-popover-up" : "")}")"
+                Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
+        <div @ref="_scrollEl"
+             @onmousedown:preventDefault="true"
+             class="project-autocomplete-scroll"
+             @onscroll="OnListScrollAsync">
+            @if (_loading && _results.Count == 0)
+            {
+                <div class="pa-3 d-flex justify-center">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                </div>
+            }
+            else if (_results.Count == 0 && !_loading)
+            {
+                <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
+                    No matching projects. Try a different name or slug.
+                </MudText>
+            }
+            else
+            {
+                <MudList T="Project" Dense="@Dense" Class="py-1 project-autocomplete-list">
+                    @for (var i = 0; i < _results.Count; i++)
+                    {
+                        var project = _results[i];
+                        var idx = i;
+                        <MudListItem T="Project"
+                                     OnClick="@(() => SelectAsync(project))"
+                                     Class="@(idx == _highlightIndex ? "mud-selected-item mud-primary-text mud-primary-hover" : null)">
+                            <div class="d-flex align-center justify-space-between" style="width: 100%; gap: 8px;">
+                                <div class="d-flex flex-column" style="min-width: 0; flex: 1;">
+                                    <span>@project.Name</span>
+                                    @{
+                                        var affiliation = ProjectDisplayHelper.AffiliationCaption(
+                                            project.OrganizationName, project.ProjectGroupName);
+                                    }
+                                    @if (!string.IsNullOrEmpty(affiliation))
+                                    {
+                                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary); line-height: 1.2;">
+                                            @affiliation
+                                        </MudText>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(project.FullSlug))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-2" Style="flex-shrink: 0;">
+                                        [@project.FullSlug]
+                                    </MudChip>
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+                @if (_loadingMore)
+                {
+                    <div class="pa-2 d-flex justify-center">
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    </div>
+                }
+                else if (_hasMore)
+                {
+                    <div class="px-2 pb-2 pt-1 d-flex flex-column align-center gap-1">
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                   FullWidth="true"
+                                   OnClick="LoadMoreAsync"
+                                   Disabled="@_loadingMore">
+                            Load more projects
+                        </MudButton>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Or scroll to load more
+                        </MudText>
+                    </div>
+                }
+            }
+        </div>
+    </MudPopover>
+</div>
+
+@code {
+    [Parameter] public Project? Value { get; set; }
+    [Parameter] public EventCallback<Project?> ValueChanged { get; set; }
+
+    /// <summary>Optional; retained for call-site compatibility. Paging always uses ProjectsCache.</summary>
+    [Parameter] public Func<string?, CancellationToken, Task<IEnumerable<Project>>>? SearchFunc { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Project";
+    [Parameter] public string Placeholder { get; set; } = "Type to search projects…";
+    [Parameter] public Variant Variant { get; set; } = Variant.Text;
+    [Parameter] public Margin Margin { get; set; } = Margin.Dense;
+    [Parameter] public bool Dense { get; set; } = true;
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool AutoFocus { get; set; }
+    [Parameter] public bool ClearValueWhileTyping { get; set; } = true;
+    [Parameter] public EventCallback Dismissed { get; set; }
+
+    /// <summary>
+    /// When true, open the list above the field (dialogs near the bottom of the viewport).
+    /// FlipOnOpen still applies if there is no room above.
+    /// </summary>
+    [Parameter] public bool PreferOpenUpward { get; set; }
+
+    private MudTextField<string>? _textField;
+    private ElementReference _scrollEl;
+    private bool _autoFocusApplied;
+    private string _text = string.Empty;
+    private string? _syncedValueId;
+    private bool _textDirty;
+    private bool _open;
+    private bool _loading;
+    private bool _loadingMore;
+    private bool _suppressBlurClose;
+    private int _highlightIndex = -1;
+    private List<Project> _results = new();
+    private CancellationTokenSource? _searchCts;
+    private CancellationTokenSource? _debounceCts;
+
+    private int _pageNumber;
+    private bool _hasMore;
+    private string _activeQuery = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        var id = Value?.ProjectId;
+        if (_textDirty)
+            return;
+
+        if (id != _syncedValueId)
+        {
+            _syncedValueId = id;
+            _text = Value is null ? string.Empty : (Value.DisplayName ?? Value.Name ?? string.Empty);
+        }
+        else if (Value is null && _syncedValueId is not null)
+        {
+            _syncedValueId = null;
+            _text = string.Empty;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_autoFocusApplied && AutoFocus && _textField is not null)
+        {
+            _autoFocusApplied = true;
+            try
+            {
+                await _textField.FocusAsync();
+                if (!_open)
+                    await ResetAndSearchAsync(string.Empty, CancellationToken.None);
+            }
+            catch
+            {
+                // Focus can fail if the element was already torn down.
+            }
+        }
+    }
+
+    private async Task OnTextChanged(string? value)
+    {
+        _text = value ?? string.Empty;
+        _textDirty = true;
+
+        if (ClearValueWhileTyping
+            && Value is not null
+            && !string.Equals(_text, Value.DisplayName, StringComparison.Ordinal)
+            && !string.Equals(_text, Value.Name, StringComparison.Ordinal))
+        {
+            _syncedValueId = null;
+            await ValueChanged.InvokeAsync(null);
+        }
+
+        await ScheduleSearchAsync();
+    }
+
+    private async Task ScheduleSearchAsync()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = new CancellationTokenSource();
+        var token = _debounceCts.Token;
+
+        try
+        {
+            await Task.Delay(200, token);
+            await ResetAndSearchAsync(_text, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // newer keystroke
+        }
+    }
+
+    private async Task ResetAndSearchAsync(string? query, CancellationToken outerToken)
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = CancellationTokenSource.CreateLinkedTokenSource(outerToken);
+        var token = _searchCts.Token;
+
+        _activeQuery = query?.Trim() ?? string.Empty;
+        _pageNumber = 0;
+        _hasMore = false;
+        _results = new List<Project>();
+        _loading = true;
+        _loadingMore = false;
+        _open = true;
+        StateHasChanged();
+
+        try
+        {
+            await LoadNextPageAsync(token, replace: true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                _loading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task LoadNextPageAsync(CancellationToken token, bool replace)
+    {
+        var nextPage = _pageNumber + 1;
+        var pageSize = ListQueryParameters.MaxPageSize;
+        var (items, hasNext) = await ProjectsCache.LookupActivePageAsync(
+            search: string.IsNullOrWhiteSpace(_activeQuery) ? null : _activeQuery,
+            pageNumber: nextPage,
+            pageSize: pageSize);
+
+        if (token.IsCancellationRequested)
+            return;
+
+        if (replace)
+            _results = items.ToList();
+        else
+            AppendUnique(items);
+
+        _pageNumber = nextPage;
+        _hasMore = hasNext;
+
+        _highlightIndex = 0;
+        if (Value is not null && _results.Count > 0)
+        {
+            var selectedIdx = _results.FindIndex(p =>
+                string.Equals(p.ProjectId, Value.ProjectId, StringComparison.Ordinal));
+            if (selectedIdx >= 0)
+                _highlightIndex = selectedIdx;
+        }
+        else if (_results.Count == 0)
+        {
+            _highlightIndex = -1;
+        }
+    }
+
+    private void AppendUnique(IReadOnlyList<Project> items)
+    {
+        var existing = new HashSet<string>(_results.Select(p => p.ProjectId), StringComparer.Ordinal);
+        foreach (var p in items)
+        {
+            if (existing.Add(p.ProjectId))
+                _results.Add(p);
+        }
+    }
+
+    private async Task OnListScrollAsync()
+    {
+        if (!_hasMore || _loadingMore || _loading)
+            return;
+
+        var nearBottom = false;
+        try
+        {
+            nearBottom = await Js.InvokeAsync<bool>(
+                "projectAutocomplete.isNearBottom", _scrollEl, 80);
+        }
+        catch
+        {
+            // Fall through — button "Load more" still works without JS.
+            return;
+        }
+
+        if (nearBottom)
+            await LoadMoreAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (!_hasMore || _loadingMore || _loading)
+            return;
+
+        _loadingMore = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var token = _searchCts?.Token ?? CancellationToken.None;
+            await LoadNextPageAsync(token, replace: false);
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        finally
+        {
+            _loadingMore = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SelectAsync(Project project)
+    {
+        _suppressBlurClose = true;
+        _text = project.DisplayName ?? project.Name ?? string.Empty;
+        _syncedValueId = project.ProjectId;
+        _textDirty = false;
+        _open = false;
+        _results = new List<Project>();
+        _hasMore = false;
+        await ValueChanged.InvokeAsync(project);
+        _suppressBlurClose = false;
+    }
+
+    private async Task ClearAsync()
+    {
+        _text = string.Empty;
+        _syncedValueId = null;
+        _textDirty = false;
+        _open = false;
+        _results = new List<Project>();
+        _hasMore = false;
+        await ValueChanged.InvokeAsync(null);
+    }
+
+    private async Task OnFocusIn()
+    {
+        if (!_open)
+        {
+            _debounceCts?.Cancel();
+            await ResetAndSearchAsync(string.Empty, CancellationToken.None);
+        }
+    }
+
+    private async Task OnBlur()
+    {
+        await Task.Delay(150);
+        if (_suppressBlurClose) return;
+        await DismissEditorAsync();
+    }
+
+    private async Task DismissEditorAsync()
+    {
+        _open = false;
+
+        if (!ClearValueWhileTyping && _textDirty && Value is not null)
+        {
+            _text = Value.DisplayName ?? Value.Name ?? string.Empty;
+            _syncedValueId = Value.ProjectId;
+            _textDirty = false;
+        }
+        else if (!ClearValueWhileTyping && _textDirty && Value is null)
+        {
+            _text = string.Empty;
+            _textDirty = false;
+        }
+
+        StateHasChanged();
+
+        if (Dismissed.HasDelegate)
+            await Dismissed.InvokeAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await DismissEditorAsync();
+            return;
+        }
+
+        if (!_open && (e.Key is "ArrowDown" or "Enter"))
+        {
+            await ResetAndSearchAsync(string.Empty, CancellationToken.None);
+            return;
+        }
+
+        if (!_open || _results.Count == 0) return;
+
+        if (e.Key == "ArrowDown")
+        {
+            _highlightIndex = Math.Min(_results.Count - 1, _highlightIndex + 1);
+            if (_highlightIndex >= _results.Count - 3 && _hasMore && !_loadingMore)
+                await LoadMoreAsync();
+            StateHasChanged();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            _highlightIndex = Math.Max(0, _highlightIndex - 1);
+            StateHasChanged();
+        }
+        else if (e.Key == "Enter" && _highlightIndex >= 0 && _highlightIndex < _results.Count)
+        {
+            await SelectAsync(_results[_highlightIndex]);
+        }
+    }
+
+    public void Dispose()
+    {
+        _open = false;
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+    }
+}

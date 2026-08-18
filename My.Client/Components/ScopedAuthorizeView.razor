@@ -1,0 +1,51 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using My.Shared.Constants
+
+<AuthorizeView>
+    <Authorized>
+        @if (HasAccess(context.User))
+        {
+            @Authorized
+        }
+        else if (NotAuthorized != null)
+        {
+            @NotAuthorized(context)
+        }
+    </Authorized>
+    <NotAuthorized>
+        @if (NotAuthorized != null)
+        {
+            @NotAuthorized(context)
+        }
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    /// <summary>
+    /// The scope to check (e.g. "Tyme"). Leave null to check global roles only.
+    /// </summary>
+    [Parameter] public string? Scope { get; set; }
+
+    /// <summary>
+    /// The minimum role level required. Defaults to "User".
+    /// Hierarchy: User -> Manager -> Admin (higher roles inherit access).
+    /// </summary>
+    [Parameter] public string MinimumRole { get; set; } = Constants.Roles.User;
+
+    /// <summary>
+    /// When true, global roles do NOT satisfy the check — only scoped roles within
+    /// <see cref="Scope"/>. Use for module-specific surfaces (e.g. Tyme management
+    /// views) where global Admin/Manager shouldn't appear in the audience.
+    /// </summary>
+    [Parameter] public bool ScopedOnly { get; set; }
+
+    [Parameter] public RenderFragment? Authorized { get; set; }
+    [Parameter] public RenderFragment<AuthenticationState>? NotAuthorized { get; set; }
+
+    private bool HasAccess(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return ScopedOnly
+            ? Constants.Roles.HasScopedAccess(user, Scope ?? "", MinimumRole)
+            : Constants.Roles.HasAccess(user, Scope ?? "", MinimumRole);
+    }
+}

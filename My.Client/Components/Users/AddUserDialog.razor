@@ -1,0 +1,116 @@
+@namespace My.Client.Components.Users
+@using My.Client.Extensions
+@using My.Shared.Constants
+@using My.Shared.Dtos.User
+@using My.Shared.Rules
+
+<MudDialog>
+    <DialogContent>
+        <EditForm Model="@model" OnValidSubmit="@Save">
+            <DataAnnotationsValidator />
+            <DialogFormStack>
+                <MudTextField @bind-Value="model.FirstName" Label="First Name" Variant="Variant.Outlined"
+                              Required="true" RequiredError="First name is required" />
+                <MudTextField @bind-Value="model.LastName" Label="Last Name" Variant="Variant.Outlined"
+                              Required="true" RequiredError="Last name is required" />
+                <MudTextField @bind-Value="model.Email" Label="Email" Variant="Variant.Outlined"
+                              Required="true" RequiredError="Email is required" OnBlur="@AutoFillNameFromEmail" />
+                <RolePicker AvailableRoles="@AvailableRoles" @bind-SelectedRoles="selectedRoles" Label="Roles" />
+                <ValidationSummary />
+                @* Hidden submit so EditForm validation drives the Save button via OnValidSubmit. *@
+                <button type="submit" style="display:none;"></button>
+            </DialogFormStack>
+        </EditForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Disabled="@isSaving">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="@TrySave" Disabled="@isSaving"
+                   StartIcon="@Icons.Material.Filled.Save">
+            @(isSaving ? "AddingΓÇª" : "Add User")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+
+    [Parameter, EditorRequired] public IReadOnlyList<string> AvailableRoles { get; set; } = Array.Empty<string>();
+
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
+    private CreateUserDto model = new();
+    private List<string> selectedRoles = new();
+    private bool isSaving;
+    private EditContext? _editContext;
+
+    protected override void OnInitialized()
+    {
+        _editContext = new EditContext(model);
+    }
+
+    private async Task TrySave()
+    {
+        if (_editContext is null || !_editContext.Validate())
+        {
+            foreach (var msg in _editContext?.GetValidationMessages() ?? Array.Empty<string>())
+                Snackbar.Add(msg, Severity.Error);
+            return;
+        }
+        await Save();
+    }
+
+    private async Task Save()
+    {
+        if (selectedRoles.Count == 0)
+        {
+            Snackbar.Add("At least one role must be selected.", Severity.Warning);
+            return;
+        }
+
+        model.Roles = selectedRoles.ToList();
+
+        isSaving = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.PostAsJsonAsync(Constants.API.User.Create, model);
+            if (resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("User created successfully.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(true));
+                return;
+            }
+            var body = await resp.Content.ReadAsStringAsync();
+            Snackbar.Add(string.IsNullOrWhiteSpace(body) ? "Couldn't create user." : body, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't create user.");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// On Email blur, fill blank FirstName/LastName from the email's local-part as a
+    /// starting guess so the admin doesn't have to retype names they already typed in
+    /// the address. Never overwrites a value the admin has already entered.
+    /// The user's heal-on-sign-in path will upgrade the guess to their real Google name
+    /// the first time they log in.
+    /// </summary>
+    private void AutoFillNameFromEmail()
+    {
+        if (string.IsNullOrWhiteSpace(model.Email)) return;
+        var (first, last) = UserNameRules.ParseFromEmail(model.Email);
+        if (string.IsNullOrWhiteSpace(model.FirstName) && !string.IsNullOrEmpty(first))
+            model.FirstName = first;
+        if (string.IsNullOrWhiteSpace(model.LastName) && !string.IsNullOrEmpty(last))
+            model.LastName = last;
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}

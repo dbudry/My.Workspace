@@ -1,0 +1,54 @@
+@using MudBlazor
+@using My.Client.Models
+@using My.Client.Components.Projects
+@using My.Shared.Rules
+@namespace My.Client.Components.TrackedTasks
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Update (Direct)</MudText>
+    </TitleContent>
+    <DialogContent>
+        <DialogFormStack>
+            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                @(OriginalUserName)
+            </MudText>
+
+            <MudTextField T="string" @bind-Value="editName" Label="Description" Margin="Margin.Dense"
+                          MaxLength="TaskDetailsRules.MaxLength" Counter="TaskDetailsRules.MaxLength" Immediate="true" />
+
+            <MudDatePicker @bind-Date="editDate" Label="Date" Margin="Margin.Dense" />
+
+            <ProjectAutocomplete Value="selectedProject" ValueChanged="OnProjectChanged"
+                                 PreferOpenUpward="true"
+                                 Label="Project" SearchFunc="SearchProjects" />
+
+            <div class="d-flex gap-2">
+                <MudNumericField T="int" @bind-Value="editHours" Label="Hours" Margin="Margin.Dense"
+                                 Min="0" Max="99" Style="width: 100px;" />
+                <MudNumericField T="int" @bind-Value="editMinutes" Label="Minutes" Margin="Margin.Dense"
+                                 Min="0" Max="59" Style="width: 100px;" />
+            </div>
+
+            <MudSwitch T="bool" @bind-Value="editIsBillable" Label="Billable" Color="Color.Primary" />
+            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                Manager-only override — independent of the project's billable setting.
+            </MudText>
+
+            @if (!string.IsNullOrEmpty(saveError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@saveError</MudAlert>
+            }
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@isBusy">
+            @if (isBusy)
+            {
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+            }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>

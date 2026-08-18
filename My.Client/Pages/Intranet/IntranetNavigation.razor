@@ -1,0 +1,845 @@
+@page "/intranet/navigation"
+@using System.Net.Http.Json
+@using MudBlazor
+@using My.Shared.Constants
+@using My.Shared.Dtos.Intranet
+@using My.Shared.Rules
+
+<PageTitle>Intranet Navigation</PageTitle>
+
+<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Admin" ScopedOnly="true">
+    <Authorized>
+        <PageHeader Title="Intranet Navigation & Content Structure" Description="This is the main place to organize your intranet menu and add content. Build the tree here, then use 'Add page' or 'Add content' on any item to create pages in context. No more separate wiring of pages to menu." />
+
+        <PageLoader IsLoading="@isLoading">
+            <MudStack Row="true" Spacing="2" Class="mb-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="ShowCreateDialog">
+                    New Nav Item
+                </MudButton>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined" OnClick="LoadNavigation">Refresh</MudButton>
+            </MudStack>
+
+            @* Hierarchical tree view instead of flat list. Shows real parent/child structure.
+               No raw IDs are ever shown to the user — only human-readable titles. *@
+            @if (navItems.Any())
+            {
+                <MudTreeView T="IntranetNavigationItemDto" ExpandOnClick="true" Class="mb-2">
+                    @foreach (var root in navItems)
+                    {
+                        @RenderNavTreeNode(root)
+                    }
+                </MudTreeView>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No navigation items yet. Click "New Nav Item" to create the first one.</MudText>
+            }
+
+            <MudText Typo="Typo.caption" Class="mt-4">
+                Top-level items (ParentId empty) are the prominent links. Use Manage Pages to create or edit content first, then link the pages here.
+                Navigation max depth: <strong>@intranetNavigationMaxDepth</strong> (App Settings → Intranet).
+            </MudText>
+        </PageLoader>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Admin:Intranet role required.</MudAlert>
+    </NotAuthorized>
+</ScopedAuthorizeView>
+
+<MudDialog @bind-Visible="showDialog">
+    <TitleContent><MudText Typo="Typo.h6">@dialogTitle</MudText></TitleContent>
+    <DialogContent>
+        <MudStack Spacing="4">
+        <MudTextField @bind-Value="editDto.Title" Label="Title" Required="true" />
+
+        <MudStack Row="true" AlignItems="AlignItems.End" Spacing="2">
+            <MudTextField @bind-Value="editDto.Icon" Label="Icon (Material name)" Style="max-width: 260px;" />
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Palette" OnClick="OpenIconPicker">
+                Browse icons
+            </MudButton>
+            @if (!string.IsNullOrWhiteSpace(editDto.Icon))
+            {
+                <span class="material-icons" style="font-size: 32px; color: var(--mud-palette-primary);">@editDto.Icon</span>
+            }
+        </MudStack>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+            Click "Browse icons" to pick from the Material Icons font. Search in the picker to browse 2,000+ icons, or type any valid icon name (e.g. "home", "folder_open").
+        </MudText>
+
+        <MudStack Spacing="2" Class="mb-4">
+            <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Destination (choose one)</MudText>
+            <MudRadioGroup Value="linkType" ValueChanged="LinkTypeChanged" T="string">
+                <MudRadio Value="@(ExternalLinkType)" Color="Color.Primary">External URL</MudRadio>
+                <MudRadio Value="@(PageLinkType)" Color="Color.Primary">Internal Page</MudRadio>
+            </MudRadioGroup>
+
+            @if (linkType == ExternalLinkType)
+            {
+                <MudTextField @bind-Value="editDto.ExternalUrl" Label="External URL" />
+            }
+            else if (linkType == PageLinkType)
+            {
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                    @if (!string.IsNullOrWhiteSpace(selectedPageTitleForDisplay))
+                    {
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">@selectedPageTitleForDisplay</MudChip>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">(no page linked)</MudText>
+                    }
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="OpenPagePicker">Select Existing Page...</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateNewPageInline">Create New Page</MudButton>
+                    @if (!string.IsNullOrWhiteSpace(editDto.PageId))
+                    {
+                        <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => { editDto.PageId = null; selectedPageTitleForDisplay = null; })">Clear</MudButton>
+                    }
+                </MudStack>
+            }
+        </MudStack>
+
+        <MudNumericField @bind-Value="editDto.SortOrder" Label="Sort Order" Class="mb-2" />
+
+        <MudStack Spacing="1" Class="mb-2">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Parent Item (for sub-menu, optional)</MudText>
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                @if (!string.IsNullOrWhiteSpace(selectedParentTitleForDisplay))
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">@selectedParentTitleForDisplay</MudChip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">(top level)</MudText>
+                }
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="OpenParentPicker">Select Parent...</MudButton>
+                @if (!string.IsNullOrWhiteSpace(editDto.ParentId))
+                {
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => { editDto.ParentId = null; selectedParentTitleForDisplay = null; })">Clear</MudButton>
+                }
+            </MudStack>
+        </MudStack>
+
+        @if (EditingItemHasChildren && !string.IsNullOrWhiteSpace(editDto.PageId))
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                This item has sub-pages: the menu title opens the linked page; use the arrow beside it to expand or collapse children.
+            </MudAlert>
+        }
+
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudSwitch @bind-Value="editDto.IsVisible" Color="Color.Primary" />
+            <MudText Typo="Typo.body2">Visible</MudText>
+            <MudIcon Icon="@(editDto.IsVisible ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)" 
+                     Color="@(editDto.IsVisible ? Color.Success : Color.Default)" Size="Size.Small" />
+        </MudStack>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseDialog">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveItemAsync" Disabled="isSaving">
+            @if (isSaving) { <MudProgressCircular Size="Size.Small" Class="mr-2" /> }
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Icon picker dialog - makes it easy to choose without memorizing Material icon names *@
+<MudDialog @bind-Visible="showIconPicker" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Choose a Material Icon</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            These icons use the Google Material Icons font. The name you pick will appear next to the menu item in the main navigation.
+        </MudText>
+
+        <MudTextField Value="iconSearch"
+                      ValueChanged="@((string v) => OnIconSearchChanged(v))"
+                      Label="Search icons" 
+                      Placeholder="Search 2,000+ icons..."
+                      Immediate="true" 
+                      Adornment="Adornment.Start" 
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Class="mb-2" />
+
+        @if (iconsLoading)
+        {
+            <MudProgressLinear Indeterminate="true" Class="mb-4" />
+        }
+        else if (!FilteredIcons.Any())
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-4">
+                No icons match your search.
+            </MudText>
+        }
+        else
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @if (string.IsNullOrWhiteSpace(iconSearch))
+                    {
+                        <text>@(FilteredIcons.Count) icons — recommended first, then alphabetical.</text>
+                    }
+                    else
+                    {
+                        <text>@(FilteredIcons.Count) icon@(FilteredIcons.Count == 1 ? "" : "s") matching "@iconSearch".</text>
+                    }
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Page @iconPage of @IconPageCount
+                </MudText>
+            </MudStack>
+
+            @if (IconPageCount > 1)
+            {
+                <MudPagination Class="mb-3 d-flex justify-center"
+                               Count="@IconPageCount"
+                               Selected="@iconPage"
+                               SelectedChanged="OnIconPageChanged" />
+            }
+        }
+
+        <MudGrid Spacing="2">
+            @foreach (var icon in PagedIcons)
+            {
+                <MudItem xs="6" sm="4" md="3" lg="2">
+                    <MudButton Variant="Variant.Outlined" 
+                               FullWidth 
+                               OnClick="@(() => SelectIcon(icon))"
+                               Style="min-height: 90px;"
+                               Class="pa-2">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                            <div style="height: 48px; display: flex; align-items: center; justify-content: center; width: 100%;">
+                                <span class="material-icons" style="font-size: 32px; color: var(--mud-palette-primary);">@icon</span>
+                            </div>
+                            <MudText Typo="Typo.caption" Style="word-break: break-all; font-size: 10px;">@icon</MudText>
+                        </MudStack>
+                    </MudButton>
+                </MudItem>
+            }
+        </MudGrid>
+
+        @if (!iconsLoading && FilteredIcons.Any() && IconPageCount > 1)
+        {
+            <MudPagination Class="mt-4 d-flex justify-center"
+                           Count="@IconPageCount"
+                           Selected="@iconPage"
+                           SelectedChanged="OnIconPageChanged" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseIconPicker">Cancel</MudButton>
+        <MudButton Color="Color.Warning" Variant="Variant.Text" OnClick="@(() => { editDto.Icon = string.Empty; CloseIconPicker(); })">
+            Clear Icon
+        </MudButton>
+        <MudButton Color="Color.Primary" OnClick="CloseIconPicker">Done</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Page picker - select from list instead of typing ID *@
+<MudDialog @bind-Visible="showPagePicker" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true }">
+    <TitleContent><MudText Typo="Typo.h6">Select a Page</MudText></TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="pagePickerSearch" Label="Search" Immediate="true" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mb-3" />
+        <MudTable Items="FilteredPagesForPicker" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Title</MudTh>
+                <MudTh>Slug</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd>@context.Slug</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Color="@(context.IsPublished ? Color.Success : Color.Default)">
+                        @(context.IsPublished ? "Published" : "Draft")
+                    </MudChip>
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SelectPage(context))">Select</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="ClosePagePicker">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Parent picker *@
+<MudDialog @bind-Visible="showParentPicker" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true }">
+    <TitleContent><MudText Typo="Typo.h6">Select Parent Nav Item</MudText></TitleContent>
+    <DialogContent>
+        <MudTable Items="flatNavForParentPicker" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Title</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Title</MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="@(() => SelectParent(context))">Select</MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseParentPicker">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private IntranetNavigationEvents NavEvents { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private MaterialIconsCatalog IconCatalog { get; set; } = null!;
+    [Inject] private AppSettingsCache AppSettingsCache { get; set; } = null!;
+
+    private List<IntranetNavigationItemDto> navItems = new();
+    private int intranetNavigationMaxDepth = IntranetNavigationRules.DefaultMaxDepth;
+    private bool isLoading = true;
+    private bool showDialog;
+    private string dialogTitle = "";
+    private CreateIntranetNavigationItemDto editDto = new();
+    private string? editingId;
+    private bool isSaving;
+
+    // Icon picker state
+    private bool showIconPicker;
+    private string iconSearch = "";
+    private bool iconsLoading;
+    private int iconPage = 1;
+    private const int IconsPerPage = 48;
+
+    // Picker state
+    private bool showPagePicker;
+    private bool showParentPicker;
+    private List<IntranetPageSummaryDto> pagesForPicker = new();
+    private List<IntranetNavigationItemDto> flatNavForParentPicker = new();
+    private string pagePickerSearch = "";
+    private string? selectedPageTitleForDisplay;
+    private string? selectedParentTitleForDisplay;
+
+    private const string ExternalLinkType = "external";
+    private const string PageLinkType = "page";
+
+    private bool EditingItemHasChildren
+    {
+        get
+        {
+            if (editingId == null) return false;
+            var item = FindNavItemById(navItems, editingId);
+            return item?.Children?.Any(c => c.IsVisible) == true;
+        }
+    }
+
+    private string linkType = PageLinkType; // default to internal page
+
+    private List<IntranetPageSummaryDto> FilteredPagesForPicker =>
+        string.IsNullOrWhiteSpace(pagePickerSearch)
+            ? pagesForPicker
+            : pagesForPicker.Where(p => (p.Title ?? string.Empty).Contains(pagePickerSearch, StringComparison.OrdinalIgnoreCase) || (p.Slug ?? string.Empty).Contains(pagePickerSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    // Recursive tree node renderer for the management view. Pure titles, no IDs visible.
+    private RenderFragment<IntranetNavigationItemDto> RenderNavTreeNode => item => @<MudTreeViewItem T="IntranetNavigationItemDto" Value="item" Expanded="true">
+        <BodyContent>
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="py-1">
+                @if (!string.IsNullOrWhiteSpace(item.Icon))
+                {
+                    <span class="material-icons" style="font-size: 20px; color: var(--mud-palette-primary);">@item.Icon</span>
+                }
+                <MudText Typo="Typo.body1">@item.Title</MudText>
+
+                <MudSpacer />
+
+                @if (!string.IsNullOrWhiteSpace(item.PageId))
+                {
+                    <MudLink Href="@($"/intranet/pages/{item.PageId}")" Target="_blank" Typo="Typo.caption" Color="Color.Primary">
+                        @item.PageTitle
+                    </MudLink>
+                }
+                else if (!string.IsNullOrWhiteSpace(item.ExternalUrl))
+                {
+                    <MudLink Href="@item.ExternalUrl" Target="_blank" Typo="Typo.caption" Color="Color.Secondary">external</MudLink>
+                }
+
+                @if (item.IsVisible)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Visibility" Color="Color.Success" Size="Size.Small" Title="Visible" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.VisibilityOff" Color="Color.Default" Size="Size.Small" Title="Hidden" />
+                }
+                <MudText Typo="Typo.caption" Style="min-width: 28px; text-align: right;">@item.SortOrder</MudText>
+
+                <MudTooltip Text="Edit this menu item (title, icon, visibility, parent)">
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditItem(item))" />
+                </MudTooltip>
+                @if (!string.IsNullOrWhiteSpace(item.PageId))
+                {
+                    <MudTooltip Text="Edit the page content for this menu item">
+                        <MudIconButton Icon="@Icons.Material.Filled.EditNote" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo($"/intranet/editor?pageId={item.PageId}"))" />
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudTooltip Text="Add content page directly to this menu item">
+                        <MudIconButton Icon="@Icons.Material.Filled.Article" Size="Size.Small" OnClick="@(() => AddContentToNavItem(item))" />
+                    </MudTooltip>
+                }
+                <MudTooltip Text="@GetAddChildTooltip(item)">
+                    <MudIconButton Icon="@Icons.Material.Filled.NoteAdd" Size="Size.Small"
+                                   Disabled="@(!CanAddChildNavItem(item))"
+                                   OnClick="@(() => AddPageUnder(item))" />
+                </MudTooltip>
+                <MudTooltip Text="@GetAddChildTooltip(item)">
+                    <MudIconButton Icon="@Icons.Material.Filled.CreateNewFolder" Size="Size.Small"
+                                   Disabled="@(!CanAddChildNavItem(item))"
+                                   OnClick="@(() => AddSubNavItem(item))" />
+                </MudTooltip>
+                <MudTooltip Text="Delete this menu item">
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteItem(item.Id))" />
+                </MudTooltip>
+            </MudStack>
+        </BodyContent>
+        <ChildContent>
+            @foreach (var child in item.Children ?? new List<IntranetNavigationItemDto>())
+            {
+                @RenderNavTreeNode(child)
+            }
+        </ChildContent>
+    </MudTreeViewItem>;
+
+    private static List<IntranetNavigationItemDto> FlattenNavTreeForPicker(IEnumerable<IntranetNavigationItemDto> items)
+    {
+        var result = new List<IntranetNavigationItemDto>();
+        void Walk(IEnumerable<IntranetNavigationItemDto> list, string prefix = "")
+        {
+            foreach (var i in list)
+            {
+                result.Add(new IntranetNavigationItemDto
+                {
+                    Id = i.Id,
+                    Title = string.IsNullOrEmpty(prefix) ? i.Title : $"{prefix} › {i.Title}",
+                    ParentId = i.ParentId
+                });
+                if (i.Children?.Count > 0)
+                    Walk(i.Children, string.IsNullOrEmpty(prefix) ? i.Title : $"{prefix} › {i.Title}");
+            }
+        }
+        Walk(items);
+        return result;
+    }
+
+    private static List<IntranetNavigationItemDto> FlattenNavTree(IEnumerable<IntranetNavigationItemDto> items)
+    {
+        var result = new List<IntranetNavigationItemDto>();
+        void Walk(IEnumerable<IntranetNavigationItemDto> list)
+        {
+            foreach (var i in list)
+            {
+                result.Add(i);
+                if (i.Children?.Count > 0)
+                    Walk(i.Children);
+            }
+        }
+        Walk(items);
+        return result;
+    }
+
+    private IntranetNavigationItemDto? FindNavItemById(IEnumerable<IntranetNavigationItemDto> items, string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        foreach (var i in items)
+        {
+            if (i.Id == id) return i;
+            var found = FindNavItemById(i.Children ?? new(), id);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private IReadOnlyList<string> FilteredIcons => IconCatalog.Filter(iconSearch);
+
+    private IReadOnlyList<string> PagedIcons =>
+        MaterialIconsCatalog.Page(FilteredIcons, iconPage, IconsPerPage);
+
+    private int IconPageCount =>
+        MaterialIconsCatalog.PageCount(FilteredIcons.Count, IconsPerPage);
+
+    protected override async Task OnInitializedAsync() => await LoadNavigation();
+
+    private async Task LoadNavigation()
+    {
+        isLoading = true;
+        try
+        {
+            try
+            {
+                var settings = await AppSettingsCache.GetAsync();
+                var depthVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.IntranetNavigationMaxDepth);
+                intranetNavigationMaxDepth = IntranetNavigationRules.ParseMaxDepth(depthVal?.Value);
+            }
+            catch
+            {
+                intranetNavigationMaxDepth = IntranetNavigationRules.DefaultMaxDepth;
+            }
+
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var list = await client.GetFromJsonAsync<List<IntranetNavigationItemDto>>(Constants.API.Intranet.Navigation.Get);
+            navItems = list ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { isLoading = false; }
+    }
+
+    private Dictionary<string, string?> NavParentById =>
+        IntranetNavigationRules.BuildParentById(
+            FlattenNavTree(navItems).Select(i => (i.Id, i.ParentId)));
+
+    private bool CanAddChildNavItem(IntranetNavigationItemDto parent) =>
+        IntranetNavigationRules.GetDepthForNewItem(parent.Id, NavParentById) <= intranetNavigationMaxDepth;
+
+    private string GetAddChildTooltip(IntranetNavigationItemDto parent) =>
+        CanAddChildNavItem(parent)
+            ? "Add under this item (max depth " + intranetNavigationMaxDepth + ")"
+            : "Max navigation depth (" + intranetNavigationMaxDepth + ") reached — raise it in App Settings or choose a shallower parent.";
+
+    private void ShowCreateDialog()
+    {
+        editingId = null;
+        editDto = new CreateIntranetNavigationItemDto { IsVisible = true };
+        dialogTitle = "New Navigation Item";
+        selectedPageTitleForDisplay = null;
+        selectedParentTitleForDisplay = null;
+        linkType = PageLinkType; // default to internal page
+        showDialog = true;
+    }
+
+    private void EditItem(IntranetNavigationItemDto item)
+    {
+        editingId = item.Id;
+        editDto = new CreateIntranetNavigationItemDto
+        {
+            Title = item.Title,
+            Icon = item.Icon,
+            PageId = item.PageId,
+            ExternalUrl = item.ExternalUrl,
+            SortOrder = item.SortOrder,
+            ParentId = item.ParentId,
+            IsVisible = item.IsVisible
+        };
+        dialogTitle = "Edit Navigation Item";
+
+        // Always prefer titles. Backend now populates PageTitle; resolve parent from the loaded tree.
+        selectedPageTitleForDisplay = item.PageTitle;
+        var parent = FindNavItemById(navItems, item.ParentId);
+        selectedParentTitleForDisplay = parent?.Title;
+
+        if (!string.IsNullOrWhiteSpace(editDto.ExternalUrl))
+            linkType = ExternalLinkType;
+        else if (!string.IsNullOrWhiteSpace(editDto.PageId))
+            linkType = PageLinkType;
+        else
+            linkType = PageLinkType; // default to internal page
+
+        showDialog = true;
+    }
+
+    private void CloseDialog() => showDialog = false;
+
+    private async Task OpenIconPicker()
+    {
+        iconSearch = "";
+        iconPage = 1;
+        showIconPicker = true;
+
+        iconsLoading = true;
+        try
+        {
+            await IconCatalog.EnsureLoadedAsync();
+        }
+        finally
+        {
+            iconsLoading = false;
+        }
+    }
+
+    private void CloseIconPicker() => showIconPicker = false;
+
+    private Task OnIconSearchChanged(string value)
+    {
+        iconSearch = value;
+        iconPage = 1;
+        return Task.CompletedTask;
+    }
+
+    private void OnIconPageChanged(int page)
+    {
+        iconPage = Math.Clamp(page, 1, IconPageCount);
+    }
+
+    private void SelectIcon(string icon)
+    {
+        editDto.Icon = icon;
+        CloseIconPicker();
+    }
+
+    private async Task OpenPagePicker()
+    {
+        pagePickerSearch = string.Empty;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            pagesForPicker = await client.GetFromJsonAsync<List<IntranetPageSummaryDto>>(Constants.API.Intranet.Pages.Get) ?? new();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        showPagePicker = true;
+    }
+    private void ClosePagePicker() => showPagePicker = false;
+    private void SelectPage(IntranetPageSummaryDto p) { editDto.PageId = p.PageId; selectedPageTitleForDisplay = p.Title; showPagePicker = false; }
+
+    private async Task CreateNewPageInline()
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+
+            // Create a new page with the nav item's title as default
+            var createDto = new CreateIntranetPageDto
+            {
+                Title = editDto.Title ?? "New Page",
+                IsPublished = true
+            };
+
+            var resp = await client.PostAsJsonAsync(Constants.API.Intranet.Pages.Get, createDto);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                Snackbar.Add($"Failed to create page: {err}", Severity.Error);
+                return;
+            }
+
+            var newPage = await resp.Content.ReadFromJsonAsync<IntranetPageDto>();
+            if (newPage != null)
+            {
+                editDto.PageId = newPage.PageId;
+                selectedPageTitleForDisplay = newPage.Title;
+                Snackbar.Add("New page created and linked. Save the nav item to commit.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating page: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenParentPicker()
+    {
+        flatNavForParentPicker = FlattenNavTreeForPicker(navItems)
+            .Where(i => editingId == null || i.Id != editingId)
+            .ToList();
+        showParentPicker = true;
+    }
+    private void CloseParentPicker() => showParentPicker = false;
+    private void SelectParent(IntranetNavigationItemDto i) { editDto.ParentId = i.Id; selectedParentTitleForDisplay = i.Title; showParentPicker = false; }
+
+    private void LinkTypeChanged(string value)
+    {
+        linkType = value;
+        if (value == ExternalLinkType)
+        {
+            editDto.PageId = null;
+            selectedPageTitleForDisplay = null;
+        }
+        else if (value == PageLinkType)
+        {
+            editDto.ExternalUrl = null;
+        }
+    }
+
+    private async Task SaveItemAsync()
+    {
+        isSaving = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            HttpResponseMessage resp;
+
+            if (editingId == null)
+            {
+                resp = await client.PostAsJsonAsync(Constants.API.Intranet.Navigation.Get, editDto);
+            }
+            else
+            {
+                // Use the route version we implemented
+                resp = await client.PutAsJsonAsync($"{Constants.API.Intranet.Navigation.Get}/{editingId}", editDto);
+            }
+
+            if (resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Saved.", Severity.Success);
+                showDialog = false;
+                await LoadNavigation();
+                NavEvents.NotifyChanged();   // Tell the main sidebar to refresh the visible nav items live
+            }
+            else
+            {
+                Snackbar.Add(await resp.Content.ReadAsStringAsync(), Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { isSaving = false; }
+    }
+
+    private async Task DeleteItem(string id)
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Navigation.Get}/{id}");
+            if (resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Deleted.", Severity.Success);
+                await LoadNavigation();
+                NavEvents.NotifyChanged();   // Tell the main sidebar to refresh the visible nav items live
+            }
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    // --- Contextual creation from the nav tree (makes pages and nav hand-in-hand) ---
+
+    private async Task AddPageUnder(IntranetNavigationItemDto parentNav)
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+
+            // Create the page (lightweight default)
+            var createPage = new CreateIntranetPageDto
+            {
+                Title = "New Page",
+                IsPublished = true
+            };
+            var pageResp = await client.PostAsJsonAsync(Constants.API.Intranet.Pages.Get, createPage);
+            if (!pageResp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Failed to create page.", Severity.Error);
+                return;
+            }
+            var newPage = await pageResp.Content.ReadFromJsonAsync<IntranetPageDto>();
+            if (newPage == null) return;
+
+            // Create a child nav item under the chosen parent, linking to the new page
+            var createNav = new CreateIntranetNavigationItemDto
+            {
+                Title = newPage.Title,
+                PageId = newPage.PageId,
+                ParentId = parentNav.Id,
+                IsVisible = true
+            };
+            var navResp = await client.PostAsJsonAsync(Constants.API.Intranet.Navigation.Get, createNav);
+            if (!navResp.IsSuccessStatusCode)
+            {
+                var err = await navResp.Content.ReadAsStringAsync();
+                Snackbar.Add($"Page created but menu link failed: {err}", Severity.Warning);
+                return;
+            }
+
+            await LoadNavigation();
+            NavEvents.NotifyChanged();
+            Navigation.NavigateTo($"/intranet/editor?pageId={newPage.PageId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error creating page: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task AddContentToNavItem(IntranetNavigationItemDto navItem)
+    {
+        if (!string.IsNullOrWhiteSpace(navItem.PageId)) return;
+
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+
+            var createPage = new CreateIntranetPageDto { Title = navItem.Title, IsPublished = true };
+            var pageResp = await client.PostAsJsonAsync(Constants.API.Intranet.Pages.Get, createPage);
+            if (!pageResp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Failed to create content.", Severity.Error);
+                return;
+            }
+            var newPage = await pageResp.Content.ReadFromJsonAsync<IntranetPageDto>();
+            if (newPage == null) return;
+
+            // Update this nav item to point to the new page
+            var update = new CreateIntranetNavigationItemDto
+            {
+                Title = navItem.Title,
+                Icon = navItem.Icon,
+                PageId = newPage.PageId,
+                ExternalUrl = navItem.ExternalUrl,
+                SortOrder = navItem.SortOrder,
+                ParentId = navItem.ParentId,
+                IsVisible = navItem.IsVisible
+            };
+            await client.PutAsJsonAsync($"{Constants.API.Intranet.Navigation.Get}/{navItem.Id}", update);
+
+            await LoadNavigation();
+            NavEvents.NotifyChanged();
+            Navigation.NavigateTo($"/intranet/editor?pageId={newPage.PageId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task AddSubNavItem(IntranetNavigationItemDto parentNav)
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+
+            var createNav = new CreateIntranetNavigationItemDto
+            {
+                Title = "New Menu Item",
+                ParentId = parentNav.Id,
+                IsVisible = true
+            };
+            var resp = await client.PostAsJsonAsync(Constants.API.Intranet.Navigation.Get, createNav);
+            if (resp.IsSuccessStatusCode)
+            {
+                // No success toast for sub-menu creation (explicit action).
+                await LoadNavigation();
+                NavEvents.NotifyChanged();
+
+                var all = FlattenNavTree(navItems);
+                var newItem = all.FirstOrDefault(x => x.Title == "New Menu Item" && x.ParentId == parentNav.Id);
+                if (newItem != null)
+                {
+                    EditItem(newItem);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

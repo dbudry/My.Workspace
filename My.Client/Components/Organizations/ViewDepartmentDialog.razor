@@ -1,0 +1,52 @@
+@using My.Client.Models
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">
+            Contacts (@(Model.Contacts?.Count ?? 0))
+        </MudText>
+        @if (Model.Contacts != null && Model.Contacts.Any())
+        {
+            <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Title</th>
+                        <th>Phone</th>
+                        <th>Email</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model.Contacts)
+                    {
+                        <tr>
+                            <td>@c.Name</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                            <td>@c.Title</td>
+                            <td>@c.PhoneNumber</td>
+                            <td>@c.Email</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No contacts</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Variant="Variant.Filled" Color="Color.Default">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public DepartmentModel Model { get; set; } = new();
+
+    private void Close() => MudDialog.Close();
+}

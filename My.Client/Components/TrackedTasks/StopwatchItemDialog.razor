@@ -1,0 +1,88 @@
+@using My.Client.Components.Projects
+@using My.Client.Models
+@using My.Client.Services
+
+<MudDialog>
+    <DialogContent>
+        <DialogFormStack>
+            @* Project on top, Details underneath so multiline details have full width. *@
+            <div class="stopwatch-item-dialog-fields">
+                <ProjectAutocomplete @bind-Value="selectedProject"
+                                     Label="Project"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense"
+                                     Dense="true"
+                                     PreferOpenUpward="true"
+                                     SearchFunc="SearchProjects"
+                                     Class="stopwatch-item-dialog-project" />
+                <TaskDetailsField @bind-Value="name"
+                                  Label="What are you working on"
+                                  Required="true"
+                                  Class="stopwatch-item-dialog-name"
+                                  OnEnter="Submit" />
+            </div>
+            @if (selectedProject == null)
+            {
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    A project is required before you can start or continue logging time.
+                </MudText>
+            }
+        </DialogFormStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(name) || selectedProject == null)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string ItemId { get; set; } = null!;
+
+    [Parameter]
+    public string ItemName { get; set; } = "";
+
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    [Parameter]
+    public string? ProjectName { get; set; }
+
+    [Parameter]
+    public Func<string?, CancellationToken, Task<IEnumerable<Project>>> SearchProjects { get; set; } = null!;
+
+    [Inject] private ProjectsCache ProjectsCache { get; set; } = null!;
+
+    private string name = "";
+    private Project? selectedProject;
+
+    protected override async Task OnInitializedAsync()
+    {
+        name = ItemName;
+        if (string.IsNullOrEmpty(ProjectId))
+            return;
+
+        // Prefer full project so the autocomplete shows name + affiliation like other pages.
+        selectedProject = await ProjectsCache.ResolveByIdAsync(ProjectId, ProjectName);
+        if (selectedProject == null)
+        {
+            selectedProject = new Project
+            {
+                ProjectId = ProjectId,
+                Name = ProjectName ?? ProjectId
+            };
+        }
+    }
+
+    private void Submit()
+    {
+        if (selectedProject == null) return;
+        MudDialog.Close(DialogResult.Ok((name.Trim(), selectedProject.ProjectId)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

@@ -1,0 +1,115 @@
+<MudContainer MaxWidth="MaxWidth.ExtraLarge">
+
+    <MudText Typo="Typo.h6" Align="Align.Center">Work Items</MudText>
+
+    <PageLoader IsLoading="@isLoading">
+        @if (items.Count <= 0)
+        {
+            <MudText Typo="Typo.h5" Align="Align.Center" Class="my-4" Style="color: var(--mud-palette-text-secondary);">
+                No work items yet. Start one above.
+            </MudText>
+        }
+        else
+        {
+            <MudTable Items="@items" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
+                      Class="mt-3 tasks-list-table stopwatch-items-table"
+                      RowClassFunc="@((item, _) => item.IsRunning ? "running-row" : "")">
+                <ColGroup>
+                    <col class="stopwatch-col-timer" />
+                    <col class="tasks-col-project" />
+                    <col class="tasks-col-name" />
+                    <col class="stopwatch-col-total" />
+                    <col class="tasks-col-actions" />
+                </ColGroup>
+                <HeaderContent>
+                    <MudTh Style="text-align: center;">Timer</MudTh>
+                    <MudTh>Project</MudTh>
+                    <MudTh>Details</MudTh>
+                    <MudTh>Total</MudTh>
+                    <MudTh Style="text-align: center;">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Timer" Style="text-align: center;">
+                        @if (context.IsRunning)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                                       Disabled="@(busyItemId != null)" OnClick="@(() => StopAsync(context))">Stop</MudButton>
+                        }
+                        else if (!string.IsNullOrEmpty(context.ProjectId))
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                       Disabled="@(busyItemId != null)" OnClick="@(() => StartAsync(context))">Start</MudButton>
+                        }
+                        else
+                        {
+                            <MudTooltip Text="Assign a project before starting">
+                                <span>
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                                               Disabled="true">Start</MudButton>
+                                </span>
+                            </MudTooltip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Project">
+                        @if (string.IsNullOrEmpty(context.ProjectId) && context.Project == null)
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small" Class="px-1"
+                                       OnClick="@(() => OpenEditItemAsync(context))">Assign project</MudButton>
+                        }
+                        else
+                        {
+                            <div @onclick="@(() => OpenSessionsAsync(context))" style="cursor: pointer;">
+                                <ProjectAffiliationDisplay ProjectName="@context.Project?.Name"
+                                                           DisplayName="@GetProjectDisplayName(context)"
+                                                           OrganizationName="@context.Project?.OrganizationName"
+                                                           OrganizationColor="@context.Project?.OrganizationColor"
+                                                           ProjectGroupName="@context.Project?.ProjectGroupName"
+                                                           ProjectGroupColor="@context.Project?.ProjectGroupColor" />
+                            </div>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Details" Class="tasks-details-cell"
+                           @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
+                        <MudTooltip>
+                            <ChildContent>
+                                <MudText Typo="Typo.body2" Class="tasks-details-ellipsis"
+                                         Style="@(context.IsRunning ? "font-weight: bold;" : "")">
+                                    @context.Details
+                                </MudText>
+                            </ChildContent>
+                            <TooltipContent>
+                                <div class="tasks-details-tooltip">@context.Details</div>
+                            </TooltipContent>
+                        </MudTooltip>
+                    </MudTd>
+                    <MudTd DataLabel="Total" @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
+                        <MudText Typo="Typo.body2" Style="font-family: monospace;">
+                            @FormatTotal(context)
+                        </MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align: center;">
+                        <div class="d-flex justify-center" style="gap: 2px;">
+                            @* All editing (name/project when unlocked, session durations) lives in the sessions dialog. *@
+                            <MudTooltip Text="Sessions — durations, create duration, timer; edit name/project when unlocked">
+                                <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
+                                               OnClick="@(() => OpenSessionsAsync(context))" />
+                            </MudTooltip>
+                            <MudTooltip Text="@(context.HasLockedSessions
+                                ? "Cannot delete: one or more sessions are in a submitted month"
+                                : "Delete work item and all its sessions")">
+                                <span>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                   Disabled="@(busyItemId != null || context.HasLockedSessions)"
+                                                   OnClick="@(() => DeleteItemAsync(context))" />
+                                </span>
+                            </MudTooltip>
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudPagination Class="mt-4 d-flex justify-center" Count="@pagingAttributes.TotalPageCount"
+                           Selected="@(currentPage + 1)" SelectedChanged="@((int p) => PageChanged(p - 1))" />
+        }
+    </PageLoader>
+</MudContainer>

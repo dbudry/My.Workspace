@@ -1,0 +1,37 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using My.Client.Layout
+
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
+                <Authorizing>
+                    <div style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+                        <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+                    </div>
+                </Authorizing>
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated != true)
+                    {
+                        <RedirectToLogin />
+                    }
+                    else
+                    {
+                        <PageTitleClear />
+                        <p>You are not authorized to access this resource.</p>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(Layout.MainLayout)">
+                <StatusLayout StatusCode="404"
+                              Title="Page not found"
+                              Message="The page you're looking for doesn't exist or may have moved. Use the menu to navigate, or head back to the dashboard." />
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

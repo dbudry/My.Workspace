@@ -1,0 +1,142 @@
+@* Search-and-add role picker used by AddUser and EditUserDialog. Replaces a flat
+   MudSelect(MultiSelection) ΓÇö which has no built-in search or grouping ΓÇö with a
+   MudAutocomplete for finding a role by scope or role name, plus a row of removable
+   chips for what's currently selected. Chips and the autocomplete's display text both
+   use FormatRole, which reads "{Scope} ΓÇö {Role}" (or "Global ΓÇö {Role}"), so scopes are
+   visually grouped/categorized in the search results without needing real optgroup
+   support (MudSelect/MudAutocomplete don't have one). *@
+@using My.Shared.Constants
+
+<MudAutocomplete T="string" @ref="_autocomplete" Label="@Label" Variant="Variant.Outlined" Dense="true"
+                  Value="@_pendingRole" ValueChanged="OnRoleChosenAsync"
+                  SearchFunc="SearchRoles" ToStringFunc="FormatRole"
+                  Placeholder="Search by scope or roleΓÇª"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Clearable="true" ResetValueOnEmptyText="true" CoerceText="true"
+                  Class="@Class" />
+
+<div class="d-flex flex-wrap gap-2 mt-2">
+    @if (SelectedRoles.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">
+            No roles selected
+        </MudText>
+    }
+    @foreach (var role in SortedSelectedRoles())
+    {
+        <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)"
+                 OnClose="@(() => RemoveRoleAsync(role))" CloseIcon="@Icons.Material.Filled.Close">
+            @FormatRole(role)
+        </MudChip>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> AvailableRoles { get; set; } = Array.Empty<string>();
+
+    [Parameter]
+    public List<string> SelectedRoles { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<List<string>> SelectedRolesChanged { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = "Add a role";
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string? _pendingRole;
+    private MudAutocomplete<string> _autocomplete = null!;
+
+    private Task<IEnumerable<string>> SearchRoles(string? value, CancellationToken token)
+    {
+        var query = AvailableRoles.Where(r => !SelectedRoles.Contains(r));
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            query = query.Where(r =>
+                FormatRole(r).Contains(value, StringComparison.OrdinalIgnoreCase) ||
+                r.Contains(value, StringComparison.OrdinalIgnoreCase));
+        }
+        return Task.FromResult<IEnumerable<string>>(query.OrderBy(RoleSortKey, StringComparer.Ordinal));
+    }
+
+    private async Task OnRoleChosenAsync(string? role)
+    {
+        if (!string.IsNullOrWhiteSpace(role) && !SelectedRoles.Contains(role))
+        {
+            var updated = new List<string>(SelectedRoles) { role };
+            SelectedRoles = updated;
+            await SelectedRolesChanged.InvokeAsync(updated);
+
+            // MudAutocomplete doesn't clear its own displayed text just because the bound
+            // Value goes back to null ΓÇö ClearAsync() resets both the text and the value so
+            // the box reads empty and ready for the next search instead of sitting on the
+            // role that was just picked. (Reentrant-safe: ClearAsync raises ValueChanged with
+            // null, which re-enters this method but skips this branch since role is null.)
+            await _autocomplete.ClearAsync();
+            return;
+        }
+        // Reset immediately so the box is empty and ready for the next search ΓÇö the
+        // selected role now lives in the chip row below, not in the search box.
+        _pendingRole = null;
+    }
+
+    private async Task RemoveRoleAsync(string role)
+    {
+        var updated = SelectedRoles.Where(r => r != role).ToList();
+        SelectedRoles = updated;
+        await SelectedRolesChanged.InvokeAsync(updated);
+    }
+
+    private IEnumerable<string> SortedSelectedRoles() =>
+        SelectedRoles.OrderBy(RoleSortKey, StringComparer.Ordinal);
+
+    // Groups by scope ΓÇö Global first, then the same order scopes are introduced in
+    // Constants.Roles.Assignable() (Intranet, Organizations, Tyme) ΓÇö then by role rank
+    // within each scope (Admin > Manager > Editor > User). Keeps both the search
+    // dropdown and the selected-chip row reading as organized categories.
+    private static readonly string[] ScopeOrder =
+    {
+        string.Empty, Constants.Scopes.Intranet, Constants.Scopes.Organizations, Constants.Scopes.Tyme
+    };
+
+    private static readonly string[] RoleRank =
+    {
+        Constants.Roles.Admin, Constants.Roles.Manager, Constants.Roles.Editor, Constants.Roles.User
+    };
+
+    private static string RoleSortKey(string role)
+    {
+        var (roleName, scope) = Split(role);
+        var scopeIndex = Array.IndexOf(ScopeOrder, scope);
+        if (scopeIndex < 0) scopeIndex = ScopeOrder.Length;
+        var roleIndex = Array.IndexOf(RoleRank, roleName);
+        if (roleIndex < 0) roleIndex = RoleRank.Length;
+        return $"{scopeIndex:D2}{roleIndex:D2}{role}";
+    }
+
+    private static (string Role, string Scope) Split(string role)
+    {
+        var parts = role.Split(':', 2);
+        return parts.Length == 2 ? (parts[0], parts[1]) : (parts[0], string.Empty);
+    }
+
+    private static string FormatRole(string? role)
+    {
+        if (string.IsNullOrEmpty(role)) return string.Empty;
+        var (roleName, scope) = Split(role);
+        return string.IsNullOrEmpty(scope) ? $"Global ΓÇö {roleName}" : $"{scope} ΓÇö {roleName}";
+    }
+
+    // Matches UserManager.razor.cs's GetRoleColor ΓÇö kept local since this component
+    // needs to color its own chips and UserManager's copy is private to that page.
+    private static Color GetRoleColor(string role)
+    {
+        var (roleName, _) = Split(role);
+        if (roleName == Constants.Roles.Admin) return Color.Error;
+        if (roleName == Constants.Roles.Manager) return Color.Warning;
+        return Color.Info;
+    }
+}

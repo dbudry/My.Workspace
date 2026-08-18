@@ -1,0 +1,37 @@
+@inject HeaderSearchUiState UiState
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<MudTooltip Text="Search intranet pages (press /)">
+    <MudIconButton Icon="@Icons.Material.Filled.Search"
+                   Color="Color.Inherit"
+                   aria-label="Search intranet pages"
+                   Class="header-search-trigger"
+                   OnClick="OnTriggerClick" />
+</MudTooltip>
+
+@code {
+    private DotNetObjectReference<HeaderSearch>? _dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("headerSearch.registerShortcut", _dotNetRef);
+    }
+
+    [JSInvokable]
+    public Task OpenFromShortcut()
+    {
+        UiState.Open();
+        return Task.CompletedTask;
+    }
+
+    private void OnTriggerClick() => UiState.Open();
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("headerSearch.unregisterShortcut"); } catch { }
+        _dotNetRef?.Dispose();
+    }
+}

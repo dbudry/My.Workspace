@@ -1,0 +1,44 @@
+.dataextraction-panel {
+    max-width: 960px;
+}
+
+.dataextraction-filters {
+    width: 100%;
+}
+
+.dataextraction-date-field {
+    width: 100%;
+}
+
+.dataextraction-date-field ::deep(.mud-input-control) {
+    margin-top: 0;
+}
+
+.dataextraction-employees-field {
+    width: 100%;
+}
+
+.dataextraction-employees-field ::deep(.mud-menu) {
+    width: 100%;
+    display: block;
+}
+
+.dataextraction-employees-field ::deep(.mud-menu-activator) {
+    width: 100%;
+}
+
+.dataextraction-employees-activator {
+    width: 100%;
+    cursor: pointer;
+}
+
+.dataextraction-employees-menu {
+    min-width: 240px;
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+.dataextraction-export-row {
+    padding-top: 0.5rem;
+    justify-content: flex-start;
+}

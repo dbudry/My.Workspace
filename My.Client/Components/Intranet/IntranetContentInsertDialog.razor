@@ -1,0 +1,149 @@
+@using MudBlazor
+@using My.Shared
+
+<MudDialog Visible="Visible" VisibleChanged="VisibleChanged"
+           Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Kind == ContentInsertKind.Image ? "Insert Image" : "Insert Link")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (Kind == ContentInsertKind.Image)
+        {
+            <MudTabs @bind-ActivePanelIndex="activeTab" ApplyEffectsToContainer="true">
+                <MudTabPanel Text="Upload" Icon="@Icons.Material.Filled.Upload">
+                    <MudStack Spacing="2" Class="pa-2">
+                        @if (!string.IsNullOrEmpty(filePolicySummary))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@filePolicySummary</MudText>
+                        }
+                        @if (string.IsNullOrEmpty(uploadBase64))
+                        {
+                            <FileDropZone Title="Upload an image"
+                                          Description="Saved to the library and inserted at your cursor."
+                                          Accept="image/*"
+                                          OnFileSelected="OnFilePickedAsync"
+                                          OnFileReady="ApplyUploadFileAsync" />
+                        }
+                        else
+                        {
+                            <MudPaper Elevation="1" Class="pa-3">
+                                @if (ShowImageUploadPreview && UploadPreviewDataUrl != null)
+                                {
+                                    <MudImage Src="@UploadPreviewDataUrl" Alt="Upload preview" ObjectFit="ObjectFit.Contain"
+                                              Style="max-height: 180px; width: 100%; border-radius: 4px;" Class="mb-2" />
+                                }
+                                <MudTextField @bind-Value="uploadDisplayName" Label="File name" Variant="Variant.Outlined" Immediate="true"
+                                              HelperText="@IntranetFileHelper.UploadFileNameHelperText"
+                                              inputattributes="UploadNameInputAttributes"
+                                              Error="uploadFileNameInvalid" ErrorText="@IntranetFileHelper.UploadFileNameValidationError" Class="mb-1" />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                                    Original: @uploadFileName (@IntranetFileHelper.FormatFileSize(uploadFileSize))
+                                </MudText>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.SwapHoriz"
+                                           OnClick="ClearUploadSelection">Replace file</MudButton>
+                            </MudPaper>
+                        }
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="UploadAndInsertAsync"
+                                   Disabled="@(isBusy || string.IsNullOrWhiteSpace(uploadBase64) || !CanUploadWithCurrentFileName)">
+                            Upload &amp; Insert
+                        </MudButton>
+                    </MudStack>
+                </MudTabPanel>
+                <MudTabPanel Text="Library" Icon="@Icons.Material.Filled.PhotoLibrary">
+                    <IntranetFileBrowser Mode="IntranetFileBrowserMode.Picker"
+                                         PageId="@PageId"
+                                         FixedFileTypeFilter="@IntranetFileHelper.FileTypeImage"
+                                         HideUploadButton="true"
+
+                                         OnDocumentSelected="HandleBrowserSelectionAsync" />
+                </MudTabPanel>
+            </MudTabs>
+        }
+        else
+        {
+            <MudTabs @bind-ActivePanelIndex="activeTab" ApplyEffectsToContainer="true">
+                <MudTabPanel Text="Web Address" Icon="@Icons.Material.Filled.Language">
+                    <MudStack Spacing="2" Class="pa-2">
+                        <MudText Typo="Typo.body2">Link to any website or external URL.</MudText>
+                        <MudTextField @bind-Value="linkUrl" Label="Web address (URL)" Variant="Variant.Outlined"
+                                      Placeholder="https://..." Immediate="true" />
+                        <MudTextField @bind-Value="linkText" Label="Link text" Variant="Variant.Outlined"
+                                      HelperText="Uses your selected text if you highlighted something in the editor." Immediate="true" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="InsertUrlAsync" Disabled="isBusy">
+                            Insert Link
+                        </MudButton>
+                    </MudStack>
+                </MudTabPanel>
+                <MudTabPanel Text="Library" Icon="@Icons.Material.Filled.Folder">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="pa-2 pb-0">
+                        Pick a file from the library.
+                    </MudText>
+                    <IntranetFileBrowser Mode="IntranetFileBrowserMode.Picker"
+                                         PageId="@PageId"
+                                         HideUploadButton="true"
+
+                                         OnDocumentSelected="HandleBrowserSelectionAsync" />
+                </MudTabPanel>
+                <MudTabPanel Text="Upload" Icon="@Icons.Material.Filled.Upload">
+                    <MudStack Spacing="2" Class="pa-2">
+                        @if (!string.IsNullOrEmpty(filePolicySummary))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@filePolicySummary</MudText>
+                        }
+                        @if (string.IsNullOrEmpty(uploadBase64))
+                        {
+                            <FileDropZone Title="Upload a file"
+                                          Description="Saved to the library and inserted as a link."
+                                          OnFileSelected="OnFilePickedAsync"
+                                          OnFileReady="ApplyUploadFileAsync" />
+                        }
+                        else
+                        {
+                            <MudPaper Elevation="1" Class="pa-3">
+                                <MudTextField @bind-Value="uploadDisplayName" Label="File name" Variant="Variant.Outlined" Immediate="true"
+                                              HelperText="@IntranetFileHelper.UploadFileNameHelperText"
+                                              inputattributes="UploadNameInputAttributes"
+                                              Error="uploadFileNameInvalid" ErrorText="@IntranetFileHelper.UploadFileNameValidationError" Class="mb-1" />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                                    Original: @uploadFileName (@IntranetFileHelper.FormatFileSize(uploadFileSize))
+                                </MudText>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.SwapHoriz"
+                                           OnClick="ClearUploadSelection">Replace file</MudButton>
+                            </MudPaper>
+                        }
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="UploadAndInsertAsync"
+                                   Disabled="@(isBusy || string.IsNullOrWhiteSpace(uploadBase64) || !CanUploadWithCurrentFileName)">
+                            Upload &amp; Insert Link
+                        </MudButton>
+                    </MudStack>
+                </MudTabPanel>
+                <MudTabPanel Text="Create New" Icon="@Icons.Material.Filled.NoteAdd">
+                    <MudStack Spacing="2" Class="pa-2">
+                        <MudText Typo="Typo.body2">Create a new Google file in the library and link to it from this page.</MudText>
+                        <MudTextField @bind-Value="googleFileName" Label="File name" Variant="Variant.Outlined" Required="true"
+                                      HelperText="@IntranetFileHelper.UploadFileNameHelperText"
+                                      inputattributes="GoogleNameInputAttributes"
+                                      Error="googleFileNameInvalid" ErrorText="@IntranetFileHelper.UploadFileNameValidationError" />
+                        <MudSelect T="string" @bind-Value="googleFileKind" Label="File type" Variant="Variant.Outlined">
+                            <MudSelectItem Value="@("document")">Google Doc</MudSelectItem>
+                            <MudSelectItem Value="@("spreadsheet")">Google Sheet</MudSelectItem>
+                            <MudSelectItem Value="@("presentation")">Google Slides</MudSelectItem>
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateGoogleAndInsertAsync"
+                                   Disabled="@(isBusy || !CanCreateGoogleFile)">
+                            Create &amp; Insert Link
+                        </MudButton>
+                    </MudStack>
+                </MudTabPanel>
+            </MudTabs>
+        }
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@errorMessage</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CloseAsync" Disabled="isBusy">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>

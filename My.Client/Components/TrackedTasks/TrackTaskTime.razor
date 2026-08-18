@@ -1,0 +1,34 @@
+@* Start form: project + single-line details + Start; stacks when the viewport is narrow. *@
+@using My.Client.Components.Projects
+
+<EditForm Model="@newEntryModel" OnValidSubmit="@AddAndStartEntry" OnInvalidSubmit="@HandleInvalidSubmit">
+    <DataAnnotationsValidator />
+    <div class="stopwatch-start-row my-3">
+        <ProjectAutocomplete @bind-Value="SelectedProject"
+                             Label="Project"
+                             Variant="Variant.Outlined"
+                             Margin="Margin.Dense"
+                             Dense="true"
+                             Placeholder="Type to search projects..."
+                             SearchFunc="SearchProjects"
+                             Class="stopwatch-start-project" />
+        <div class="stopwatch-start-details-and-action">
+            <TaskDetailsField @bind-Value="newEntryModel.Details"
+                              Label="What are you working on"
+                              Required="true"
+                              ShrinkLabel="true"
+                              Class="stopwatch-start-name" />
+            <div class="stopwatch-start-button-slot">
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           Class="stopwatch-start-button"
+                           Disabled="@(isBusy || SelectedProject == null)">
+                    Start
+                </MudButton>
+            </div>
+        </div>
+    </div>
+    <ValidationSummary />
+</EditForm>

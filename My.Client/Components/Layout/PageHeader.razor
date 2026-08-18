@@ -1,0 +1,45 @@
+@*
+    Page header: optional description + optional action buttons.
+
+    The Title parameter is NOT rendered in-page — it's only pushed up to the app
+    bar via the SetPageTitle cascade (set SyncTopBar="false" to suppress). The
+    previous version did render an H5 with a "hide on desktop via scoped CSS"
+    rule, but CSS isolation doesn't reach through child components like MudText,
+    so the rule never applied and every page using PageHeader showed its title
+    twice (once in the app bar, once in the body).
+*@
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween"
+          Spacing="2" Class="@($"page-header mb-4 flex-wrap {Class}")">
+    <div class="page-header-text">
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <MudText Typo="Typo.body2" Color="Color.Default" Class="page-header-description">@Description</MudText>
+        }
+        @ChildContent
+    </div>
+    @if (Actions is not null)
+    {
+        <div class="page-header-actions d-flex gap-2 align-center flex-wrap">
+            @Actions
+        </div>
+    }
+</MudStack>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool SyncTopBar { get; set; } = true;
+
+    [CascadingParameter(Name = "SetPageTitle")]
+    private Action<string>? SetPageTitle { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (SyncTopBar)
+            SetPageTitle?.Invoke(Title ?? string.Empty);
+    }
+}

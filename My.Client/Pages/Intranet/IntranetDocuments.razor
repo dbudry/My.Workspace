@@ -1,0 +1,17 @@
+@page "/intranet/documents"
+@using MudBlazor
+@using My.Shared.Constants
+
+<PageTitle>Intranet Documents Library</PageTitle>
+
+<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Editor" ScopedOnly="true">
+    <Authorized>
+        <PageHeader Title="Documents Library"
+                    Description="Manage files in the company Drive folder. Every file here can be inserted into intranet pages." />
+
+        <IntranetFileBrowser Mode="IntranetFileBrowserMode.Library" />
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Intranet editor access required.</MudAlert>
+    </NotAuthorized>
+</ScopedAuthorizeView>

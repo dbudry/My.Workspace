@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- bUnit renders Blazor components in-memory so razor-parameter mismatches
+         (e.g. passing an undeclared 'Dense' to a component) fail as a test instead
+         of a runtime crash in the browser. -->
+    <PackageReference Include="bunit" Version="2.7.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\My.Shared\My.Shared.csproj" />
+    <ProjectReference Include="..\My.AzureFunction\My.AzureFunction.csproj" />
+    <ProjectReference Include="..\My.Client\My.Client.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,34 @@
+{
+  "name": "My Workspace",
+  "short_name": "Workspace",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#03173d",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "img/logo-clock-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "img/logo-clock-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Stopwatch",
+      "short_name": "Stopwatch",
+      "url": "./tyme/stopwatch-mini",
+      "icons": [
+        {
+          "src": "img/logo-clock-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

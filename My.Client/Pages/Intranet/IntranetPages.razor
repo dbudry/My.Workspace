@@ -1,0 +1,190 @@
+@page "/intranet/pages"
+@using System.Net.Http.Json
+@using MudBlazor
+@using My.Shared.Constants
+@using My.Shared.Dtos.Intranet
+
+<PageTitle>Manage Intranet Pages</PageTitle>
+
+<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Editor" ScopedOnly="true">
+    <Authorized>
+        <PageHeader Title="Intranet Pages"
+                    Description="Overview of all pages. For best results, create and organize pages from the Navigation menu (build your site structure there, then add content pages under specific menu items).">
+            <Actions>
+                @if (!string.IsNullOrWhiteSpace(returnEditorPageId))
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.ArrowBack"
+                               OnClick="ReturnToEditor">
+                        @(string.IsNullOrWhiteSpace(returnEditorPageTitle) ? "Back to editor" : $"Back to {returnEditorPageTitle}")
+                    </MudButton>
+                }
+            </Actions>
+        </PageHeader>
+
+        <PageLoader IsLoading="@isLoading">
+            <MudStack Row="true" Spacing="2" Class="mb-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="CreateQuickPageAsync">
+                    New Page
+                </MudButton>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Style="align-self: center;">
+                    (Tip: For best menu integration, create from the Navigation tree)
+                </MudText>
+                <MudSpacer />
+                <MudTextField @bind-Value="search" Placeholder="Search pages..." Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" DebounceInterval="300" Style="max-width:260px;" />
+            </MudStack>
+
+            <MudTable Items="@filteredPages" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+                <HeaderContent>
+                    <MudTh>Title</MudTh>
+                    <MudTh>Slug</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Order</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Title</MudTd>
+                    <MudTd>@context.Slug</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.IsPublished ? Color.Success : Color.Default)">
+                            @(context.IsPublished ? "Published" : "Draft")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>@context.SortOrder</MudTd>
+                    <MudTd>
+                        <MudTooltip Text="Edit">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary"
+                                           OnClick="@(() => Navigation.NavigateTo($"intranet/editor?pageId={context.PageId}"))" />
+                        </MudTooltip>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeletePageAsync(context.PageId))" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </PageLoader>
+    </Authorized>
+    <NotAuthorized>
+        <MudAlert Severity="Severity.Warning">Editor:Intranet role required to manage pages.</MudAlert>
+    </NotAuthorized>
+</ScopedAuthorizeView>
+
+@code {
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private List<IntranetPageSummaryDto> pages = new();
+    private List<IntranetPageSummaryDto> filteredPages = new();
+    private bool isLoading = true;
+    private string search = "";
+    private string? returnEditorPageId;
+    private string? returnEditorPageTitle;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ParseReturnEditorQuery();
+        await LoadPagesAsync();
+        ResolveReturnEditorTitle();
+    }
+
+    private void ParseReturnEditorQuery()
+    {
+        var uri = new Uri(Navigation.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        returnEditorPageId = query["fromEditor"];
+        returnEditorPageTitle = null;
+    }
+
+    private void ResolveReturnEditorTitle()
+    {
+        if (string.IsNullOrWhiteSpace(returnEditorPageId))
+            return;
+
+        returnEditorPageTitle = pages.FirstOrDefault(p => p.PageId == returnEditorPageId)?.Title;
+    }
+
+    private void ReturnToEditor()
+    {
+        if (string.IsNullOrWhiteSpace(returnEditorPageId))
+            return;
+
+        Navigation.NavigateTo($"intranet/editor?pageId={Uri.EscapeDataString(returnEditorPageId)}");
+    }
+
+    private async Task LoadPagesAsync()
+    {
+        isLoading = true;
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var list = await client.GetFromJsonAsync<List<IntranetPageSummaryDto>>(Constants.API.Intranet.Pages.Get);
+            pages = list ?? new();
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load pages: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        if (string.IsNullOrWhiteSpace(search))
+            filteredPages = pages.ToList();
+        else
+            filteredPages = pages.Where(p => (p.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                                             (p.Slug ?? "").Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private async Task CreateQuickPageAsync()
+    {
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var dto = new CreateIntranetPageDto { Title = "Untitled Page " + DateTime.Now.ToString("HH:mm"), IsPublished = true };
+            var resp = await client.PostAsJsonAsync(Constants.API.Intranet.Pages.Get, dto);
+            if (resp.IsSuccessStatusCode)
+            {
+                var created = await resp.Content.ReadFromJsonAsync<IntranetPageSummaryDto>();
+                // Removed success toast on page create. Use loaders for states; only alerts for problems.
+                await LoadPagesAsync();
+                Navigation.NavigateTo($"intranet/editor?pageId={created?.PageId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task DeletePageAsync(string pageId)
+    {
+        // Simple delete (no heavy confirm dialog to keep deps clean)
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Pages.Get}/{pageId}");
+            if (resp.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Page deleted.", Severity.Success);
+                await LoadPagesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void OnSearchChanged(string value)
+    {
+        search = value;
+        ApplyFilter();
+    }
+}

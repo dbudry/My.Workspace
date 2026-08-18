@@ -1,0 +1,180 @@
+@namespace My.Client.Components.TrackedTasks
+@using My.Shared.Rules
+
+@* Week → Day layout: all projects/tasks for the week, days across, editable H:MM, horizontal scroll. *@
+
+@if (isLoading)
+{
+    <div class="d-flex align-center gap-2 mb-2">
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+        <MudText Typo="Typo.caption">Loading week…</MudText>
+    </div>
+}
+else if (!string.IsNullOrEmpty(loadError))
+{
+    <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@loadError</MudAlert>
+}
+else
+{
+    @* Rows scroll; Total sits under the grid (not sticky-over the last day cells). *@
+    <div class="week-entry-grid-wrap mb-3">
+    <div class="week-entry-grid-scroll">
+        <table class="week-entry-grid-table">
+            <thead>
+                <tr>
+                    <th class="week-entry-col-task">Project / Details</th>
+                    @foreach (var day in visibleDays)
+                    {
+                        <th class="week-entry-col-day">@DayHeader(day)</th>
+                    }
+                    <th class="week-entry-col-total">Total</th>
+                </tr>
+            </thead>
+            @if (rows.Count == 0 || !VisibleRows.Any())
+            {
+                <tbody>
+                    <tr>
+                        <td colspan="@(1 + visibleDays.Count + 1)" class="week-entry-empty-cell">
+                            <EmptyState Icon="@Icons.Material.Outlined.DateRange"
+                                        Title="@(rows.Count == 0 ? "No time this week" : "No matching entries")"
+                                        Message="@(rows.Count == 0
+                                            ? "Nothing logged for this week yet. Click New Task to add a row, or use Project view."
+                                            : "Nothing in this week matches your search.")" />
+                        </td>
+                    </tr>
+                </tbody>
+            }
+            else
+            {
+                <tbody>
+                    @foreach (var row in VisibleRows)
+                    {
+                        <tr>
+                            <td class="week-entry-col-task">
+                                @if (row.ShowDraftEditors)
+                                {
+                                    <div class="week-day-draft-label">
+                                        <ProjectAutocomplete Value="@row.DraftProject"
+                                                             ValueChanged="@(p => OnDraftProjectChanged(row, p))"
+                                                             Label=""
+                                                             Placeholder="Project"
+                                                             SearchFunc="SearchProjectsAsync"
+                                                             ClearValueWhileTyping="false"
+                                                             Margin="Margin.Dense"
+                                                             Variant="Variant.Outlined"
+                                                             Class="week-entry-draft-project" />
+                                        <div class="d-flex align-center gap-1">
+                                            <MudTextField T="string"
+                                                          Value="@row.DraftTaskName"
+                                                          ValueChanged="@(v => OnDraftTaskNameChanged(row, v))"
+                                                          Margin="Margin.Dense"
+                                                          Variant="Variant.Outlined"
+                                                          Immediate="true"
+                                                          Placeholder="Details"
+                                                          Class="week-entry-draft-task-name" />
+                                            <MudTooltip Text="Remove unused row">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                               Size="Size.Small"
+                                                               Color="Color.Default"
+                                                               aria-label="Remove unused row"
+                                                               OnClick="@(() => RemoveDraftRow(row))" />
+                                            </MudTooltip>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="week-day-row-label">
+                                        <MudTooltip Text="@(row.ProjectName ?? "")">
+                                            <MudText Typo="Typo.body2" Class="week-day-project-name">
+                                                <strong>@(row.ProjectName ?? "No project")</strong>
+                                            </MudText>
+                                        </MudTooltip>
+                                        <MudTooltip Text="@(row.TaskName ?? "")">
+                                            <MudText Typo="Typo.caption" Class="week-day-details-text"
+                                                     Style="color: var(--mud-palette-text-secondary); line-height: 1.2;">
+                                                @row.TaskName
+                                            </MudText>
+                                        </MudTooltip>
+                                    </div>
+                                }
+                            </td>
+                            @for (var di = 0; di < row.Cells.Length; di++)
+                            {
+                                var dayIndex = di;
+                                var cell = row.Cells[dayIndex];
+                                <td class="week-entry-col-day">
+                                    <MudTooltip Text="@(cell.HintTooltip ?? "")"
+                                                Disabled="@(string.IsNullOrEmpty(cell.HintTooltip))"
+                                                Placement="Placement.Top">
+                                    <div class="week-entry-day-cell">
+                                        @* Pencil always inside the field so every day column has identical width. *@
+                                        <MudTextField T="string"
+                                                      Value="@(cell.IsReadOnly
+                                                          ? (cell.SavedDuration > TimeSpan.Zero
+                                                              ? WeekEntryGridRules.FormatDayDurationInput(cell.SavedDuration)
+                                                              : "")
+                                                          : cell.DurationText)"
+                                                      ValueChanged="@(v => { if (!cell.IsReadOnly) OnDurationChanged(row, dayIndex, v); })"
+                                                      OnBlur="@(() => OnDurationBlur(row, dayIndex))"
+                                                      OnKeyDown="@(e => OnDurationKeyDown(row, dayIndex, e))"
+                                                      Margin="Margin.Dense"
+                                                      Variant="Variant.Outlined"
+                                                      Immediate="true"
+                                                      Placeholder="00:00"
+                                                      MaxLength="7"
+                                                      ReadOnly="@cell.IsReadOnly"
+                                                      Disabled="@(isLoading || (!cell.IsReadOnly && !row.CanEnterDuration))"
+                                                      Class="week-entry-day-duration"
+                                                      Adornment="Adornment.End"
+                                                      AdornmentIcon="@(cell.IsMultiple ? Icons.Material.Filled.Layers : Icons.Material.Filled.Edit)"
+                                                      IconSize="Size.Small"
+                                                      AdornmentColor="@(string.IsNullOrEmpty(cell.TaskId) && !cell.IsMultiple ? Color.Default : Color.Primary)"
+                                                      OnAdornmentClick="@(() => OpenCellAsync(cell))" />
+                                        <MudText Typo="Typo.caption"
+                                                 Align="Align.Center"
+                                                 Class="week-entry-day-status"
+                                                 Style="@(cell.Status == CellSaveStatus.Error
+                                                     || (!string.IsNullOrEmpty(cell.ErrorMessage) && !cell.IsMultiple)
+                                                     ? "color: var(--mud-palette-error);"
+                                                     : "color: var(--mud-palette-text-secondary);")">
+                                            @(!string.IsNullOrEmpty(cell.ErrorMessage) && cell.IsReadOnly
+                                                ? cell.ErrorMessage
+                                                : StatusLabel(cell))
+                                        </MudText>
+                                    </div>
+                                    </MudTooltip>
+                                </td>
+                            }
+                            <td class="week-entry-col-total">
+                                <MudText Typo="Typo.caption">@RowTotalLabel(row)</MudText>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            }
+        </table>
+    </div>
+    @if (rows.Count > 0 && VisibleRows.Any())
+    {
+        <table class="week-entry-grid-table week-entry-totals-table">
+            <tfoot>
+                <tr>
+                    <td class="week-entry-col-task">
+                        <MudText Typo="Typo.subtitle2">Total</MudText>
+                    </td>
+                    @for (var di = 0; di < visibleDays.Count; di++)
+                    {
+                        <td class="week-entry-col-day" style="font-family: monospace;">
+                            <strong>@DayColumnTotalLabel(di)</strong>
+                        </td>
+                    }
+                    <td class="week-entry-col-total" style="font-family: monospace;">
+                        <strong>@GrandTotalLabel</strong>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    }
+    </div>
+}

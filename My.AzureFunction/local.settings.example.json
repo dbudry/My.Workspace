@@ -1,0 +1,18 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "Google__ClientId": "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "Google__ClientSecret": "YOUR_GOOGLE_OAUTH_CLIENT_SECRET",
+    "Google__TokenEncryptionKey": "YOUR_32_BYTE_BASE64_KEY",
+    "Auth__AllowedEmailDomains": ""
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost,14333;Database=MyWorkspace_Dev;User Id=sa;Password=DevSql!Passw0rd2026;TrustServerCertificate=True;MultipleActiveResultSets=true"
+  },
+  "Host": {
+    "CORS": "*",
+    "CORSCredentials": false
+  }
+}
