@@ -73,6 +73,13 @@ jobs:
           fi
 
           if [[ "$HEAD_V" == "$BASE_V" ]]; then
+            # development → master often re-checks after merge while SHAs still diverge
+            # (merge commit on master vs tip on development) but versions already match.
+            # That must not email as failure. Feature-branch PRs still require a bump.
+            if [[ "${{ github.head_ref }}" == "development" ]]; then
+              echo "::notice::development and master both at v${HEAD_V} (already in sync / promoted). Not failing."
+              exit 0
+            fi
             echo "::error::Version must be bumped (both are $HEAD_V). Edit My.Client/My.Client.csproj <Version>."; exit 1
           fi
 
