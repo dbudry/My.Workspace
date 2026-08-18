@@ -1,7 +1,8 @@
 {
   "name": "My Workspace",
   "short_name": "Workspace",
-  "start_url": "./",
+  "start_url": "./tyme/stopwatch-mini",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#03173d",

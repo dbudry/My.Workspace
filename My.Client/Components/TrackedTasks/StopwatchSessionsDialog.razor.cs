@@ -46,6 +46,7 @@ namespace My.Client.Components.TrackedTasks
         private string? currentProjectId;
         private bool hasLockedSessions;
         private bool canEditWorkItem => !hasLockedSessions;
+        private bool hasRunningSession => sessions.Any(s => s.IsRunning);
 
         private int visibleDayCount => dayGroups.Count;
         private int visibleSessionCount => dayGroups.Sum(d => d.Sessions.Count);
@@ -396,6 +397,45 @@ namespace My.Client.Components.TrackedTasks
             catch (Exception ex)
             {
                 Snackbar.AddApiError(ex, "Couldn't delete the session.");
+            }
+        }
+
+        /// <summary>
+        /// Deletes the whole work item and every session under it. Lives here (not on the
+        /// main list) so it takes a deliberate trip into the item's history.
+        /// </summary>
+        private async Task DeleteWorkItemAsync()
+        {
+            if (hasRunningSession)
+            {
+                Snackbar.Add("Stop the timer before deleting this work item.", Severity.Warning);
+                return;
+            }
+
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Delete work item",
+                $"Delete \"{displayItemName}\" and all {sessions.Count} of its logged session{(sessions.Count == 1 ? "" : "s")}? This can't be undone.",
+                yesText: "Delete",
+                cancelText: "Cancel");
+
+            if (confirmed != true)
+                return;
+
+            isBusy = true;
+            try
+            {
+                await StopwatchItemsClient.DeleteAsync(ItemId);
+                changed = true;
+                Snackbar.Add("Work item deleted.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(changed));
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't delete the work item.");
+            }
+            finally
+            {
+                isBusy = false;
             }
         }
 
