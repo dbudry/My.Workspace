@@ -64,6 +64,14 @@ jobs:
             echo "Base has no <Version> yet — first bootstrap OK (v$HEAD_V)"
             exit 0
           fi
+
+          # Nothing left to merge (e.g. already promoted / tips equal) — do not fail red.
+          AHEAD=$(git rev-list --count "origin/${{ github.base_ref }}..HEAD" 2>/dev/null || echo "1")
+          if [[ "$AHEAD" -eq 0 ]]; then
+            echo "::notice::No commits ahead of ${{ github.base_ref }}; version check skipped (nothing to promote)."
+            exit 0
+          fi
+
           if [[ "$HEAD_V" == "$BASE_V" ]]; then
             echo "::error::Version must be bumped (both are $HEAD_V). Edit My.Client/My.Client.csproj <Version>."; exit 1
           fi
@@ -142,9 +150,18 @@ jobs:
           PR="${{ github.event.pull_request.number }}"
           REPO="${{ github.repository }}"
 
-          STATE=$(gh pr view "$PR" --repo "$REPO" --json state -q .state)
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::notice::secrets.PAT is empty — auto-merge skipped. Merge the PR manually."
+            exit 0
+          fi
+
+          STATE=$(gh pr view "$PR" --repo "$REPO" --json state -q .state 2>/dev/null || echo "UNKNOWN")
           if [[ "$STATE" == "MERGED" ]]; then
             echo "PR #$PR already merged"
+            exit 0
+          fi
+          if [[ "$STATE" == "UNKNOWN" ]]; then
+            echo "::notice::Could not read PR #$PR state (auth?). Auto-merge skipped."
             exit 0
           fi
 
@@ -154,8 +171,11 @@ jobs:
             exit 0
           fi
 
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/pulls/${PR}/merge" \
-            -f merge_method='merge'
+          if ! gh api --method PUT "repos/${GITHUB_REPOSITORY}/pulls/${PR}/merge" \
+            -f merge_method='merge'; then
+            echo "::notice::Auto-merge API call failed for PR #$PR. Merge manually — not failing the workflow."
+            exit 0
+          fi
 
           HEAD=$(gh pr view "$PR" --repo "$REPO" --json headRefName -q .headRefName)
           if [[ -n "$HEAD" && "$HEAD" != "development" && "$HEAD" != "master" ]]; then

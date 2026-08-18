@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.1.1",
+    "date": "2026-08-18",
+    "changes": [
+      { "type": "Fixed", "text": "CI: promotion/auto-merge steps no longer fail the workflow (or email) when the PAT is missing, a PR already exists, or the version is not ahead of master. Build & Test failures still fail red." }
+    ]
+  },
+  {
     "version": "1.1.0",
     "date": "2026-08-18",
     "changes": [

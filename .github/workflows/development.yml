@@ -2,7 +2,9 @@
 #
 #   Build & Test
 #     → Check version vs master
-#     → Create development >> master PR  (fails red if version not ahead)
+#     → Create development >> master PR
+#         (soft: notice + green when version not ahead, PAT missing, or PR exists)
+#   Only Build & Test failure should email as a workflow failure.
 
 name: Development
 
@@ -90,13 +92,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::notice::secrets.PAT is empty — skipping stale-PR close (manual close if needed)."
+            exit 0
+          fi
           EXISTING=$(gh pr list --base master --head development --state open \
                        --json number --jq '.[0].number' || true)
           if [[ -z "$EXISTING" ]]; then
             echo "No open development >> master PR."
             exit 0
           fi
-          gh pr close "$EXISTING" --comment "Closed automatically: development is green, but client <Version> is not ahead of master. A promotion PR opens only after a green development build with a bumped version."
+          if ! gh pr close "$EXISTING" --comment "Closed automatically: development is green, but client <Version> is not ahead of master. A promotion PR opens only after a green development build with a bumped version."; then
+            echo "::notice::Could not close PR #$EXISTING (auth/permission). Not failing the workflow."
+            exit 0
+          fi
           echo "Closed stale PR #$EXISTING"
 
   create-pr-to-master:
@@ -111,7 +120,9 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Require version bump before promotion PR
+      # Soft gate: version-not-ready is expected after a successful promote (or when
+      # no bump landed). Must not fail the Development workflow / send failure email.
+      - name: Decide whether to open a promotion PR
         id: gate
         shell: bash
         run: |
@@ -121,12 +132,13 @@ jobs:
           echo "version_ready=${READY}"
           echo "head_version=${VERSION}"
           if [[ "$READY" != "true" ]]; then
-            echo "::error title=Version not incremented::Client <Version> (${VERSION:-unknown}) is not ahead of master. Bump <Version> in My.Client/My.Client.csproj (e.g. 1.2.4 → 1.2.5), commit to development, and re-run. No development → master PR until the version is higher than master."
+            echo "::notice title=No promotion PR::Client <Version> (${VERSION:-unknown}) is not ahead of master. Bump My.Client/My.Client.csproj <Version> when you want a production promote."
             {
-              echo "## Promotion blocked"
-              echo "Bump \`My.Client/My.Client.csproj\` \`<Version>\` above master, then push again."
+              echo "## No promotion PR this run"
+              echo "Build & Test passed. Version is not ahead of master, so no development → master PR was opened."
             } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
+            echo "should_create=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "should_create=true" >> "$GITHUB_OUTPUT"
           {
@@ -156,6 +168,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::notice::secrets.PAT is empty — open the promotion PR manually (gh pr create --base master --head development)."
+            {
+              echo "## Promotion PR not opened automatically"
+              echo "\`secrets.PAT\` is empty. Create the PR manually or set the PAT secret."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           git fetch origin master --depth=100
           AHEAD=$(git rev-list --count "origin/master..HEAD")
           if [[ "$AHEAD" -eq 0 ]]; then
@@ -171,7 +192,7 @@ jobs:
           fi
 
           VERSION="${{ needs.check-version-vs-master.outputs.head_version }}"
-          gh pr create \
+          if ! gh pr create \
             --base master \
             --head development \
             --title "development → master (v$VERSION)" \
@@ -188,4 +209,7 @@ jobs:
 
           There is no further job on the PR graph — **merge is the next step**.
           EOF
-          )"
+          )"; then
+            echo "::notice::gh pr create failed (auth, permissions, or PR already exists). Not failing the workflow."
+            exit 0
+          fi
