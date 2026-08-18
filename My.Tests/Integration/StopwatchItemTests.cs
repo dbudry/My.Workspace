@@ -131,4 +131,102 @@ public class StopwatchItemTests
                 .ExecuteDeleteAsync();
         }
     }
+
+    [SqlServerFact]
+    public async Task Clearing_an_item_removes_it_from_the_list_query_but_keeps_its_sessions()
+    {
+        await using var db = IntegrationTestConnection.NewContext();
+
+        var userId = await IntegrationTestFixtures.EnsureTestUserIdAsync(db);
+
+        var now = DateTime.UtcNow;
+        var cleared = new StopwatchItem { UserId = userId, Details = "Cleared item", CreatedAt = now, LastWorkedAt = now };
+        var visible = new StopwatchItem { UserId = userId, Details = "Still visible", CreatedAt = now, LastWorkedAt = now };
+        db.StopwatchItems.AddRange(cleared, visible);
+        await db.SaveChangesAsync();
+
+        db.TrackedTasks.Add(new TrackedTask
+        {
+            UserId = userId,
+            StopwatchItemId = cleared.StopwatchItemId,
+            Details = cleared.Details,
+            StartDate = now,
+            EndDate = now.AddMinutes(10),
+            Duration = TimeSpan.FromMinutes(10)
+        });
+        await db.SaveChangesAsync();
+
+        try
+        {
+            // Mirrors ClearStopwatchItemAsync: flip the flag, don't touch the item or its sessions.
+            cleared.IsCleared = true;
+            await db.SaveChangesAsync();
+
+            // Mirrors GetStopwatchItemsAsync's filter.
+            var listed = await db.StopwatchItems
+                .Where(i => i.UserId == userId && !i.IsCleared)
+                .Select(i => i.StopwatchItemId)
+                .ToListAsync();
+
+            Assert.DoesNotContain(cleared.StopwatchItemId, listed);
+            Assert.Contains(visible.StopwatchItemId, listed);
+
+            // The whole point: clearing didn't touch the item or its logged session.
+            var stillThere = await db.StopwatchItems.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.StopwatchItemId == cleared.StopwatchItemId);
+            Assert.NotNull(stillThere);
+            Assert.True(stillThere!.IsCleared);
+            Assert.Equal(1, await db.TrackedTasks.CountAsync(t => t.StopwatchItemId == cleared.StopwatchItemId));
+            Assert.Equal(TimeSpan.FromMinutes(10), (await db.TrackedTasks
+                .FirstAsync(t => t.StopwatchItemId == cleared.StopwatchItemId)).Duration);
+        }
+        finally
+        {
+            await db.TrackedTasks
+                .Where(t => t.StopwatchItemId == cleared.StopwatchItemId || t.StopwatchItemId == visible.StopwatchItemId)
+                .ExecuteDeleteAsync();
+            await db.StopwatchItems
+                .Where(i => i.StopwatchItemId == cleared.StopwatchItemId || i.StopwatchItemId == visible.StopwatchItemId)
+                .ExecuteDeleteAsync();
+        }
+    }
+
+    [SqlServerFact]
+    public async Task Clearing_an_item_with_a_running_session_is_blocked()
+    {
+        await using var db = IntegrationTestConnection.NewContext();
+
+        var userId = await IntegrationTestFixtures.EnsureTestUserIdAsync(db);
+
+        var now = DateTime.UtcNow;
+        var item = new StopwatchItem { UserId = userId, Details = "Running item", CreatedAt = now, LastWorkedAt = now };
+        db.StopwatchItems.Add(item);
+        await db.SaveChangesAsync();
+
+        db.TrackedTasks.Add(new TrackedTask
+        {
+            UserId = userId,
+            StopwatchItemId = item.StopwatchItemId,
+            Details = item.Details,
+            StartDate = now,
+            EndDate = null, // still running
+            Duration = TimeSpan.Zero
+        });
+        await db.SaveChangesAsync();
+
+        try
+        {
+            // Mirrors ClearStopwatchItemAsync's guard: refuse while any session is open.
+            var isRunning = await db.TrackedTasks
+                .AnyAsync(t => t.StopwatchItemId == item.StopwatchItemId && t.EndDate == null);
+
+            Assert.True(isRunning, "Setup should have left one open session on the item.");
+            Assert.False(item.IsCleared);
+        }
+        finally
+        {
+            await db.TrackedTasks.Where(t => t.StopwatchItemId == item.StopwatchItemId).ExecuteDeleteAsync();
+            await db.StopwatchItems.Where(i => i.StopwatchItemId == item.StopwatchItemId).ExecuteDeleteAsync();
+        }
+    }
 }

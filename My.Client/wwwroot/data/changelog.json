@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.1.0",
+    "date": "2026-08-18",
+    "changes": [
+      { "type": "Changed", "text": "Stopwatch: the X on a work item removes it from your list only. Logged time stays in Tasks and Reports. Stop the timer first." },
+      { "type": "Changed", "text": "Stopwatch: Delete work item (and all of its sessions) is inside Sessions, not on the list." },
+      { "type": "Changed", "text": "The installed app opens on the mini stopwatch." }
+    ]
+  },
+  {
     "version": "1.0.0",
     "date": "2026-08-18",
     "changes": [

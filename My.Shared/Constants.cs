@@ -417,6 +417,10 @@ namespace My.Shared.Constants
                 public const string Sessions = Api;
 
                 public const string Delete = Api;
+
+                /// <summary>POST {id}/clear — removes the item from the Work Items list without
+                /// deleting it or its sessions. See StopwatchItemFunction.ClearStopwatchItemAsync.</summary>
+                public const string Clear = Api;
             }
 
             public static class Project

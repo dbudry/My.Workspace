@@ -89,18 +89,19 @@
                     </MudTd>
                     <MudTd DataLabel="Actions" Style="text-align: center;">
                         <div class="d-flex justify-center" style="gap: 2px;">
-                            @* All editing (name/project when unlocked, session durations) lives in the sessions dialog. *@
-                            <MudTooltip Text="Sessions — durations, create duration, timer; edit name/project when unlocked">
+                            @* Deleting a work item (and all its sessions) lives inside the sessions dialog now —
+                               everything else (details/project when unlocked, session durations) already did. *@
+                            <MudTooltip Text="Sessions — durations, create duration, timer; edit details/project when unlocked">
                                 <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
                                                OnClick="@(() => OpenSessionsAsync(context))" />
                             </MudTooltip>
-                            <MudTooltip Text="@(context.HasLockedSessions
-                                ? "Cannot delete: one or more sessions are in a submitted month"
-                                : "Delete work item and all its sessions")">
+                            <MudTooltip Text="@(context.IsRunning
+                                ? "Stop the timer before removing this from your list"
+                                : "Remove from your list — keeps all logged time")">
                                 <span>
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                                   Disabled="@(busyItemId != null || context.HasLockedSessions)"
-                                                   OnClick="@(() => DeleteItemAsync(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Default"
+                                                   Disabled="@(busyItemId != null || context.IsRunning)"
+                                                   OnClick="@(() => ClearItemAsync(context))" />
                                 </span>
                             </MudTooltip>
                         </div>

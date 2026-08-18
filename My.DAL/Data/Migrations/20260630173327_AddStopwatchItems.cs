@@ -26,7 +26,9 @@ namespace My.DAL.Data.Migrations
                     Details = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     ProjectId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     LastWorkedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    // Greenfield: clear-from-list without deleting sessions (see ClearStopwatchItem).
+                    IsCleared = table.Column<bool>(type: "bit", nullable: false, defaultValue: false)
                 },
                 constraints: table =>
                 {
