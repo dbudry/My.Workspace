@@ -261,10 +261,19 @@ namespace My.Client.Components.TrackedTasks
                 editStartDateOnly = StartDate.Date;
             }
 
-            var nameError = WeekEntryGridRules.ValidateTaskName(editName);
+            var nameError = WeekEntryGridRules.ValidateTaskDetails(editName);
             if (nameError != null)
             {
                 saveError = nameError;
+                return;
+            }
+
+            // A project is always required — mirrors the server-side gate in
+            // TrackedTaskFunctions.ValidateProjectIsLoggable. Catch it here so the user
+            // gets an inline message next to the picker instead of a raw 400 from the API.
+            if (selectedProject == null)
+            {
+                saveError = "A project is required to log time.";
                 return;
             }
 
@@ -343,7 +352,7 @@ namespace My.Client.Components.TrackedTasks
                 {
                     var dto = new CreateTrackedTaskDto
                     {
-                    Details = editName,
+                        Details = editName,
                         StartDate = startDate,
                         Duration = duration,
                         IsAllDay = editIsAllDay,
@@ -358,7 +367,7 @@ namespace My.Client.Components.TrackedTasks
                     var dto = new UpdateTrackedTaskDto
                     {
                         TaskId = TaskId!,
-                    Details = editName,
+                        Details = editName,
                         StartDate = startDate,
                         EndDate = endDate,
                         Duration = duration,

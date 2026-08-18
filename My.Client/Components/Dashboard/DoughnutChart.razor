@@ -1,9 +1,15 @@
 @using My.Client.Models.Dashboard
+@using My.Shared.Rules
 
 @if (Data.Any())
 {
-    <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@Series" ChartLabels="@Labels"
-              ChartOptions="@Options" Width="300px" Height="300px" />
+    <div class="d-flex flex-column align-center" style="width:100%;">
+        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@Series" ChartLabels="@Labels"
+                  ChartOptions="@Options" Width="300px" Height="300px" />
+        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);" Class="mt-2">
+            Total: @TotalText
+        </MudText>
+    </div>
 }
 else
 {
@@ -16,19 +22,28 @@ else
         new ChartSeries<double> { Name = "Project Time", Data = Data.Select(p => p.TimeInt).ToArray() }
     };
 
-    // Show "<name> (NN%)" so the legend isn't just a list of names — a donut with no
-    // numbers is mostly decorative. Falls back to bare names when the total rounds to
-    // zero so we don't print "NaN%".
+    private double TotalSeconds => Data.Sum(p => p.TimeInt);
+
+    // Percent mode: "<name> (NN%)" — a donut with no numbers is mostly decorative.
+    // Duration mode: "<name> (Hh Mm)" so the legend reads real time instead of a share.
+    // Falls back to bare names when the total rounds to zero so we don't print "NaN%".
     private string[] Labels
     {
         get
         {
-            var total = Data.Sum(p => p.TimeInt);
+            var total = TotalSeconds;
             if (total <= 0)
                 return Data.Select(p => p.ProjectName).ToArray();
-            return Data.Select(p => $"{p.ProjectName} ({p.TimeInt / total:P0})").ToArray();
+
+            return ValueMode == ChartValueMode.Duration
+                ? Data.Select(p => $"{p.ProjectName} ({WeekEntryGridRules.FormatDuration(TimeSpan.FromSeconds(p.TimeInt))})").ToArray()
+                : Data.Select(p => $"{p.ProjectName} ({p.TimeInt / total:P0})").ToArray();
         }
     }
+
+    private string TotalText => ValueMode == ChartValueMode.Duration
+        ? WeekEntryGridRules.FormatDuration(TimeSpan.FromSeconds(TotalSeconds))
+        : "100%";
 
     private ChartOptions Options => Palette is { Length: > 0 }
         ? new ChartOptions { ChartPalette = Palette }

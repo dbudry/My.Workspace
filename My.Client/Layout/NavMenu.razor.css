@@ -42,9 +42,12 @@
     padding-left: 16px !important;
 }
 
-/* Knowledge Base header must not pick up nested-menu padding from MudBlazor. */
+/* Knowledge Base header must not pick up nested-menu padding from MudBlazor. Margin here
+   matches the built-in Tyme/Intranet/Admin group buttons' own 0.125rem/0.5rem margin (see
+   CuratedNavItem.razor.css) so the hover highlight overflows/clips at the drawer edge the
+   same way theirs does, instead of sitting flush and reading as a rounded "bubble". */
 .nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level {
-    margin: 0;
+    margin: 0.125rem 0.5rem;
     width: 100%;
     box-sizing: border-box;
 }
@@ -78,7 +81,7 @@
 }
 
 ::deep .mud-nav-group > .mud-nav-link {
-    font-weight: 600;
+    font-weight: 400;
     position: relative;
     display: flex;
     width: 100%;
@@ -88,8 +91,16 @@
     box-sizing: border-box;
 }
 
-/* MudBlazor sets width:100% on .mud-nav-link-text, which pins the caret beside the label. */
+/* MudBlazor sets width:100% on .mud-nav-link-text, which pins the caret beside the label.
+   It also bolds this span directly (.mud-nav-group > .mud-nav-link > .mud-nav-link-text
+   { font-weight: 500 } in its own stylesheet) — setting font-weight:400 on the parent
+   .mud-nav-link above doesn't override that because it's a separate explicit rule on the
+   child, not inherited. That's why Tyme/Intranet/Admin (real MudNavGroups) stayed bold
+   while Knowledge Base (a curated component, not a real .mud-nav-group) didn't: only
+   Knowledge Base's font-weight was fully controlled by our own CSS. Un-bold the text span
+   itself here so all four match. */
 ::deep .mud-nav-group > .mud-nav-link .mud-nav-link-text {
+    font-weight: 400;
     flex: 1 1 auto;
     width: auto !important;
     min-width: 0;

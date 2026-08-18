@@ -10,10 +10,24 @@
 {
     <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4" Icon="@Icons.Material.Filled.CloudOff">
         <div class="d-flex align-center justify-space-between flex-wrap gap-2">
-            <span>
-                Signed in with Google, but your app profile didn't load (the server may have been starting up).
-                Dashboard data stays empty until your profile is loaded.
-            </span>
+            <div>
+                <div>
+                    Signed in with Google, but your app profile didn't load.
+                    Dashboard data stays empty until your profile is loaded.
+                </div>
+                @if (!string.IsNullOrWhiteSpace(profileLoadDetail))
+                {
+                    <MudText Typo="Typo.caption" Class="mt-1" Style="color: var(--mud-palette-warning-darken);">
+                        @profileLoadDetail
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="mt-1" Style="color: var(--mud-palette-text-secondary);">
+                        Often a cold start, or the account was never created in Users. Ask an admin to check App Insights for "Provision denied".
+                    </MudText>
+                }
+            </div>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.Refresh"
                        Disabled="@isRetryingProfile"
@@ -23,6 +37,7 @@
         </div>
     </MudAlert>
 }
+
 
 @if (overdueMonths.Count > 0)
 {
@@ -71,15 +86,23 @@
                             </MudText>
                         </CardHeaderContent>
                         <CardHeaderActions>
-                            <MudToggleGroup T="ChartAxis" @bind-Value="selectedAxis" Color="Color.Primary"
-                                            SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
-                                <MudToggleItem Value="ChartAxis.Organization">Organization</MudToggleItem>
-                                <MudToggleItem Value="ChartAxis.ProjectGroup">Project Group</MudToggleItem>
-                            </MudToggleGroup>
+                            <div class="d-flex flex-column align-end gap-1">
+                                <MudToggleGroup T="ChartAxis" @bind-Value="selectedAxis" Color="Color.Primary"
+                                                SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                    <MudToggleItem Value="ChartAxis.Organization">Org</MudToggleItem>
+                                    <MudToggleItem Value="ChartAxis.Project">Project</MudToggleItem>
+                                    <MudToggleItem Value="ChartAxis.ProjectGroup">Group</MudToggleItem>
+                                </MudToggleGroup>
+                                <MudToggleGroup T="ChartValueMode" @bind-Value="selectedValueMode" Color="Color.Secondary"
+                                                SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                    <MudToggleItem Value="ChartValueMode.Percent">Percent</MudToggleItem>
+                                    <MudToggleItem Value="ChartValueMode.Duration">Duration</MudToggleItem>
+                                </MudToggleGroup>
+                            </div>
                         </CardHeaderActions>
                     </MudCardHeader>
                     <MudCardContent Class="d-flex justify-center align-center flex-grow-1">
-                        <DoughnutChart Data="@pivotedChartData" Palette="@PivotPalette" />
+                        <DoughnutChart Data="@pivotedChartData" Palette="@PivotPalette" ValueMode="@selectedValueMode" />
                     </MudCardContent>
                 </MudCard>
             </MudItem>

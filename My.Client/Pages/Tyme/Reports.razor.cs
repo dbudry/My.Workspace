@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 using System.Text;
 using My.Client.Extensions;
 using My.Client.Models;
+using My.Client.Models.Dashboard;
 using My.Client.Models.Paging;
 using My.Client.Services;
 using My.Shared.Dtos.Paging;
@@ -33,6 +34,11 @@ namespace My.Client.Pages.Tyme
         private const int DetailsTabIndex = 1;
         private const string ActiveTabStorageKey = "reports.activeTab";
 
+        private const string ProjectMixAxisStorageKey = "reports.projectMixAxis";
+        private const string ProjectMixValueModeStorageKey = "reports.projectMixValueMode";
+        private const string DailyHoursAxisStorageKey = "reports.dailyHoursAxis";
+        private const string DailyHoursValueModeStorageKey = "reports.dailyHoursValueMode";
+
         /// <summary>0 = Summary (analytics), 1 = Details (grid). Matches Management's tab layout.
         /// Persisted per user via LocalStorage so the page reopens on whichever tab they left.</summary>
         private int activeReportTab;
@@ -40,42 +46,175 @@ namespace My.Client.Pages.Tyme
         private string totalTimeFormatted = "00:00";
         private string topProjectName = "None";
         private string avgPerDayFormatted = "00:00";
+        private string durationTotalFormatted = "0h";
 
-        private List<(string Name, double Seconds, string Color)> projectChartData = new();
-        private List<(string Date, double Hours)> dailyChartData = new();
+        /// <summary>Flat per-project totals for the filtered range, built once per filter
+        /// change in <see cref="BuildChartData"/>. Both the "Time by Project" doughnut and
+        /// the Daily Hours breakdown re-pivot this (or, for Daily Hours, the raw tasks) via
+        /// <see cref="ChartPivotRules"/> so all three group and color identically.</summary>
+        private List<ProjectDataItem> rawProjectData = new();
 
-        private List<ChartSeries<double>> ProjectSeries => new()
+        private ChartAxis _projectMixAxis = ChartAxis.Organization;
+        private ChartAxis projectMixAxis
         {
-            new ChartSeries<double> { Name = "Hours", Data = projectChartData.Select(p => p.Seconds / 3600.0).ToArray() }
-        };
-        // Show "<name> (NN%)" so the donut legend carries meaning. Falls back to bare
-        // names when the total rounds to zero (empty filter result mid-render) to avoid
-        // printing "NaN%".
-        private string[] ProjectLabels
-        {
-            get
+            get => _projectMixAxis;
+            set
             {
-                var total = projectChartData.Sum(p => p.Seconds);
-                if (total <= 0)
-                    return projectChartData.Select(p => p.Name).ToArray();
-                return projectChartData.Select(p => $"{p.Name} ({p.Seconds / total:P0})").ToArray();
+                if (_projectMixAxis == value) return;
+                _projectMixAxis = value;
+                _ = LocalStorage.SetItemAsync(ProjectMixAxisStorageKey, value.ToString());
+                StateHasChanged();
             }
         }
 
-        /// <summary>Per-segment colors for the donut chart — same color the user sees
-        /// on a project's row in the Tasks list, so the report ties visually back to it.
-        /// Falls back to neutral gray when the user's preference is None or no source
-        /// color is set.</summary>
-        private ChartOptions ProjectChartOptions => new()
+        private ChartValueMode _projectMixValueMode = ChartValueMode.Percent;
+        private ChartValueMode projectMixValueMode
         {
-            ChartPalette = projectChartData.Select(p => p.Color).ToArray()
-        };
+            get => _projectMixValueMode;
+            set
+            {
+                if (_projectMixValueMode == value) return;
+                _projectMixValueMode = value;
+                _ = LocalStorage.SetItemAsync(ProjectMixValueModeStorageKey, value.ToString());
+                StateHasChanged();
+            }
+        }
 
-        private List<ChartSeries<double>> DailySeries => new()
+        private string ProjectMixAxisLabel => ChartPivotRules.AxisLabel(projectMixAxis);
+
+        private List<ProjectDataItem> pivotedProjectChartData => ChartPivotRules.Pivot(rawProjectData, projectMixAxis);
+
+        private string[]? ProjectMixPalette =>
+            ChartPivotRules.Palette(pivotedProjectChartData, projectMixAxis, SettingsService.ProjectColorSource);
+
+        private ChartAxis _dailyHoursAxis = ChartAxis.Organization;
+        private ChartAxis dailyHoursAxis
         {
-            new ChartSeries<double> { Name = "Hours", Data = dailyChartData.Select(d => d.Hours).ToArray() }
-        };
-        private string[] DailyLabels => dailyChartData.Select(d => d.Date).ToArray();
+            get => _dailyHoursAxis;
+            set
+            {
+                if (_dailyHoursAxis == value) return;
+                _dailyHoursAxis = value;
+                _ = LocalStorage.SetItemAsync(DailyHoursAxisStorageKey, value.ToString());
+                StateHasChanged();
+            }
+        }
+
+        private ChartValueMode _dailyHoursValueMode = ChartValueMode.Percent;
+        private ChartValueMode dailyHoursValueMode
+        {
+            get => _dailyHoursValueMode;
+            set
+            {
+                if (_dailyHoursValueMode == value) return;
+                _dailyHoursValueMode = value;
+                _ = LocalStorage.SetItemAsync(DailyHoursValueModeStorageKey, value.ToString());
+                StateHasChanged();
+            }
+        }
+
+        private string DailyHoursAxisLabel => ChartPivotRules.AxisLabel(dailyHoursAxis);
+
+        /// <summary>
+        /// Stacked-bar data for the Daily Hours chart: one series per category on the
+        /// selected axis, one value per day (last 14 days with data). Percent mode stacks
+        /// each day to 100% of that day's total; Duration mode stacks actual hours.
+        /// Rebuilt on every access (cheap — the filtered range is small) rather than cached,
+        /// so it always reflects the current axis/value-mode toggle without a manual rebuild.
+        /// </summary>
+        private (List<ChartSeries<double>> Series, string[] Labels, string[]? Palette) BuildDailyStackedData()
+        {
+            var days = filteredTasks
+                .GroupBy(t => ToUserDate(t.StartDate))
+                .OrderBy(g => g.Key)
+                .Select(g => g.Key)
+                .TakeLast(14)
+                .ToList();
+
+            if (days.Count == 0)
+                return (new List<ChartSeries<double>>(), Array.Empty<string>(), null);
+
+            var dayIndex = new Dictionary<DateTime, int>();
+            for (int i = 0; i < days.Count; i++)
+                dayIndex[days[i]] = i;
+
+            // key -> (display name, per-day seconds)
+            var categories = new Dictionary<string, (string Name, double[] Seconds)>();
+            var categoryOrder = new List<string>();
+
+            foreach (var task in filteredTasks)
+            {
+                var taskDate = ToUserDate(task.StartDate);
+                if (!dayIndex.TryGetValue(taskDate, out var idx)) continue;
+
+                var (key, name) = ChartPivotRules.CategoryKey(
+                    task.Project?.ProjectId, task.Project?.Name,
+                    task.Project?.OrganizationId, task.Project?.OrganizationName,
+                    task.Project?.ProjectGroupId, task.Project?.ProjectGroupName,
+                    dailyHoursAxis);
+
+                if (!categories.TryGetValue(key, out var entry))
+                {
+                    entry = (name, new double[days.Count]);
+                    categories[key] = entry;
+                    categoryOrder.Add(key);
+                }
+
+                entry.Seconds[idx] += task.Duration.TotalSeconds;
+            }
+
+            // Stable order: biggest category first, so the stack and its legend read
+            // consistently with the "Time by Project" doughnut above it.
+            var orderedKeys = categoryOrder
+                .OrderByDescending(k => categories[k].Seconds.Sum())
+                .ToList();
+
+            // Reuse the same Pivot+Palette used for the doughnut so a category (e.g. an
+            // organization) gets the same color in both charts on this page.
+            var pivoted = ChartPivotRules.Pivot(rawProjectData, dailyHoursAxis);
+            var pivotPalette = ChartPivotRules.Palette(pivoted, dailyHoursAxis, SettingsService.ProjectColorSource);
+            var colorByKey = new Dictionary<string, string>();
+            if (pivotPalette != null)
+            {
+                for (int i = 0; i < pivoted.Count && i < pivotPalette.Length; i++)
+                    colorByKey[pivoted[i].ProjectId] = pivotPalette[i];
+            }
+
+            double[] dayTotals = new double[days.Count];
+            foreach (var key in orderedKeys)
+            {
+                var seconds = categories[key].Seconds;
+                for (int i = 0; i < days.Count; i++)
+                    dayTotals[i] += seconds[i];
+            }
+
+            var series = new List<ChartSeries<double>>();
+            var palette = new List<string>();
+            foreach (var key in orderedKeys)
+            {
+                var (name, seconds) = categories[key];
+                double[] values = dailyHoursValueMode == ChartValueMode.Duration
+                    ? seconds.Select(s => s / 3600.0).ToArray()
+                    : seconds.Select((s, i) => dayTotals[i] > 0 ? s / dayTotals[i] * 100.0 : 0.0).ToArray();
+
+                series.Add(new ChartSeries<double> { Name = name, Data = values });
+                palette.Add(colorByKey.TryGetValue(key, out var color) ? color : ProjectColorRules.FallbackGray);
+            }
+
+            var labels = days.Select(d => d.ToString("MM/dd")).ToArray();
+            return (series, labels, palette.ToArray());
+        }
+
+        private List<ChartSeries<double>> DailySeries => BuildDailyStackedData().Series;
+        private string[] DailyLabels => BuildDailyStackedData().Labels;
+        private ChartOptions DailyChartOptions
+        {
+            get
+            {
+                var palette = BuildDailyStackedData().Palette;
+                return palette is { Length: > 0 } ? new ChartOptions { ChartPalette = palette } : new ChartOptions();
+            }
+        }
 
         HttpClient client = null!;
 
@@ -138,6 +277,28 @@ namespace My.Client.Pages.Tyme
                     activeReportTab = savedTab.Value;
             }
             catch { /* default to Summary */ }
+
+            // Restore the axis/value-mode the user last picked for each chart (default:
+            // Organization / Percent), same pattern as the Dashboard's Project mix card.
+            try
+            {
+                var savedProjectMixAxis = await LocalStorage.GetItemAsync<string>(ProjectMixAxisStorageKey);
+                if (!string.IsNullOrEmpty(savedProjectMixAxis) && Enum.TryParse<ChartAxis>(savedProjectMixAxis, out var parsedProjectMixAxis))
+                    _projectMixAxis = parsedProjectMixAxis;
+
+                var savedProjectMixValueMode = await LocalStorage.GetItemAsync<string>(ProjectMixValueModeStorageKey);
+                if (!string.IsNullOrEmpty(savedProjectMixValueMode) && Enum.TryParse<ChartValueMode>(savedProjectMixValueMode, out var parsedProjectMixValueMode))
+                    _projectMixValueMode = parsedProjectMixValueMode;
+
+                var savedDailyHoursAxis = await LocalStorage.GetItemAsync<string>(DailyHoursAxisStorageKey);
+                if (!string.IsNullOrEmpty(savedDailyHoursAxis) && Enum.TryParse<ChartAxis>(savedDailyHoursAxis, out var parsedDailyHoursAxis))
+                    _dailyHoursAxis = parsedDailyHoursAxis;
+
+                var savedDailyHoursValueMode = await LocalStorage.GetItemAsync<string>(DailyHoursValueModeStorageKey);
+                if (!string.IsNullOrEmpty(savedDailyHoursValueMode) && Enum.TryParse<ChartValueMode>(savedDailyHoursValueMode, out var parsedDailyHoursValueMode))
+                    _dailyHoursValueMode = parsedDailyHoursValueMode;
+            }
+            catch { /* default to Organization / Percent */ }
 
             // Default to current month in the user's timezone
             var userToday = SettingsService.GetUserToday();
@@ -261,33 +422,37 @@ namespace My.Client.Pages.Tyme
             {
                 avgPerDayFormatted = "00:00";
             }
+
+            // Details-tab footer total.
+            durationTotalFormatted = WeekEntryGridRules.FormatDuration(TimeSpan.FromSeconds(
+                taskDetailRows.Sum(t => t.Duration.TotalSeconds)));
         }
 
         private void BuildChartData()
         {
-            // Project breakdown. Resolve each segment's color via the user's preference
-            // using the first task's project in the group (all tasks in a group share the
-            // same project, so any one of them suffices). Empty/null colors fall back to
-            // the neutral gray so the chart segment still renders distinctly.
-            var source = SettingsService.ProjectColorSource;
-            projectChartData = filteredTasks
-                .GroupBy(t => t.Project?.Name ?? "None")
+            // Flat per-project totals for the filtered range. Both the "Time by Project"
+            // doughnut and the Daily Hours breakdown re-pivot this via ChartPivotRules so
+            // Org/Project/Group grouping and coloring stay identical between the two charts
+            // (and match the Dashboard's equivalent card).
+            rawProjectData = filteredTasks
+                .GroupBy(t => t.Project?.ProjectId ?? "None")
                 .Select(g =>
                 {
                     var sample = g.First().Project;
-                    var color = ProjectColorRules.ResolveOrFallback(
-                        sample?.OrganizationColor, sample?.ProjectGroupColor, source);
-                    return (Name: g.Key, Seconds: g.Sum(t => t.Duration.TotalSeconds), Color: color);
+                    return new ProjectDataItem(
+                        sample?.ProjectId ?? "None",
+                        sample?.Name ?? "None",
+                        TimeSpan.FromSeconds(g.Sum(t => t.Duration.TotalSeconds)),
+                        "")
+                    {
+                        OrganizationId = sample?.OrganizationId,
+                        OrganizationName = sample?.OrganizationName,
+                        OrganizationColor = sample?.OrganizationColor,
+                        ProjectGroupId = sample?.ProjectGroupId,
+                        ProjectGroupName = sample?.ProjectGroupName,
+                        ProjectGroupColor = sample?.ProjectGroupColor
+                    };
                 })
-                .OrderByDescending(x => x.Seconds)
-                .ToList();
-
-            // Daily breakdown (last 14 days max for readability)
-            dailyChartData = filteredTasks
-                .GroupBy(t => ToUserDate(t.StartDate))
-                .OrderBy(g => g.Key)
-                .TakeLast(14)
-                .Select(g => (Date: g.Key.ToString("MM/dd"), Hours: g.Sum(t => t.Duration.TotalSeconds) / 3600.0))
                 .ToList();
         }
 

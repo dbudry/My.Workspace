@@ -390,20 +390,29 @@ namespace My.Client.Pages.Settings
                 {
                     { x => x.DefaultDays, defaultDays }
                 };
+                // "Sync your tasks?" also surfaces the two ongoing sync toggles (Publish/Import),
+                // not just the one-time historical backfill — both default to true server-side,
+                // so without asking here they'd start syncing silently the moment the user
+                // connects. See CalendarBackfillDialog's class-level comment for the full why.
                 var dialog = await DialogService.ShowAsync<CalendarBackfillDialog>("Sync your tasks?", parameters,
                     new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
                 var result = await dialog.Result;
-                if (result is null || result.Canceled)
+                if (result is null || result.Canceled || result.Data is not CalendarBackfillDialog.BackfillChoice choice)
                     return;
 
-                if (result.Data is not CalendarBackfillDialog.BackfillRange range)
+                // Persist the toggle choice regardless of whether a backfill range follows —
+                // a user who turns off both switches and hits "Save preferences" still needs
+                // that decision saved, not silently discarded.
+                await SettingsService.UpdateGoogleCalendarSyncPreferencesAsync(choice.PublishToGoogle, choice.ImportFromGoogle);
+
+                if (choice.Range is null)
                 {
                     await AcknowledgeBackfillPromptAsync(client);
                     return;
                 }
 
-                fromDate = range.From;
-                toDate = range.To;
+                fromDate = choice.Range.From;
+                toDate = choice.Range.To;
             }
             else
             {

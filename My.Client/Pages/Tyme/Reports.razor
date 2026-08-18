@@ -5,6 +5,7 @@
 
 @using My.Client.Models
 @using My.Client.Models.Dashboard
+@using My.Client.Components.Dashboard
 
 <PageTitle>Reports</PageTitle>
 
@@ -80,34 +81,65 @@
 
                     <MudGrid Class="mt-4">
                         <MudItem xs="12" md="6">
-                            <MudCard>
+                            <MudCard Class="d-flex flex-column" Style="height:100%;">
                                 <MudCardHeader>
-                                    <MudText Typo="Typo.h6">Time by Project</MudText>
+                                    <CardHeaderContent>
+                                        <MudText Typo="Typo.h6">Time by Project</MudText>
+                                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                                            Grouped by @ProjectMixAxisLabel.
+                                        </MudText>
+                                    </CardHeaderContent>
+                                    <CardHeaderActions>
+                                        <div class="d-flex flex-column align-end gap-1">
+                                            <MudToggleGroup T="ChartAxis" @bind-Value="projectMixAxis" Color="Color.Primary"
+                                                            SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                                <MudToggleItem Value="ChartAxis.Organization">Org</MudToggleItem>
+                                                <MudToggleItem Value="ChartAxis.Project">Project</MudToggleItem>
+                                                <MudToggleItem Value="ChartAxis.ProjectGroup">Group</MudToggleItem>
+                                            </MudToggleGroup>
+                                            <MudToggleGroup T="ChartValueMode" @bind-Value="projectMixValueMode" Color="Color.Secondary"
+                                                            SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                                <MudToggleItem Value="ChartValueMode.Percent">Percent</MudToggleItem>
+                                                <MudToggleItem Value="ChartValueMode.Duration">Duration</MudToggleItem>
+                                            </MudToggleGroup>
+                                        </div>
+                                    </CardHeaderActions>
                                 </MudCardHeader>
-                                <MudCardContent>
-                                    @if (projectChartData.Any())
-                                    {
-                                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@ProjectSeries"
-                                                  ChartLabels="@ProjectLabels" ChartOptions="@ProjectChartOptions"
-                                                  Width="300px" Height="300px" />
-                                    }
-                                    else
-                                    {
-                                        <MudText>No data available</MudText>
-                                    }
+                                <MudCardContent Class="d-flex justify-center align-center flex-grow-1">
+                                    <DoughnutChart Data="@pivotedProjectChartData" Palette="@ProjectMixPalette" ValueMode="@projectMixValueMode" />
                                 </MudCardContent>
                             </MudCard>
                         </MudItem>
                         <MudItem xs="12" md="6">
-                            <MudCard>
+                            <MudCard Class="d-flex flex-column" Style="height:100%;">
                                 <MudCardHeader>
-                                    <MudText Typo="Typo.h6">Daily Hours</MudText>
+                                    <CardHeaderContent>
+                                        <MudText Typo="Typo.h6">Daily Hours</MudText>
+                                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+                                            Split by @DailyHoursAxisLabel.
+                                        </MudText>
+                                    </CardHeaderContent>
+                                    <CardHeaderActions>
+                                        <div class="d-flex flex-column align-end gap-1">
+                                            <MudToggleGroup T="ChartAxis" @bind-Value="dailyHoursAxis" Color="Color.Primary"
+                                                            SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                                <MudToggleItem Value="ChartAxis.Organization">Org</MudToggleItem>
+                                                <MudToggleItem Value="ChartAxis.Project">Project</MudToggleItem>
+                                                <MudToggleItem Value="ChartAxis.ProjectGroup">Group</MudToggleItem>
+                                            </MudToggleGroup>
+                                            <MudToggleGroup T="ChartValueMode" @bind-Value="dailyHoursValueMode" Color="Color.Secondary"
+                                                            SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
+                                                <MudToggleItem Value="ChartValueMode.Percent">Percent</MudToggleItem>
+                                                <MudToggleItem Value="ChartValueMode.Duration">Duration</MudToggleItem>
+                                            </MudToggleGroup>
+                                        </div>
+                                    </CardHeaderActions>
                                 </MudCardHeader>
                                 <MudCardContent>
-                                    @if (dailyChartData.Any())
+                                    @if (DailyLabels.Any())
                                     {
-                                        <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@DailySeries"
-                                                  ChartLabels="@DailyLabels" Width="100%" Height="300px" />
+                                        <MudChart T="double" ChartType="ChartType.StackedBar" ChartSeries="@DailySeries"
+                                                  ChartLabels="@DailyLabels" ChartOptions="@DailyChartOptions" Width="100%" Height="300px" />
                                     }
                                     else
                                     {
@@ -153,6 +185,13 @@
                                         Title="No tasks match the selected filters"
                                         Message="Adjust the date range or project filter and try again." />
                         </NoRecordsContent>
+                        <FooterContent>
+                            @if (taskDetailRows.Any())
+                            {
+                                <MudTd colspan="3" Style="font-weight:600;">Total</MudTd>
+                                <MudTd Style="font-weight:600;">@durationTotalFormatted</MudTd>
+                            }
+                        </FooterContent>
                         <PagerContent>
                             <MudTablePager />
                         </PagerContent>

@@ -384,12 +384,41 @@ h1:focus {
     width: 100%;
 }
 
+/* One merged control — prev arrow / date / today / next arrow all read as a single
+   input, same pattern as .tasks-search-control below: one border around the group,
+   no border on the pieces inside it. */
 .tasks-toolbar .tasks-week-nav {
     display: flex;
-    align-items: center;
-    gap: 0.15rem;
+    align-items: stretch;
+    gap: 0;
     flex: 0 1 auto;
     min-width: 0;
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: 8px;
+    background: var(--mud-palette-surface);
+    overflow: hidden;
+}
+
+.tasks-toolbar .tasks-week-nav:focus-within {
+    border-color: var(--mud-palette-primary);
+}
+
+/* The date field sits inside the merged border, so its own input chrome (border,
+   underline, focus ring) would double up with the container's — strip it and let
+   the container be the only visible boundary. */
+.tasks-toolbar .tasks-week-nav .tasks-toolbar-week-field .mud-input-outlined-border,
+.tasks-toolbar .tasks-week-nav .tasks-toolbar-week-field .mud-input:before,
+.tasks-toolbar .tasks-week-nav .tasks-toolbar-week-field .mud-input:after {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Icon buttons (prev/today/next) are plain and borderless inside the merged
+   control — square corners so they read as segments of one control, not three
+   separate round buttons. Mud's default hover/focus overlay still applies, so
+   these stay on-theme without any color overrides here. */
+.tasks-toolbar .tasks-week-nav .mud-icon-button {
+    border-radius: 0;
 }
 
 .tasks-toolbar-search-row {
@@ -710,9 +739,21 @@ h1:focus {
    scrolling the page behind it. The stopwatch sessions dialog below already had
    this on its own custom scroll div; this generalizes it to every MudDialog's
    content area so the same "scrollbar moves the screen behind it" bug (browser
-   scroll chaining) can't happen anywhere else a dialog scrolls. */
+   scroll chaining) can't happen anywhere else a dialog scrolls.
+
+   Also cap every dialog to the viewport height and let its content area scroll
+   internally rather than spilling past the bottom of the screen with the title
+   or action buttons unreachable — e.g. TrackedTaskDialog (New/Edit Task) with
+   several fields plus an inline validation alert can exceed viewport height on
+   shorter windows. Dialogs with their own custom scroll region (the stopwatch
+   sessions dialog below) override this via a more specific selector. */
+.mud-dialog {
+    max-height: calc(100dvh - 32px);
+}
+
 .mud-dialog-content {
     overscroll-behavior: contain;
+    overflow-y: auto;
 }
 
 /* Sessions dialog: keep title/actions fixed; only the day list scrolls. */
@@ -1626,7 +1667,10 @@ tbody .week-entry-col-day {
     white-space: nowrap;
 }
 
-/* Editable fields: white fill so they read as inputs on the page background. */
+/* Editable fields: surface fill so they read as inputs distinct from the page
+   background — was hardcoded #fff, which stayed white (and unreadable) in dark
+   mode. var(--mud-palette-surface) gives the same "raised input" contrast in
+   both themes since Surface is always distinct from Background. */
 .tasks-inline-duration .mud-input,
 .tasks-inline-duration .mud-input-outlined,
 .tasks-inline-start-time .mud-input,
@@ -1648,7 +1692,7 @@ tbody .week-entry-col-day {
 .tasks-toolbar-project-picker .mud-input,
 .tasks-toolbar-project-picker .mud-input-outlined,
 .tasks-search-control {
-    background-color: #fff;
+    background-color: var(--mud-palette-surface);
 }
 
 /*
@@ -1725,11 +1769,27 @@ tbody .week-entry-col-day {
     height: 36px;
 }
 
-/* Leave Size.Small toggles at their natural height; only pin chevrons to 36px. */
-.tasks-toolbar-view-row-project .tasks-week-nav > .mud-icon-button {
+/* Leave Size.Small toggles at their natural height; only pin chevrons to 36px.
+   Descendant (not direct-child) selector — the Today button is wrapped in a
+   MudTooltip, one DOM level deeper than the prev/next chevrons. */
+.tasks-toolbar-view-row-project .tasks-week-nav .mud-icon-button {
     width: 36px;
     height: 36px;
     padding: 6px;
+}
+
+/* The tooltip wrapper shouldn't add a box of its own to the merged control —
+   let its child (the icon button) participate directly in the flex row. */
+.tasks-week-nav .mud-tooltip-root {
+    display: contents;
+}
+
+/* Today's icon (CalendarToday) matched to the date field's own calendar-month
+   adornment icon, which is forced to 1.125rem below (.mud-input-adornment). */
+.tasks-toolbar-today-icon .mud-icon-root {
+    font-size: 1.125rem !important;
+    width: 1.125rem !important;
+    height: 1.125rem !important;
 }
 
 .tasks-toolbar-project-task-row {
@@ -1944,7 +2004,9 @@ tbody .week-entry-col-day {
     height: 14px;
     border-radius: 50%;
     flex-shrink: 0;
-    border: 1px solid rgba(0, 0, 0, 0.12);
+    /* Was a fixed dark rgba border — nearly invisible against a dark-mode
+       background. The themed lines color stays visible in both modes. */
+    border: 1px solid var(--mud-palette-lines-default);
 }
 
 .event-color-select .mud-input-adornment-icon {

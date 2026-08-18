@@ -17,7 +17,7 @@ namespace My.Client.Components.Users
 
         private CreateUserDto NewUser { get; set; } = new();
 
-        private IReadOnlyCollection<string> SelectedRoles { get; set; } = Array.Empty<string>();
+        private List<string> SelectedRoles { get; set; } = new();
 
         [Inject]
         private IHttpClientFactory ClientFactory { get; set; } = null!;
@@ -56,7 +56,7 @@ namespace My.Client.Components.Users
                 {
                     await OnUserAdded.InvokeAsync(new UserModel());
                     NewUser = new CreateUserDto();
-                    SelectedRoles = Array.Empty<string>();
+                    SelectedRoles = new List<string>();
                     Snackbar.Add("User created successfully.", Severity.Success);
                 }
                 else

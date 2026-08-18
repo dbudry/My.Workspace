@@ -11,15 +11,22 @@
     <DialogContent>
         <DialogFormStack>
             <MudTextField @bind-Value="Model.Name" Label="Organization Name" Required="true"
-                          RequiredError="Organization name is required" Variant="Variant.Outlined" />
-            <MudTextField @bind-Value="Model.Address" Label="Address" Variant="Variant.Outlined" />
-            <div class="d-flex gap-3">
-                <MudTextField @bind-Value="Model.City" Label="City" Variant="Variant.Outlined" Style="flex:1;" />
-                <MudTextField @bind-Value="Model.State" Label="State" Variant="Variant.Outlined" Style="width:100px;" />
-                <MudTextField @bind-Value="Model.PostalCode" Label="Zip" Variant="Variant.Outlined" Style="width:120px;" />
-            </div>
-            <MudTextField @bind-Value="Model.Country" Label="Country" Variant="Variant.Outlined" />
-            <MudTextField @bind-Value="Model.Note" Label="Notes" Variant="Variant.Outlined" Lines="3" />
+                          RequiredError="Organization name is required" Variant="Variant.Outlined" Margin="Margin.Dense" />
+
+            @* Address block uses its own tighter stack — these four fields read as one
+               group, so the normal inter-field gap (DialogFormStack's Spacing="3") just
+               made the dialog needlessly tall between them. *@
+            <MudStack Spacing="1">
+                <MudTextField @bind-Value="Model.Address" Label="Address" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <div class="d-flex gap-2">
+                    <MudTextField @bind-Value="Model.City" Label="City" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:2;" />
+                    <MudTextField @bind-Value="Model.State" Label="State" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                    <MudTextField @bind-Value="Model.PostalCode" Label="Zip" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                </div>
+                <MudTextField @bind-Value="Model.Country" Label="Country" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudStack>
+
+            <MudTextField @bind-Value="Model.Note" Label="Notes" Variant="Variant.Outlined" Lines="3" Margin="Margin.Dense" />
 
             <ColorPickerField Label="Color"
                               HelperText="Used as the visual indicator for projects in this organization that have no Project Group."

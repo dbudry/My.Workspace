@@ -345,7 +345,7 @@ public partial class WeekDayAcrossGrid : IDisposable
             var slice = ToSlice(t);
             if (!WeekEntryGridRules.OverlapsDayRange(slice, from, to))
                 continue;
-            // Details is optional (see WeekEntryGridRules.ValidateTaskName) — an empty
+            // Details is optional (see WeekEntryGridRules.ValidateTaskDetails) — an empty
             // name is still a real row, not a filler. Excluding it here made tasks
             // saved with no Details vanish from this grid on the next reload while
             // remaining visible (and correctly saved) in All / Week List.
@@ -636,7 +636,7 @@ public partial class WeekDayAcrossGrid : IDisposable
                 }
 
                 var draftName = WeekEntryGridRules.SanitizeTaskDetails(row.DraftTaskName);
-                var nameError = WeekEntryGridRules.ValidateTaskName(draftName);
+                var nameError = WeekEntryGridRules.ValidateTaskDetails(draftName);
                 if (nameError != null)
                 {
                     cell.Status = CellSaveStatus.Error;
@@ -725,7 +725,7 @@ public partial class WeekDayAcrossGrid : IDisposable
             : cell.ProjectId;
         var dto = new CreateTrackedTaskDto
         {
-                    Details = WeekEntryGridRules.SanitizeTaskDetails(
+            Details = WeekEntryGridRules.SanitizeTaskDetails(
                 string.IsNullOrWhiteSpace(cell.TaskName) ? row.TaskName : cell.TaskName),
             StartDate = SettingsService.ConvertFromUserTime(startLocal),
             Duration = duration,
@@ -766,7 +766,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         var dto = new UpdateTrackedTaskDto
         {
             TaskId = cell.TaskId,
-                    Details = WeekEntryGridRules.SanitizeTaskDetails(taskName),
+            Details = WeekEntryGridRules.SanitizeTaskDetails(taskName),
             StartDate = SettingsService.ConvertFromUserTime(start),
             EndDate = SettingsService.ConvertFromUserTime(end),
             Duration = duration,

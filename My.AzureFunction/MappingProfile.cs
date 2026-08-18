@@ -17,6 +17,7 @@ namespace My.Functions
         // TrackedTask
         [MapperIgnoreSource(nameof(TrackedTask.IsBillable))]
         [MapperIgnoreSource(nameof(TrackedTask.GoogleEventId))]
+        [MapperIgnoreSource(nameof(TrackedTask.GoogleEventUpdatedUtc))]
         [MapperIgnoreSource(nameof(TrackedTask.TeamAvailabilityEventId))]
         [MapperIgnoreSource(nameof(TrackedTask.StopwatchItem))]
         [MapperIgnoreSource(nameof(TrackedTask.User))]
@@ -36,6 +37,7 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(TrackedTask.User))]
         [MapperIgnoreTarget(nameof(TrackedTask.Project))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventId))]
+        [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventUpdatedUtc))]
         [MapperIgnoreTarget(nameof(TrackedTask.TeamAvailabilityEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItem))]
         // StopwatchItemId is mapped when client logs a session against a work item.
@@ -49,13 +51,19 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(TrackedTask.User))]
         [MapperIgnoreTarget(nameof(TrackedTask.Project))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventId))]
+        [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventUpdatedUtc))]
         [MapperIgnoreTarget(nameof(TrackedTask.TeamAvailabilityEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItemId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItem))]
         public partial void UpdateTrackedTaskFromDto(UpdateTrackedTaskDto dto, TrackedTask target);
 
         public IEnumerable<TrackedTaskDto> TrackedTasksToDtos(IEnumerable<TrackedTask> tasks)
-            => tasks.Select(TrackedTaskToDto);
+            => tasks.Select(t =>
+            {
+                var dto = TrackedTaskToDto(t);
+                dto.Details ??= string.Empty; // TrackedTask.Details is nullable in the DB; DTO stays non-null.
+                return dto;
+            });
 
         // Project
         [MapProperty(nameof(Project.Organization) + "." + nameof(Organization.Name), nameof(ProjectDto.OrganizationName))]

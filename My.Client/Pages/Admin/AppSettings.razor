@@ -91,7 +91,78 @@
                 </SectionCard>
             </MudTabPanel>
 
-            <MudTabPanel Text="Tyme" Icon="@Icons.Material.Filled.Schedule">
+            <MudTabPanel Text="Intranet" Icon="@Icons.Material.Filled.MenuBook">
+                <SectionCard Title="Intranet Sidebar Menu">
+                    <MudNumericField T="int" @bind-Value="intranetNavigationMaxDepth"
+                                     Label="Maximum menu nesting depth"
+                                     Variant="Variant.Outlined" Min="1" Max="50" Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Controls how many <strong>levels deep</strong> the curated sidebar menu can nest — not the
+                        total number of menu items. Top-level entries (e.g. Knowledge Base) are depth <strong>1</strong>;
+                        each sub-menu adds one level (Knowledge Base → Google Workspace → Email = depth 3).
+                        Items deeper than this limit are hidden from readers but remain editable under
+                        <strong>Intranet → Navigation</strong>. Default: 10.
+                    </MudText>
+                </SectionCard>
+
+                <SectionCard Title="Editor File Policy">
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Allowed file types for intranet editor uploads, copy, and link. Each entry is extension plus max size (1–50 MB).
+                        Executables and scripts (exe, msi, bat, etc.) cannot be added. If this list is empty, uploads are blocked.
+                    </MudText>
+                    <div class="d-flex gap-2 align-center mb-3">
+                        <MudTextField T="string" @bind-Value="newUploadExtension"
+                                      Variant="Variant.Text"
+                                      Placeholder="Extension"
+                                      Margin="Margin.None"
+                                      Style="width: 9rem;"
+                                      OnKeyDown="OnUploadLimitKeyDown" />
+                        <MudNumericField T="int" @bind-Value="newUploadMaxMegabytes"
+                                         Variant="Variant.Text"
+                                         Margin="Margin.None"
+                                         Min="1" Max="50" HideSpinButtons="true"
+                                         Style="width: 4.5rem;"
+                                         Adornment="Adornment.End" AdornmentText="MB" />
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                   Disabled="@string.IsNullOrWhiteSpace(newUploadExtension)"
+                                   OnClick="AddIntranetUploadLimit">Add</MudButton>
+                    </div>
+                    @if (intranetUploadLimits.Count > 0)
+                    {
+                        <div class="d-flex flex-column gap-1">
+                            @foreach (var limit in intranetUploadLimits)
+                            {
+                                <div class="d-flex align-center gap-1">
+                                    <MudText Typo="Typo.body2" Style="flex: 1;">
+                                        .@limit.Extension — @limit.MaxMegabytes MB
+                                    </MudText>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                     Size="Size.Small" Color="Color.Default"
+                                                     title="Remove"
+                                                     OnClick="@(() => RemoveIntranetUploadLimit(limit.Extension))" />
+                                </div>
+                            }
+                        </div>
+                    }
+                </SectionCard>
+
+                <SectionCard Title="Google Drive Storage">
+                    <MudTextField T="string" @bind-Value="intranetDriveParentFolderId"
+                                  Label="Intranet Drive Parent Folder ID" Variant="Variant.Outlined"
+                                  Placeholder="0EXAMPLE__NOT_A_REAL_DRIVE_FOLDER_ID"
+                                  Class="mb-2" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Google Drive folder ID for the <strong>Intranet root</strong> folder (e.g. <code>IT Resources › Intranet</code>).
+                        Uploads are routed automatically into <code>Images</code>, <code>Videos</code>, and <code>Documents</code> subfolders when those exist.
+                        Do not paste a subfolder ID such as Videos — if you already did, the app will climb to the parent Intranet folder when it can.
+                        Leave blank to upload to each user's own My Drive root.
+                        <br />
+                        To get the ID: open the Intranet folder in Drive and copy the long ID from the URL (after <code>/folders/</code>).
+                    </MudText>
+                </SectionCard>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Organizations" Icon="@Icons.Material.Filled.Business">
                 <SectionCard Title="Contact Types">
                     <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
                         Types available when adding or editing organization and department contacts.
@@ -135,23 +206,27 @@
                     </div>
                 </SectionCard>
 
-                <SectionCard Title="Organizations &amp; Projects">
+                <SectionCard Title="Organizations">
                     <MudSwitch T="bool" Value="allowOrganizationDelete" Label="Allow Organization / Department Deletion"
                                Color="Color.Primary" Class="mb-2"
                                ValueChanged="@((bool v) => allowOrganizationDelete = v)" />
-                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
-                        When enabled, managers can permanently delete organizations and departments.
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, Organization admins can permanently delete organizations and departments.
                         Deleting an organization also deletes its departments and any contacts attached directly
                         to either. <b>Projects under it survive</b> but lose their organization and department
                         link — they show as "Unspecified" until reassigned. Tracked time on those projects keeps
                         the project link; only the upstream org/department reference is cleared. Deleting a
                         department behaves the same way for projects under that department.
                     </MudText>
+                </SectionCard>
+            </MudTabPanel>
 
+            <MudTabPanel Text="Tyme" Icon="@Icons.Material.Filled.Schedule">
+                <SectionCard Title="Projects">
                     <MudSwitch T="bool" Value="allowProjectDelete" Label="Allow Project Deletion"
                                Color="Color.Primary" Class="mb-2"
                                ValueChanged="@((bool v) => allowProjectDelete = v)" />
-                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
                         When enabled, managers can permanently delete projects and availability categories that have
                         never been used. Delete is blocked once time has been logged, manager overrides exist, or
                         calendar events were synced — use Archive or Set inactive instead.
@@ -268,81 +343,6 @@
                         Time logged against any project flagged <b>Share availability with team</b>
                         is dual-published here as a sanitized <code>[&lt;Name&gt;] &lt;Project&gt;</code>
                         event. Empty disables the feature.
-                    </MudText>
-                </SectionCard>
-            </MudTabPanel>
-
-            <MudTabPanel Text="Intranet" Icon="@Icons.Material.Filled.MenuBook">
-                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-4">
-                    Intranet-specific settings live on this tab — not under General or Tyme.
-                </MudAlert>
-
-                <SectionCard Title="Intranet Sidebar Menu">
-                    <MudNumericField T="int" @bind-Value="intranetNavigationMaxDepth"
-                                     Label="Maximum menu nesting depth"
-                                     Variant="Variant.Outlined" Min="1" Max="50" Class="mb-2" />
-                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                        Controls how many <strong>levels deep</strong> the curated sidebar menu can nest — not the
-                        total number of menu items. Top-level entries (e.g. Knowledge Base) are depth <strong>1</strong>;
-                        each sub-menu adds one level (Knowledge Base → Google Workspace → Email = depth 3).
-                        Items deeper than this limit are hidden from readers but remain editable under
-                        <strong>Intranet → Navigation</strong>. Default: 10.
-                    </MudText>
-                </SectionCard>
-
-                <SectionCard Title="Editor File Policy">
-                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                        Allowed file types for intranet editor uploads, copy, and link. Each entry is extension plus max size (1–50 MB).
-                        Executables and scripts (exe, msi, bat, etc.) cannot be added. If this list is empty, uploads are blocked.
-                    </MudText>
-                    <div class="d-flex gap-2 align-center mb-3">
-                        <MudTextField T="string" @bind-Value="newUploadExtension"
-                                      Variant="Variant.Text"
-                                      Placeholder="Extension"
-                                      Margin="Margin.None"
-                                      Style="width: 9rem;"
-                                      OnKeyDown="OnUploadLimitKeyDown" />
-                        <MudNumericField T="int" @bind-Value="newUploadMaxMegabytes"
-                                         Variant="Variant.Text"
-                                         Margin="Margin.None"
-                                         Min="1" Max="50" HideSpinButtons="true"
-                                         Style="width: 4.5rem;"
-                                         Adornment="Adornment.End" AdornmentText="MB" />
-                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                                   Disabled="@string.IsNullOrWhiteSpace(newUploadExtension)"
-                                   OnClick="AddIntranetUploadLimit">Add</MudButton>
-                    </div>
-                    @if (intranetUploadLimits.Count > 0)
-                    {
-                        <div class="d-flex flex-column gap-1">
-                            @foreach (var limit in intranetUploadLimits)
-                            {
-                                <div class="d-flex align-center gap-1">
-                                    <MudText Typo="Typo.body2" Style="flex: 1;">
-                                        .@limit.Extension — @limit.MaxMegabytes MB
-                                    </MudText>
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                                     Size="Size.Small" Color="Color.Default"
-                                                     title="Remove"
-                                                     OnClick="@(() => RemoveIntranetUploadLimit(limit.Extension))" />
-                                </div>
-                            }
-                        </div>
-                    }
-                </SectionCard>
-
-                <SectionCard Title="Google Drive Storage">
-                    <MudTextField T="string" @bind-Value="intranetDriveParentFolderId"
-                                  Label="Intranet Drive Parent Folder ID" Variant="Variant.Outlined"
-                                  Placeholder="0EXAMPLE__NOT_A_REAL_DRIVE_FOLDER_ID"
-                                  Class="mb-2" />
-                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                        Google Drive folder ID for the <strong>Intranet root</strong> folder (e.g. <code>IT Resources › Intranet</code>).
-                        Uploads are routed automatically into <code>Images</code>, <code>Videos</code>, and <code>Documents</code> subfolders when those exist.
-                        Do not paste a subfolder ID such as Videos — if you already did, the app will climb to the parent Intranet folder when it can.
-                        Leave blank to upload to each user's own My Drive root.
-                        <br />
-                        To get the ID: open the Intranet folder in Drive and copy the long ID from the URL (after <code>/folders/</code>).
                     </MudText>
                 </SectionCard>
             </MudTabPanel>

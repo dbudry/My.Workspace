@@ -16,18 +16,13 @@ using My.Shared.Rules;
 
 namespace My.Client.Components.Dashboard
 {
-    public enum ChartAxis
-    {
-        Organization,
-        ProjectGroup
-    }
-
     public partial class Dashboard : IDisposable
     {
         public ClaimsPrincipal User { get; set; } = null!;
 
         private const string Placeholder = "—";
         private const string AxisStorageKey = "dashboard.projectMixAxis";
+        private const string ValueModeStorageKey = "dashboard.projectMixValueMode";
 
         private string TopProjectLastMonth = Placeholder;
         private string TopProjectThisMonth = Placeholder;
@@ -42,10 +37,12 @@ namespace My.Client.Components.Dashboard
         private string? loadError;
         /// <summary>
         /// Google identity is present but <c>POST /users/provision</c> never stamped
-        /// <c>app_user_id</c> (cold start / SQL). Distinct from "no Tyme role".
+        /// <c>app_user_id</c> (cold start / SQL / not provisioned). Distinct from "no Tyme role".
         /// </summary>
         private bool profileLoadFailed;
+        private string? profileLoadDetail;
         private bool isRetryingProfile;
+
 
         private ChartAxis _selectedAxis = ChartAxis.Organization;
         private ChartAxis selectedAxis
@@ -60,74 +57,34 @@ namespace My.Client.Components.Dashboard
             }
         }
 
-        private string AxisLabel => selectedAxis switch
+        private ChartValueMode _selectedValueMode = ChartValueMode.Percent;
+        private ChartValueMode selectedValueMode
         {
-            ChartAxis.Organization => "organization",
-            ChartAxis.ProjectGroup => "project group",
-            _ => "organization"
-        };
-
-        /// <summary>
-        /// Re-pivots the underlying per-project data into the currently selected axis,
-        /// rolling unspecified parents into a single "Unspecified" bucket. The first
-        /// project in each group contributes its parent's color so the palette matches
-        /// what the user sees on other pages (Org pivot → org color, Group pivot → group
-        /// color).
-        /// </summary>
-        private List<ProjectDataItem> pivotedChartData
-        {
-            get
+            get => _selectedValueMode;
+            set
             {
-                IEnumerable<IGrouping<(string? Id, string? Name), ProjectDataItem>> grouped = selectedAxis switch
-                {
-                    ChartAxis.Organization => projectChartData.GroupBy(p => (p.OrganizationId, p.OrganizationName)),
-                    ChartAxis.ProjectGroup => projectChartData.GroupBy(p => (p.ProjectGroupId, p.ProjectGroupName)),
-                    _ => projectChartData.GroupBy(p => (p.OrganizationId, p.OrganizationName))
-                };
-
-                return grouped
-                    .Select(g =>
-                    {
-                        var sample = g.First();
-                        return new ProjectDataItem(
-                            g.Key.Id ?? "Unspecified",
-                            string.IsNullOrEmpty(g.Key.Name) ? "Unspecified" : g.Key.Name!,
-                            TimeSpan.FromSeconds(g.Sum(p => p.Time.TotalSeconds)),
-                            "")
-                        {
-                            // Carry the parent's native color forward so PivotPalette can
-                            // assemble a per-segment palette without re-doing the join.
-                            OrganizationColor = sample.OrganizationColor,
-                            ProjectGroupColor = sample.ProjectGroupColor,
-                        };
-                    })
-                    .OrderByDescending(p => p.Time)
-                    .ToList();
+                if (_selectedValueMode == value) return;
+                _selectedValueMode = value;
+                _ = LocalStorage.SetItemAsync(ValueModeStorageKey, value.ToString());
+                StateHasChanged();
             }
         }
+
+        private string AxisLabel => ChartPivotRules.AxisLabel(selectedAxis);
+
+        /// <summary>
+        /// Re-pivots the underlying per-project data into the currently selected axis.
+        /// See <see cref="ChartPivotRules"/> — shared with the Reports page so both
+        /// "circle graphs" group and color identically.
+        /// </summary>
+        private List<ProjectDataItem> pivotedChartData => ChartPivotRules.Pivot(projectChartData, selectedAxis);
 
         /// <summary>
         /// Per-segment palette aligned with <see cref="pivotedChartData"/>. Returns null
         /// when the user opted out — the chart then falls back to MudBlazor defaults.
         /// </summary>
-        private string[]? PivotPalette
-        {
-            get
-            {
-                if (SettingsService.ProjectColorSource == ProjectColorSource.None)
-                    return null;
-
-                var data = pivotedChartData;
-                return data.Select(item => selectedAxis switch
-                {
-                    ChartAxis.Organization => item.OrganizationColor,
-                    ChartAxis.ProjectGroup => item.ProjectGroupColor,
-                    _ => null
-                })
-                .Select(c => string.IsNullOrWhiteSpace(c) ? ProjectColorRules.FallbackGray : c)
-                .ToArray();
-            }
-        }
+        private string[]? PivotPalette =>
+            ChartPivotRules.Palette(pivotedChartData, selectedAxis, SettingsService.ProjectColorSource);
 
         #region Dependency Injection
 
@@ -153,9 +110,13 @@ namespace My.Client.Components.Dashboard
         private IUserRoleRefreshService RoleRefresh { get; set; } = null!;
 
         [Inject]
+        private CustomAccountFactory AccountFactory { get; set; } = null!;
+
+        [Inject]
         private TimeSubmissionEvents SubmissionEvents { get; set; } = null!;
 
         #endregion
+
 
         [CascadingParameter]
         private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
@@ -187,10 +148,14 @@ namespace My.Client.Components.Dashboard
             if (User.Identity != null && !User.Identity.IsAuthenticated)
                 Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
 
-            // Restore the axis the user last picked (defaults to Organization).
+            // Restore the axis and value mode the user last picked (default: Organization / Percent).
             var savedAxis = await LocalStorage.GetItemAsync<string>(AxisStorageKey);
-            if (!string.IsNullOrEmpty(savedAxis) && Enum.TryParse<ChartAxis>(savedAxis, out var parsed))
-                _selectedAxis = parsed;
+            if (!string.IsNullOrEmpty(savedAxis) && Enum.TryParse<ChartAxis>(savedAxis, out var parsedAxis))
+                _selectedAxis = parsedAxis;
+
+            var savedValueMode = await LocalStorage.GetItemAsync<string>(ValueModeStorageKey);
+            if (!string.IsNullOrEmpty(savedValueMode) && Enum.TryParse<ChartValueMode>(savedValueMode, out var parsedMode))
+                _selectedValueMode = parsedMode;
 
             await ApplyUserGatesAsync(User);
         }
@@ -204,6 +169,7 @@ namespace My.Client.Components.Dashboard
             if (CustomAccountFactory.IsMissingAppProfile(user))
             {
                 profileLoadFailed = true;
+                profileLoadDetail = BuildProfileLoadDetail();
                 isLoading = false;
                 loadError = null;
                 hasTymeAccess = false;
@@ -216,6 +182,8 @@ namespace My.Client.Components.Dashboard
             }
 
             profileLoadFailed = false;
+            profileLoadDetail = null;
+
 
             // Tyme panels are for users who have been explicitly given a Tyme-scoped role.
             // A pure global Admin is system-focused (Users, AppSettings, Logs) and does
@@ -361,6 +329,7 @@ namespace My.Client.Components.Dashboard
             isRetryingProfile = true;
             isLoading = true;
             profileLoadFailed = false;
+            profileLoadDetail = null;
             StateHasChanged();
 
             try
@@ -380,6 +349,8 @@ namespace My.Client.Components.Dashboard
             {
                 Logger.LogError(ex, "Profile retry failed");
                 profileLoadFailed = true;
+                profileLoadDetail = BuildProfileLoadDetail()
+                    ?? $"Retry failed: {ex.Message}";
                 isLoading = false;
             }
             finally
@@ -388,6 +359,30 @@ namespace My.Client.Components.Dashboard
                 StateHasChanged();
             }
         }
+
+        private string? BuildProfileLoadDetail()
+        {
+            var message = AccountFactory.LastProvisionFailureMessage;
+            var code = AccountFactory.LastProvisionFailureCode;
+            var status = AccountFactory.LastProvisionFailureStatus;
+
+            if (string.IsNullOrWhiteSpace(message) && string.IsNullOrWhiteSpace(code) && status is null)
+                return null;
+
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(message))
+                parts.Add(message);
+            if (!string.IsNullOrWhiteSpace(code) || status is not null)
+            {
+                var tech = status is not null
+                    ? $"({code ?? "unknown"}, HTTP {status})"
+                    : $"({code})";
+                parts.Add(tech);
+            }
+
+            return string.Join(" ", parts);
+        }
+
 
         private async Task LoadOverdueAsync(HttpClient client)
         {

@@ -74,7 +74,8 @@ namespace My.Shared.Constants
                 Admin,
                 // Tyme: User (track time), Editor (create/edit projects only — no delete/archive/
                 // group management, no team surfaces), Manager (team reports/availability + full
-                // project admin), Admin (orgs/projects).
+                // project management), Admin (projects). Organizations moved out of Tyme's scope —
+                // see the Organizations block below; Admin:Tyme/Manager:Tyme no longer manage orgs.
                 Scoped(Admin, Scopes.Tyme),
                 Scoped(Manager, Scopes.Tyme),
                 Scoped(Editor, Scopes.Tyme),
@@ -87,6 +88,14 @@ namespace My.Shared.Constants
                 Scoped(Admin, Scopes.Intranet),
                 Scoped(Editor, Scopes.Intranet),
                 Scoped(User, Scopes.Intranet),
+                // Organizations scope: applies beyond Tyme (e.g. contacts/departments used by other
+                // modules), so it's independent of Tyme:* roles. Only User (view) and Editor (create/
+                // edit orgs and departments — no archive/delete) are assignable; there is intentionally
+                // no Admin:Organizations. Full control (archive/delete, and everything Editor can do)
+                // is reserved for the unscoped global Admin role, not a scoped variant — see
+                // AuthGates.RequireOrganizations / RequireOrganizationsAdminOnly.
+                Scoped(Editor, Scopes.Organizations),
+                Scoped(User, Scopes.Organizations),
             };
 
             /// <summary>True when <paramref name="role"/> is in <see cref="Assignable"/>.</summary>
@@ -167,33 +176,17 @@ namespace My.Shared.Constants
             /// <summary>
             /// Does the user appear in the admin's filtered list?
             ///
-            /// A scoped admin (e.g. Admin:Tyme) can only see users whose roles are
-            /// fully inside their administered scopes. If the target has *any*
-            /// global role (Admin / Manager / User without a scope), only a global
-            /// admin can see them — global roles are super-roles that scoped admins
-            /// can't reach. Within scope, any overlapping scoped role makes the
-            /// target visible.
+            /// Any admin — global or scoped (e.g. Admin:Tyme) — can see every user in the
+            /// directory, including users who also hold a global or out-of-scope role.
+            /// Visibility is intentionally wide open so a scoped admin can find anyone;
+            /// actually mutating a user's roles is the operation that stays locked down —
+            /// see <see cref="CanManageUser"/>, which still requires authority over every
+            /// role currently on the target before an update is allowed.
             /// </summary>
             public static bool IsVisibleTo(System.Security.Claims.ClaimsPrincipal admin, IEnumerable<string> targetRoles)
             {
                 var scopes = AdministeredScopes(admin);
-                if (scopes.Count == 0) return false;
-                if (scopes.Contains(GlobalScopeWildcard)) return true;
-                if (targetRoles is null) return false;
-
-                // Any global role on the target shields them from a scoped admin.
-                foreach (var r in targetRoles)
-                {
-                    if (r.IndexOf(':') < 0) return false;
-                }
-
-                foreach (var r in targetRoles)
-                {
-                    var i = r.IndexOf(':');
-                    if (i < 0) continue;
-                    if (scopes.Contains(r.Substring(i + 1))) return true;
-                }
-                return false;
+                return scopes.Count > 0;
             }
 
             /// <summary>
@@ -227,8 +220,8 @@ namespace My.Shared.Constants
                 System.Security.Claims.ClaimsPrincipal viewer,
                 IEnumerable<string> targetRoles)
             {
-                if (IsAnyAdmin(viewer))
-                    return IsVisibleTo(viewer, targetRoles);
+                if (IsGlobalAdmin(viewer))
+                    return true;
 
                 return HasRoleInScope(targetRoles, Scopes.Tyme);
             }
@@ -329,6 +322,14 @@ namespace My.Shared.Constants
         {
             public const string Tyme = "Tyme";
             public const string Intranet = "Intranet";
+            /// <summary>
+            /// Organizations/Departments/Contacts. Deliberately its own scope, not part of Tyme —
+            /// organization data is meant to be usable outside time tracking too. Read access
+            /// (looking an org up, e.g. for a Project's org picker) is open to any authenticated
+            /// user regardless of scope; this scope only gates the Organizations management page
+            /// and mutations. See AuthGates.RequireOrganizations.
+            /// </summary>
+            public const string Organizations = "Organizations";
         }
 
         public static class Claims

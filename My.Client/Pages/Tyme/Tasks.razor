@@ -108,11 +108,20 @@
                                    DateChanged="OnWeekDatePickedAsync"
                                    Placeholder="Week of"
                                    DateFormat="MMM d, yyyy"
-                                   Variant="Variant.Outlined"
+                                   Variant="Variant.Text"
                                    Margin="Margin.Dense"
                                    Editable="true"
+                                   AdornmentIcon="@Icons.Material.Filled.CalendarMonth"
                                    Disabled="@(isLoadingWeekly || isWeeklyDayBusy)" />
                 </div>
+                <MudTooltip Text="Go to this week">
+                    <MudIconButton Icon="@Icons.Material.Filled.CalendarToday"
+                                   Color="Color.Primary"
+                                   Class="tasks-toolbar-today-icon"
+                                   aria-label="Go to this week"
+                                   OnClick="GoToTodayWeekAsync"
+                                   Disabled="@(isLoadingWeekly || isWeeklyDayBusy)" />
+                </MudTooltip>
                 <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
                                aria-label="Next week"
                                OnClick="NextWeekAsync"
@@ -138,11 +147,20 @@
                                    DateChanged="OnProjectWeekDatePickedAsync"
                                    Placeholder="Week of"
                                    DateFormat="MMM d, yyyy"
-                                   Variant="Variant.Outlined"
+                                   Variant="Variant.Text"
                                    Margin="Margin.Dense"
                                    Editable="true"
+                                   AdornmentIcon="@Icons.Material.Filled.CalendarMonth"
                                    Disabled="@isProjectWeekBusy" />
                 </div>
+                <MudTooltip Text="Go to this week">
+                    <MudIconButton Icon="@Icons.Material.Filled.CalendarToday"
+                                   Color="Color.Primary"
+                                   Class="tasks-toolbar-today-icon"
+                                   aria-label="Go to this week"
+                                   OnClick="GoToTodayProjectWeekAsync"
+                                   Disabled="@isProjectWeekBusy" />
+                </MudTooltip>
                 <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
                                aria-label="Next week"
                                OnClick="NextProjectWeekAsync"

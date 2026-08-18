@@ -47,7 +47,8 @@ namespace My.Functions
         public async Task<IActionResult> GetContactsAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "contacts")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+            // Open to any authenticated user — matches OrganizationFunction's read endpoints.
+            if (AuthGates.RequireAuthenticated(principal, out var userId) is IActionResult unauth) return unauth;
 
             var orgId = req.Query["organizationId"];
             var deptId = req.Query["departmentId"];
@@ -66,8 +67,9 @@ namespace My.Functions
         public async Task<IActionResult> CreateContactAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "contacts")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Mutation requires Manager+. GET endpoint remains open to any Tyme user.
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Create/edit requires Editor+:Organizations or global Admin. GET endpoint remains
+            // open to any authenticated user.
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var allowedTypes = await ContactTypeSettings.GetAllowedTypesAsync(appSettingRepository);
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(
@@ -120,7 +122,7 @@ namespace My.Functions
         public async Task<IActionResult> UpdateContactAsync([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "contacts")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var allowedTypes = await ContactTypeSettings.GetAllowedTypesAsync(appSettingRepository);
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(
@@ -155,7 +157,8 @@ namespace My.Functions
         public async Task<IActionResult> DeleteContactAsync([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "contacts/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Delete is a structural change — global Admin only, not Editor:Organizations.
+            if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var contact = await contactRepository.GetById(id);
             if (contact == null)

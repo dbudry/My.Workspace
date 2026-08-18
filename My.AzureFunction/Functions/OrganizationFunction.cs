@@ -48,7 +48,10 @@ namespace My.Functions
         public async Task<IActionResult> GetOrganizationsAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "organizations")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+            // Read access is intentionally open to any authenticated user, not gated on Tyme or
+            // Organizations scope — Project/Availability org pickers outside those scopes still
+            // need to resolve org names. Only the management page and mutations are scoped.
+            if (AuthGates.RequireAuthenticated(principal, out var userId) is IActionResult unauth) return unauth;
 
             var listQuery = HttpListQueryParser.ParseListQuery(req);
             bool summary = bool.TryParse(req.Query["summary"], out var s) && s;
@@ -68,7 +71,8 @@ namespace My.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "organizationlookup")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+            // Open to any authenticated user — see GetOrganizationsAsync's comment.
+            if (AuthGates.RequireAuthenticated(principal, out var userId) is IActionResult unauth) return unauth;
 
             var listQuery = HttpListQueryParser.ParseListQuery(req);
             listQuery.IncludeArchived = true;
@@ -149,7 +153,8 @@ namespace My.Functions
         public async Task<IActionResult> GetOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "organizations/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+            // Open to any authenticated user — see GetOrganizationsAsync's comment.
+            if (AuthGates.RequireAuthenticated(principal, out var userId) is IActionResult unauth) return unauth;
 
             bool includeArchived = bool.TryParse(req.Query["includeArchived"], out var ia) && ia;
 
@@ -167,8 +172,9 @@ namespace My.Functions
         public async Task<IActionResult> CreateOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "organizations")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Mutation requires Manager+. GET endpoints remain open to any Tyme user.
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Create/edit requires Editor+:Organizations or global Admin. GET endpoints remain
+            // open to any authenticated user.
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, createValidator);
             if (validationError != null)
@@ -203,7 +209,7 @@ namespace My.Functions
         public async Task<IActionResult> UpdateOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "organizations")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, updateValidator);
             if (validationError != null)
@@ -231,7 +237,7 @@ namespace My.Functions
         public async Task<IActionResult> SetActiveOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "organizations/{id}/setactive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var org = await organizationRepository.GetById(id);
             if (org == null)
@@ -248,7 +254,8 @@ namespace My.Functions
         public async Task<IActionResult> ArchiveOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "organizations/{id}/archive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Archive is a structural change — global Admin only, not Editor:Organizations.
+            if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var org = await organizationRepository.GetById(id);
             if (org == null)
@@ -267,7 +274,8 @@ namespace My.Functions
         public async Task<IActionResult> DeleteOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "organizations/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Delete is a structural change — global Admin only, not Editor:Organizations.
+            if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var setting = await appSettingRepository.GetById(Constants.SettingKeys.AllowOrganizationDelete);
             if (setting == null || !bool.TryParse(setting.Value, out var allowed) || !allowed)

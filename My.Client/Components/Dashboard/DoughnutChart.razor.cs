@@ -14,5 +14,10 @@ namespace My.Client.Components.Dashboard
         /// placeholders to avoid the chart breaking.</summary>
         [Parameter]
         public string[]? Palette { get; set; }
+
+        /// <summary>Percent (default) shows each segment's share of the whole; Duration
+        /// shows the actual time. Also changes what the total line under the chart reads.</summary>
+        [Parameter]
+        public ChartValueMode ValueMode { get; set; } = ChartValueMode.Percent;
     }
 }

@@ -319,14 +319,30 @@ namespace My.Functions
                 return new BadRequestObjectResult("No active session to stop.");
 
             var now = DateTime.UtcNow;
-            await StopSessionAsync(session, now, syncCalendar: true);
+            try
+            {
+                await StopSessionAsync(session, now, syncCalendar: true);
 
-            item.LastWorkedAt = now;
-            await itemRepository.Update(item);
+                item.LastWorkedAt = now;
+                await itemRepository.Update(item);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                DetachAll();
+                var still = await FindOwnedItemAsync(id, userId);
+                return StopwatchMutationRules.ClassifyStopConflict(still != null) switch
+                {
+                    StopwatchMutationRules.StopConflict.ItemGone =>
+                        new NotFoundObjectResult("Stopwatch item not found."),
+                    _ => new BadRequestObjectResult("No active session to stop.")
+                };
+            }
 
             var loaded = (await itemRepository.Get(
                 i => i.StopwatchItemId == id,
-                includeProperties: "Project.ProjectGroup,Project.Organization")).First();
+                includeProperties: "Project.ProjectGroup,Project.Organization")).FirstOrDefault();
+            if (loaded == null)
+                return new NotFoundObjectResult("Stopwatch item not found.");
             var sessions = await dbContext.TrackedTasks.AsNoTracking()
                 .Where(t => t.StopwatchItemId == id)
                 .ToListAsync();
@@ -355,6 +371,7 @@ namespace My.Functions
             var dtos = sessions.Select(t =>
             {
                 var dto = mapper.TrackedTaskToDto(t);
+                dto.Details ??= string.Empty; // TrackedTask.Details is nullable in the DB; DTO stays non-null.
                 dto.IsMonthSubmitted = submitted.Contains((t.StartDate.Year, t.StartDate.Month));
                 return dto;
             }).ToList();
@@ -390,8 +407,22 @@ namespace My.Functions
                 await TryPushDeleteAsync(session);
 
             await dbContext.TrackedTasks.Where(t => t.StopwatchItemId == id).ExecuteDeleteAsync();
-            await itemRepository.Delete(id);
+            try
+            {
+                await itemRepository.Delete(id);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Another request already removed the work item (stop+delete race).
+                DetachAll();
+            }
             return new NoContentResult();
+        }
+
+        private void DetachAll()
+        {
+            foreach (var entry in dbContext.ChangeTracker.Entries().ToList())
+                entry.State = EntityState.Detached;
         }
 
         private static Func<IQueryable<StopwatchItem>, IOrderedQueryable<StopwatchItem>> OrderStopwatchItems(
@@ -514,6 +545,7 @@ namespace My.Functions
                 var project = await GetProjectAsync(task.ProjectId);
                 var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                 task.GoogleEventId = ev.Id;
+                task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
                 await taskRepository.Update(task);
             }
             catch (Exception ex)
@@ -544,7 +576,9 @@ namespace My.Functions
                         return;
                     }
 
-                    await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
+                    var updatedEv = await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
+                    task.GoogleEventUpdatedUtc = updatedEv.UpdatedDateTimeOffset?.UtcDateTime;
+                    await taskRepository.Update(task);
                     await TryPushTeamAvailabilityAsync(task, s);
                     return;
                 }
@@ -553,6 +587,7 @@ namespace My.Functions
                 {
                     var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                     task.GoogleEventId = ev.Id;
+                    task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
                     await taskRepository.Update(task);
                 }
 

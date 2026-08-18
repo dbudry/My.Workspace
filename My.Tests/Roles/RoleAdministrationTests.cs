@@ -15,10 +15,9 @@ namespace My.Tests.Roles;
 /// <see cref="Constants.Roles.CanAssignRole"/>, and
 /// <see cref="Constants.Roles.AssignableFor"/>.
 ///
-/// These power the user-management UI/endpoints. Getting "which target users
-/// can this admin see/edit" wrong is a privacy / authorization bug — e.g. a
-/// scoped admin shouldn't be able to manage users whose roles live in a
-/// different scope.
+/// These power the user-management UI/endpoints. Any admin can see every
+/// account on Users; mutating still requires <see cref="Constants.Roles.CanManageUser"/>
+/// over every role on the target. Tyme team surfaces stay Tyme-scoped.
 /// </summary>
 public class RoleAdministrationTests
 {
@@ -118,7 +117,7 @@ public class RoleAdministrationTests
     [Fact]
     public void AdministeredScopes_global_admin_dominates_scoped_admin()
     {
-        // If you have both Admin and Admin:Tyme, the global wildcard wins —
+        // If you have both Admin and Admin:Tyme, the global wildcard wins ΓÇö
         // returning ["*"] communicates "manages every scope, no need to enumerate".
         var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(Constants.Roles.Admin, AdminInTyme));
 
@@ -148,22 +147,22 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void IsVisibleTo_scoped_admin_does_not_see_target_with_only_other_scope()
+    public void IsVisibleTo_scoped_admin_sees_target_with_only_other_scope()
     {
         var admin = PrincipalWithRoles(AdminInTyme);
 
-        Assert.False(Constants.Roles.IsVisibleTo(admin, new[] { AdminInUnrelated }));
+        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { AdminInUnrelated }));
     }
 
     [Fact]
-    public void IsVisibleTo_scoped_admin_does_not_see_target_with_any_global_role()
+    public void IsVisibleTo_scoped_admin_sees_target_with_any_global_role()
     {
-        // A global role on the target shields them from a scoped admin entirely —
-        // global is a super-role only a global admin can reach.
+        // Directory visibility is open so a scoped admin can find anyone.
+        // Changing roles still requires CanManageUser (global stays out of reach).
         var admin = PrincipalWithRoles(AdminInTyme);
 
-        Assert.False(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin }));
-        Assert.False(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin, ManagerInTyme }));
+        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin }));
+        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin, ManagerInTyme }));
     }
 
     [Fact]
@@ -215,12 +214,13 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void IsVisibleInTymeTeamView_AdminInTyme_uses_IsVisibleTo_rules()
+    public void IsVisibleInTymeTeamView_AdminInTyme_sees_Tyme_scoped_users_only()
     {
         var admin = PrincipalWithRoles(AdminInTyme);
 
         Assert.True(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { UserInTyme }));
         Assert.False(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { Constants.Roles.Admin }));
+        Assert.False(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { AdminInUnrelated }));
     }
 
     // ---------- CanAssignRole ----------
@@ -266,7 +266,7 @@ public class RoleAdministrationTests
     public void IsAssignableRole_accepts_Editor_Tyme()
     {
         // Editor:Tyme grants project create/edit only (see ProjectFunction Create/UpdateProject
-        // and ProjectManager.razor's canEditProjects) — no delete/archive/group management or
+        // and ProjectManager.razor's canEditProjects) ΓÇö no delete/archive/group management or
         // team surfaces, so it's now offered alongside Manager:Tyme / Admin:Tyme.
         var editorTyme = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme);
 
@@ -321,5 +321,14 @@ public class RoleAdministrationTests
         var assignable = Constants.Roles.AssignableFor(PrincipalWithRoles(ManagerInTyme));
 
         Assert.Empty(assignable);
+    }
+
+    [Fact]
+    public void IsAssignableRole_accepts_organizations_user_and_editor_rejects_admin()
+    {
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations)));
     }
 }

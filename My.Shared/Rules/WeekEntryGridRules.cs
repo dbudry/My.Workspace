@@ -709,7 +709,7 @@ public static class WeekEntryGridRules
     /// Validate task Details for create/update. Empty is allowed.
     /// Length rules apply to the trimmed name.
     /// </summary>
-    public static string? ValidateTaskName(string? name)
+    public static string? ValidateTaskDetails(string? name)
     {
         var trimmed = SanitizeTaskDetails(name);
         if (trimmed.Length > MaxTaskNameLength)
@@ -740,7 +740,7 @@ public static class WeekEntryGridRules
     /// ordered alphabetically (case-insensitive). Used to rebuild Project-view rows
     /// from existing week data plus any blank draft row the UI keeps.
     /// </summary>
-    public static IReadOnlyList<string> DistinctManualTaskNames(
+    public static IReadOnlyList<string> DistinctManualTaskDetails(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
         string? projectId,
         DateTime from,

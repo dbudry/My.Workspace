@@ -127,6 +127,10 @@
         </MudGrid>
     </DialogContent>
     <DialogActions>
+        @if (CanEdit)
+        {
+            <MudButton OnClick="Edit" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+        }
         <MudButton OnClick="Close" Variant="Variant.Filled" Color="Color.Default">Close</MudButton>
     </DialogActions>
 </MudDialog>
@@ -138,5 +142,13 @@
     [Parameter]
     public Organization Model { get; set; } = new();
 
+    // Lets the caller (OrganizationManager) decide whether this viewer can edit — this
+    // read-only dialog otherwise had no path to editing contacts/details at all, even for
+    // an Editor:Organizations user, since Edit previously only lived on the row's "..." menu.
+    [Parameter]
+    public bool CanEdit { get; set; }
+
     private void Close() => MudDialog.Close();
+
+    private void Edit() => MudDialog.Close(DialogResult.Ok(true));
 }

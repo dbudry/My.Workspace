@@ -47,12 +47,12 @@
                                 </span>
                             </MudNavLink>
 
-                            @* Projects, Organizations, and Availability are visible to any Tyme user —
-                               they need to know what projects/orgs/availability tags exist when
-                               picking one on the Stopwatch or Tasks page. Each page shows mutation
-                               actions only to managers. Management stays manager-only since it
-                               surfaces other users' time. *@
-                            <MudNavLink Href="tyme/organizations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business">Organizations</MudNavLink>
+                            @* Projects and Availability are visible to any Tyme user — they need to
+                               know what projects/availability tags exist when picking one on the
+                               Stopwatch or Tasks page. Each page shows mutation actions only to
+                               managers. Management stays manager-only since it surfaces other users'
+                               time. Organizations moved out of this group — it's no longer Tyme-scoped,
+                               see the top-level Organizations link below. *@
                             <MudNavLink Href="tyme/projects" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Folder">Projects</MudNavLink>
                             <MudNavLink Href="tyme/availability" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BeachAccess">Availability</MudNavLink>
                             <ScopedAuthorizeView Scope="Tyme" MinimumRole="Manager" ScopedOnly="true">
@@ -98,6 +98,18 @@
                             <MudNavLink Href="intranet/documents" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AttachFile">Documents Library</MudNavLink>
                         </MudNavGroup>
                     }
+                }
+
+                @* Organizations is its own scope, independent of Tyme (see
+                   My.Shared.Constants.Scopes.Organizations) — placed directly below Intranet in
+                   the nav, not nested under Admin, so a plain User:Organizations viewer (who
+                   isn't any kind of Admin) still gets a nav link. Global Admin also sees this
+                   without a separate Admin:Organizations role — hasOrganizationsReader uses the
+                   permissive HasAccess check, matching the "Organizations:User" page policy
+                   (no ":Scoped" suffix). *@
+                @if (hasOrganizationsReader)
+                {
+                    <MudNavLink Href="organizations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business" Class="nav-top-level">Organizations</MudNavLink>
                 }
 
                 @if (isAnyAdmin)
@@ -148,6 +160,7 @@
 
     private bool isAnyAdmin;
     private bool isGlobalAdmin;
+    private bool hasOrganizationsReader;
     private bool hasIntranetReader;
     private bool hasIntranetMaintenance;
     private bool hasIntranetAdmin;
@@ -218,6 +231,10 @@
         {
             isAnyAdmin = Constants.Roles.IsAnyAdmin(user);
             isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
+            // Permissive check (HasAccess, not HasScopedAccess) — global Admin sees the link
+            // without a separate Admin:Organizations role, matching the "Organizations:User"
+            // page policy (no ":Scoped" suffix).
+            hasOrganizationsReader = Constants.Roles.HasAccess(user, Constants.Scopes.Organizations);
             hasIntranetReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
             hasIntranetMaintenance = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Editor);
             hasIntranetAdmin = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Admin);
@@ -252,6 +269,7 @@
         {
             isAnyAdmin = false;
             isGlobalAdmin = false;
+            hasOrganizationsReader = false;
             hasIntranetReader = false;
             hasIntranetMaintenance = false;
             hasIntranetAdmin = false;

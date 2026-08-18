@@ -35,7 +35,7 @@ public class ScopedRolePolicyProvider : IAuthorizationPolicyProvider
             if (parts.Length == 3 && !scopedOnly)
                 return _fallback.GetPolicyAsync(policyName);
 
-            var validRoles = new[] { "User", "Manager", "Admin" };
+            var validRoles = new[] { "User", "Editor", "Manager", "Admin" };
             if (validRoles.Contains(minRole))
             {
                 var policy = new AuthorizationPolicyBuilder()

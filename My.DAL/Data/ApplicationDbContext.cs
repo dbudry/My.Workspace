@@ -539,6 +539,14 @@ namespace My.DAL.Data
                 },
                 new ApplicationRole
                 {
+                    Id = "a2b3c4d5-e6f7-8901-a2b3-c4d5e6f78901",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme).ToUpper(),
+                    Description = "Tyme-scoped editor role (create/edit projects).",
+                    ConcurrencyStamp = "a2b3c4d5-e6f7-8901-a2b3-c4d5e6f78901"
+                },
+                new ApplicationRole
+                {
                     Id = "b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
                     Name = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme).ToUpper(),
@@ -577,6 +585,23 @@ namespace My.DAL.Data
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet).ToUpper(),
                     Description = "Intranet-scoped admin role (full control of navigation structure and content).",
                     ConcurrencyStamp = "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345"
+                },
+                // Organizations scope (own menu/role; archive/delete stays global Admin)
+                new ApplicationRole
+                {
+                    Id = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789",
+                    Name = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations).ToUpper(),
+                    Description = "Organizations-scoped user role (view organizations and departments).",
+                    ConcurrencyStamp = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789"
+                },
+                new ApplicationRole
+                {
+                    Id = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations).ToUpper(),
+                    Description = "Organizations-scoped editor role (create/edit organizations and departments).",
+                    ConcurrencyStamp = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890"
                 });
 
             // Note: If you add/remove roles, AppSettings, or other HasData here,

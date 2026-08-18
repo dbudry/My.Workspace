@@ -1,27 +1,20 @@
 @namespace My.Client.Components.Users
 @using My.Client.Extensions
-@using My.Client.Models
 @using My.Shared.Constants
 @using My.Shared.Dtos.User
+@using My.Shared.Rules
 
 <MudDialog>
     <DialogContent>
         <EditForm Model="@model" OnValidSubmit="@Save">
             <DataAnnotationsValidator />
             <DialogFormStack>
-                @if (legacyRoles.Count > 0)
-                {
-                    <MudAlert Severity="Severity.Warning" Dense="true">
-                        Legacy roles not assignable (will be removed on save):
-                        @string.Join(", ", legacyRoles)
-                    </MudAlert>
-                }
                 <MudTextField @bind-Value="model.FirstName" Label="First Name" Variant="Variant.Outlined"
                               Required="true" RequiredError="First name is required" />
                 <MudTextField @bind-Value="model.LastName" Label="Last Name" Variant="Variant.Outlined"
                               Required="true" RequiredError="Last name is required" />
                 <MudTextField @bind-Value="model.Email" Label="Email" Variant="Variant.Outlined"
-                              Required="true" RequiredError="Email is required" />
+                              Required="true" RequiredError="Email is required" OnBlur="@AutoFillNameFromEmail" />
                 <RolePicker AvailableRoles="@AvailableRoles" @bind-SelectedRoles="selectedRoles" Label="Roles" />
                 <ValidationSummary />
                 @* Hidden submit so EditForm validation drives the Save button via OnValidSubmit. *@
@@ -34,7 +27,7 @@
         <MudButton Color="Color.Primary" Variant="Variant.Filled"
                    OnClick="@TrySave" Disabled="@isSaving"
                    StartIcon="@Icons.Material.Filled.Save">
-            @(isSaving ? "Saving…" : "Save")
+            @(isSaving ? "AddingΓÇª" : "Add User")
         </MudButton>
     </DialogActions>
 </MudDialog>
@@ -42,37 +35,18 @@
 @code {
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
 
-    [Parameter, EditorRequired] public UserModel User { get; set; } = null!;
-
     [Parameter, EditorRequired] public IReadOnlyList<string> AvailableRoles { get; set; } = Array.Empty<string>();
 
     [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
 
-    private UserModel model = null!;
+    private CreateUserDto model = new();
     private List<string> selectedRoles = new();
-    private List<string> legacyRoles = new();
     private bool isSaving;
     private EditContext? _editContext;
 
     protected override void OnInitialized()
     {
-        // Edit a copy so Cancel doesn't mutate the row in the grid behind the dialog —
-        // the original UserModel reference is held by UserManager's items list.
-        model = new UserModel
-        {
-            Id = User.Id,
-            Email = User.Email,
-            FirstName = User.FirstName,
-            LastName = User.LastName,
-            Roles = new List<string>(User.Roles),
-            LastLoginDate = User.LastLoginDate,
-            IsActive = User.IsActive,
-            IsArchived = User.IsArchived
-        };
-        var assignable = AvailableRoles.ToHashSet(StringComparer.Ordinal);
-        legacyRoles = model.Roles.Where(r => !assignable.Contains(r)).ToList();
-        selectedRoles = model.Roles.Where(r => assignable.Contains(r)).ToList();
         _editContext = new EditContext(model);
     }
 
@@ -95,37 +69,47 @@
             return;
         }
 
-        var dto = new UpdateUserDto
-        {
-            Id = model.Id,
-            Email = model.Email,
-            FirstName = model.FirstName,
-            LastName = model.LastName,
-            Roles = selectedRoles.ToList()
-        };
+        model.Roles = selectedRoles.ToList();
 
         isSaving = true;
         try
         {
             var client = ClientFactory.CreateClient(Constants.API.ClientName);
-            var resp = await client.PutAsJsonAsync(Constants.API.User.Update, dto);
+            var resp = await client.PostAsJsonAsync(Constants.API.User.Create, model);
             if (resp.IsSuccessStatusCode)
             {
-                Snackbar.Add("User updated.", Severity.Success);
+                Snackbar.Add("User created successfully.", Severity.Success);
                 Dialog.Close(DialogResult.Ok(true));
                 return;
             }
             var body = await resp.Content.ReadAsStringAsync();
-            Snackbar.Add(string.IsNullOrWhiteSpace(body) ? "Couldn't update user." : body, Severity.Error);
+            Snackbar.Add(string.IsNullOrWhiteSpace(body) ? "Couldn't create user." : body, Severity.Error);
         }
         catch (Exception ex)
         {
-            Snackbar.AddApiError(ex, "Couldn't update user.");
+            Snackbar.AddApiError(ex, "Couldn't create user.");
         }
         finally
         {
             isSaving = false;
         }
+    }
+
+    /// <summary>
+    /// On Email blur, fill blank FirstName/LastName from the email's local-part as a
+    /// starting guess so the admin doesn't have to retype names they already typed in
+    /// the address. Never overwrites a value the admin has already entered.
+    /// The user's heal-on-sign-in path will upgrade the guess to their real Google name
+    /// the first time they log in.
+    /// </summary>
+    private void AutoFillNameFromEmail()
+    {
+        if (string.IsNullOrWhiteSpace(model.Email)) return;
+        var (first, last) = UserNameRules.ParseFromEmail(model.Email);
+        if (string.IsNullOrWhiteSpace(model.FirstName) && !string.IsNullOrEmpty(first))
+            model.FirstName = first;
+        if (string.IsNullOrWhiteSpace(model.LastName) && !string.IsNullOrEmpty(last))
+            model.LastName = last;
     }
 
     private void Cancel() => Dialog.Cancel();

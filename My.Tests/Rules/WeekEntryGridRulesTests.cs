@@ -149,7 +149,7 @@ public class WeekEntryGridRulesTests
     [InlineData("Work", true)]
     public void ValidateTaskName_enforces_length(string? name, bool ok)
     {
-        var err = WeekEntryGridRules.ValidateTaskName(name);
+        var err = WeekEntryGridRules.ValidateTaskDetails(name);
         if (ok)
             Assert.Null(err);
         else
@@ -160,7 +160,7 @@ public class WeekEntryGridRulesTests
     public void ValidateTaskName_rejects_over_max()
     {
         var longName = new string('x', WeekEntryGridRules.MaxTaskNameLength + 1);
-        Assert.NotNull(WeekEntryGridRules.ValidateTaskName(longName));
+        Assert.NotNull(WeekEntryGridRules.ValidateTaskDetails(longName));
     }
 
     [Theory]
@@ -262,7 +262,7 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void DistinctManualTaskNames_lists_existing_names_in_range()
+    public void DistinctManualTaskDetails_lists_existing_names_in_range()
     {
         var tasks = new[]
         {
@@ -273,7 +273,7 @@ public class WeekEntryGridRulesTests
             Slice("5", "p1", new DateTime(2026, 5, 20), TimeSpan.FromHours(1), name: "Outside week")
         };
 
-        var names = WeekEntryGridRules.DistinctManualTaskNames(
+        var names = WeekEntryGridRules.DistinctManualTaskDetails(
             tasks, "p1", new DateTime(2026, 5, 12), new DateTime(2026, 5, 16));
 
         Assert.Equal(2, names.Count);
@@ -282,7 +282,7 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void DistinctManualTaskNames_includes_empty_details_row()
+    public void DistinctManualTaskDetails_includes_empty_details_row()
     {
         // Details is optional (WeekEntryGridRules.ValidateTaskName) — a task saved
         // with no Details must still surface as a row, not vanish from Project view
@@ -292,7 +292,7 @@ public class WeekEntryGridRulesTests
             Slice("1", "p1", new DateTime(2026, 5, 12), TimeSpan.FromHours(1), name: "")
         };
 
-        var names = WeekEntryGridRules.DistinctManualTaskNames(
+        var names = WeekEntryGridRules.DistinctManualTaskDetails(
             tasks, "p1", new DateTime(2026, 5, 12), new DateTime(2026, 5, 16));
 
         Assert.Single(names);

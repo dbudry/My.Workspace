@@ -120,12 +120,13 @@ namespace My.Functions
 
         /// <summary>
         /// Returns null if the project (and its org/department) is OK to log time against,
-        /// otherwise an error message explaining what's blocking it. Empty/null projectId
-        /// is allowed — tasks may have no project.
+        /// otherwise an error message explaining what's blocking it. A project is always
+        /// required — every entry must be attributable to one (also keeps Google Calendar
+        /// sync from ever building a title with nothing in it).
         /// </summary>
         private async Task<string?> ValidateProjectIsLoggable(string? projectId)
         {
-            if (string.IsNullOrEmpty(projectId)) return null;
+            if (string.IsNullOrEmpty(projectId)) return "A project is required to log time.";
 
             var project = (await projectRepository.Get(
                 p => p.ProjectId == projectId,
@@ -167,6 +168,9 @@ namespace My.Functions
         private TrackedTaskDto ToDto(TrackedTask task, double workdayHours)
         {
             var dto = mapper.TrackedTaskToDto(task);
+            // TrackedTask.Details is null in the DB when no details were entered; TrackedTaskDto.Details
+            // stays non-null so nothing downstream (client bindings, search/sort) has to change.
+            dto.Details ??= string.Empty;
             dto.Duration = AllDayEntryRules.EffectiveDuration(
                 task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours);
             return dto;
@@ -219,6 +223,7 @@ namespace My.Functions
                 var project = await GetProjectAsync(task.ProjectId);
                 var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                 task.GoogleEventId = ev.Id;
+                task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
                 await taskRepository.Update(task);
             }
             catch (Exception ex)
@@ -250,7 +255,9 @@ namespace My.Functions
                     }
                     try
                     {
-                        await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
+                        var updatedEv = await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
+                        task.GoogleEventUpdatedUtc = updatedEv.UpdatedDateTimeOffset?.UtcDateTime;
+                        await taskRepository.Update(task);
                         await TryPushTeamAvailabilityAsync(task, s);
                         return;
                     }
@@ -272,6 +279,7 @@ namespace My.Functions
                 {
                     var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                     task.GoogleEventId = ev.Id;
+                    task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
                     await taskRepository.Update(task);
                 }
 
@@ -429,8 +437,11 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
-            // Never store leading/trailing whitespace on task names.
-            trackedTask!.Details = WeekEntryGridRules.SanitizeTaskDetails(trackedTask.Details);
+            // Never store leading/trailing whitespace on task details. Blank stays null in
+            // the DB rather than "" — SanitizeTaskDetails trims/coalesces for validation, then
+            // we collapse the empty result back to null right before it's persisted.
+            var sanitizedDetails = WeekEntryGridRules.SanitizeTaskDetails(trackedTask!.Details);
+            trackedTask.Details = string.IsNullOrEmpty(sanitizedDetails) ? null : sanitizedDetails;
 
             var newTrackedTask = mapper.DtoToTrackedTask(trackedTask!);
             newTrackedTask.UserId = userId;
@@ -636,8 +647,10 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
-            // Never store leading/trailing whitespace on task names.
-            trackedTask!.Details = WeekEntryGridRules.SanitizeTaskDetails(trackedTask.Details);
+            // Never store leading/trailing whitespace on task details. Blank stays null in
+            // the DB rather than "" — see CreateTrackedTaskAsync for the same normalization.
+            var sanitizedUpdateDetails = WeekEntryGridRules.SanitizeTaskDetails(trackedTask!.Details);
+            trackedTask.Details = string.IsNullOrEmpty(sanitizedUpdateDetails) ? null : sanitizedUpdateDetails;
 
             var foundTrackedTask = await taskRepository.Find(trackedTask!.TaskId);
             if (foundTrackedTask == null)

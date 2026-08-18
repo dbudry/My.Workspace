@@ -4,9 +4,13 @@ namespace My.DAL.Models
     {
         public string TaskId { get; set; } = null!;
         /// <summary>
-        /// Free-text Details ("What are you working on"). Optional — empty string when omitted.
+        /// Free-text Details ("What are you working on"). Optional — null when omitted.
+        /// Application code (TrackedTaskFunctions Create/Update) normalizes blank input to
+        /// null before saving. Readers that need a display-safe value should coalesce to ""
+        /// (e.g. AppMapper.TrackedTaskToDto callers do this explicitly) rather than assume
+        /// non-null here.
         /// </summary>
-        public string Details { get; set; } = "";
+        public string? Details { get; set; }
         public TimeSpan Duration { get; set; }
         public DateTime StartDate { get; set; }
         public DateTime? EndDate { get; set; }
@@ -28,6 +32,15 @@ namespace My.DAL.Models
         /// Null = not synced (either not connected, or publish disabled).
         /// </summary>
         public string? GoogleEventId { get; set; }
+
+        /// <summary>
+        /// Google's <c>updated</c> timestamp (UTC) as of the last time Tyme pushed to or
+        /// pulled from this event. Lets inbound sync (GoogleCalendarFunction.TryImportEventAsync)
+        /// tell a genuine edit the user made in Google Calendar apart from the webhook echo
+        /// of Tyme's own just-completed push — only an event whose Google <c>updated</c> is
+        /// newer than this is treated as a real inbound change. Null for tasks never synced.
+        /// </summary>
+        public DateTime? GoogleEventUpdatedUtc { get; set; }
 
         /// <summary>
         /// When true, this entry covers full calendar days (Vacation/OOO style); StartDate

@@ -577,6 +577,12 @@ namespace My.Client.Pages.Tyme
             projectWeekStartMonday = todayMonday;
             projectWeekPickerDate = todayMonday;
 
+            // Restore saved view/week/search before the other, slower awaits below so the
+            // "All" tab + current week default fields set just above are on screen for as
+            // short a window as possible (see preferencesRestored for why the window matters
+            // at all, not just how long it's visible for).
+            await RestorePreferencesAsync();
+
             var settings = await SettingsService.GetSettingsAsync();
             projectColorSource = NormalizeLabelColorToggle(settings.ProjectColorSource);
             try
@@ -589,7 +595,6 @@ namespace My.Client.Pages.Tyme
             }
 
             await LoadDisplayModeFromAppSettingsAsync();
-            await RestorePreferencesAsync();
 
             if (viewMode == TasksViewMode.Weekly && weeklyLayoutMode == WeeklyLayoutMode.List)
                 await LoadWeeklyAsync();
@@ -634,6 +639,17 @@ namespace My.Client.Pages.Tyme
             }
         }
 
+        /// <summary>
+        /// Guards <see cref="PersistPreferencesAsync"/> until the saved preferences have
+        /// actually been read back. Every field this page starts with (viewMode, ...) is a
+        /// hardcoded default ("All") set synchronously before this class-level flag matters and
+        /// before <see cref="RestorePreferencesAsync"/> gets a chance to run its awaits. If the
+        /// user clicks a tab during that window — plausible on a slow first load — the resulting
+        /// PersistPreferencesAsync call would overwrite the real saved preferences in local
+        /// storage with those defaults.
+        /// </summary>
+        private bool preferencesRestored;
+
         private async Task RestorePreferencesAsync()
         {
             await PagePreferences.LoadAsync();
@@ -652,33 +668,48 @@ namespace My.Client.Pages.Tyme
             projectBusinessWeekOnly = p.ProjectBusinessWeekOnly;
             searchString = p.SearchString ?? "";
 
-            var weeklyMonday = TasksPagePreferences.ParseMonday(p.WeeklyWeekStartMonday);
-            if (weeklyMonday.HasValue)
+            // Deliberately NOT from localStorage — see SessionWeeklyWeekStartMonday. Only a
+            // value set earlier THIS app session (i.e. we navigated away and back without a
+            // real reload) overrides the current-week default already sitting in these fields;
+            // a fresh reload has nothing here and stays on the current week.
+            if (PagePreferences.SessionWeeklyWeekStartMonday.HasValue)
             {
-                weekStartMonday = weeklyMonday.Value;
-                weekPickerDate = weeklyMonday.Value;
+                weekStartMonday = PagePreferences.SessionWeeklyWeekStartMonday.Value;
+                weekPickerDate = weekStartMonday;
             }
 
-            var projectMonday = TasksPagePreferences.ParseMonday(p.ProjectWeekStartMonday);
-            if (projectMonday.HasValue)
+            if (PagePreferences.SessionProjectWeekStartMonday.HasValue)
             {
-                projectWeekStartMonday = projectMonday.Value;
-                projectWeekPickerDate = projectMonday.Value;
+                projectWeekStartMonday = PagePreferences.SessionProjectWeekStartMonday.Value;
+                projectWeekPickerDate = projectWeekStartMonday;
             }
+
+            preferencesRestored = true;
         }
 
-        private Task PersistPreferencesAsync() =>
-            PagePreferences.UpdateAsync(p =>
+        private Task PersistPreferencesAsync()
+        {
+            // Nothing has been restored yet — saving now would stamp the still-default
+            // ("All" view) field values over whatever the user actually had saved. Skip; the
+            // fields get corrected in place once RestorePreferencesAsync finishes, so there's
+            // nothing lost by not persisting this particular call.
+            if (!preferencesRestored)
+                return Task.CompletedTask;
+
+            // In-memory only, not part of the localStorage-backed object below.
+            PagePreferences.SessionWeeklyWeekStartMonday = weekStartMonday;
+            PagePreferences.SessionProjectWeekStartMonday = projectWeekStartMonday;
+
+            return PagePreferences.UpdateAsync(p =>
             {
                 p.ViewMode = viewMode.ToString();
                 p.ProjectBusinessWeekOnly = projectBusinessWeekOnly;
-                p.ProjectWeekStartMonday = TasksPagePreferences.FormatMonday(projectWeekStartMonday);
-                p.WeeklyWeekStartMonday = TasksPagePreferences.FormatMonday(weekStartMonday);
                 p.WeeklyLayout = weeklyLayoutMode.ToString();
                 p.WeeklyBusinessWeekOnly = weeklyBusinessWeekOnly;
                 p.SearchString = searchString;
                 // Project selection is also written from WeekEntryPanel; keep whatever is already set.
             });
+        }
 
         /// <summary>Workspace mode from App Settings only — no per-user override.</summary>
         private async Task LoadDisplayModeFromAppSettingsAsync()
@@ -835,6 +866,30 @@ namespace My.Client.Pages.Tyme
             weekPickerDate = monday;
             await PersistPreferencesAsync();
             await LoadWeeklyAsync();
+        }
+
+        /// <summary>"Today" button — jumps the Week tab back to the current week on demand.
+        /// Distinct from the (now-fixed) startup default: this is an explicit, user-driven
+        /// jump, so persisting it here is always correct.</summary>
+        private async Task GoToTodayWeekAsync()
+        {
+            var monday = WeekEntryGridRules.GetWeekStartMonday(DateTime.Today);
+            if (monday == weekStartMonday) return;
+            EndInlineEdit();
+            weekStartMonday = monday;
+            weekPickerDate = monday;
+            await PersistPreferencesAsync();
+            await LoadWeeklyAsync();
+        }
+
+        /// <summary>"Today" button for the Project tab — same idea as <see cref="GoToTodayWeekAsync"/>.</summary>
+        private async Task GoToTodayProjectWeekAsync()
+        {
+            var monday = WeekEntryGridRules.GetWeekStartMonday(DateTime.Today);
+            if (monday == projectWeekStartMonday) return;
+            projectWeekStartMonday = monday;
+            projectWeekPickerDate = monday;
+            await PersistPreferencesAsync();
         }
 
         private async Task LoadWeeklyAsync()

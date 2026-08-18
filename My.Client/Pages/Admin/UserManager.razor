@@ -12,7 +12,10 @@
 <div>
 
     <div class="d-flex justify-start align-center mb-3 gap-4 flex-wrap">
-        <AddUser OnUserAdded="@HandleUserAdded" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                   OnClick="@OpenAddDialog">
+            Add User
+        </MudButton>
         <MudSwitch T="bool" Value="showInactive" Label="Show Inactive" Color="Color.Secondary"
                    ValueChanged="@OnShowInactiveChanged" />
         <MudSwitch T="bool" Value="showArchived" Label="View Archived" Color="Color.Secondary"

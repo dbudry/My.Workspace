@@ -4,8 +4,10 @@ using My.Shared.Rules;
 namespace My.Client.Services;
 
 /// <summary>
-/// Remembers Tasks page selections (view mode, weeks, project, search, business week)
-/// in browser localStorage so they survive reloads and browser restarts on the same origin.
+/// Remembers Tasks page selections (view mode, project, search, business week) in browser
+/// localStorage so they survive reloads and browser restarts on the same origin.
+///
+/// The selected WEEK is deliberately handled differently — see <see cref="SessionWeeklyWeekStartMonday"/>.
 /// </summary>
 public class TasksPagePreferencesService
 {
@@ -19,6 +21,20 @@ public class TasksPagePreferencesService
 
     /// <summary>True after a successful localStorage read (or save).</summary>
     public bool IsLoadSuccessful => _loadSucceeded;
+
+    /// <summary>
+    /// In-memory only — deliberately NOT written to localStorage. This service is registered
+    /// AddScoped, which in Blazor WebAssembly means one instance for the lifetime of the whole
+    /// app (there's only ever one scope), so these survive in-app navigation (Tasks → Dashboard →
+    /// Tasks) same as before, but reset to null — and therefore back to the current week — on an
+    /// actual page reload, since that tears down the WASM app and creates a fresh scope/instance.
+    /// This is what the user asked for: remember the week while clicking around, but a real
+    /// reload should land back on today's week rather than wherever you last scrolled to.
+    /// </summary>
+    public DateTime? SessionWeeklyWeekStartMonday { get; set; }
+
+    /// <summary>Project tab counterpart to <see cref="SessionWeeklyWeekStartMonday"/>.</summary>
+    public DateTime? SessionProjectWeekStartMonday { get; set; }
 
     public TasksPagePreferencesService(LocalStorageService storage)
     {
@@ -83,11 +99,10 @@ public class TasksPagePreferences
 
     public bool ProjectBusinessWeekOnly { get; set; } = true;
 
-    /// <summary>ISO date (yyyy-MM-dd) of the Monday for Project view week.</summary>
-    public string? ProjectWeekStartMonday { get; set; }
-
-    /// <summary>ISO date (yyyy-MM-dd) of the Monday for Weekly view week.</summary>
-    public string? WeeklyWeekStartMonday { get; set; }
+    // The selected week is intentionally NOT stored here — see
+    // TasksPagePreferencesService.SessionWeeklyWeekStartMonday / SessionProjectWeekStartMonday.
+    // It's in-memory-only so a real page reload lands back on the current week instead of
+    // wherever the week nav was last scrolled to, while still surviving in-app navigation.
 
     public string? SelectedProjectId { get; set; }
 

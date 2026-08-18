@@ -135,7 +135,7 @@ namespace My.Functions
                 keys.Add((s.UserId, s.Year, s.Month));
 
             // Restrict to users visible in manager Tyme team surfaces. Pre-fetch each
-            // user's roles once (Managers see Tyme-scoped users; admins use IsVisibleTo).
+            // user's roles once (Managers and scoped admins see Tyme-scoped users; global Admin sees everyone).
             var userIds = keys.Select(k => k.UserId).Distinct().ToList();
             if (userIds.Count == 0)
                 return new OkObjectResult(new List<TeamSubmissionRowDto>());

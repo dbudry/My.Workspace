@@ -4,13 +4,18 @@
   "start_url": "./",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#2A5DB8",
+  "theme_color": "#03173d",
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "img/logo-icon-200.png",
+      "src": "img/logo-clock-192.png",
       "type": "image/png",
-      "sizes": "200x200"
+      "sizes": "192x192"
+    },
+    {
+      "src": "img/logo-clock-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
     }
   ],
   "shortcuts": [
@@ -20,8 +25,8 @@
       "url": "./tyme/stopwatch-mini",
       "icons": [
         {
-          "src": "img/logo-icon-200.png",
-          "sizes": "200x200"
+          "src": "img/logo-clock-192.png",
+          "sizes": "192x192"
         }
       ]
     }

@@ -237,7 +237,7 @@ public sealed class TymeDataExtractionBuilder
             .Select(task => new TrackedTaskExportRow
             {
                 TaskId = task.TaskId,
-                Details = task.Details,
+                Details = task.Details ?? string.Empty, // TrackedTask.Details is nullable in the DB; export row stays non-null.
                 // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store
                 // that) — recompute from the dates instead of exporting the raw column.
                 DurationSeconds = AllDayEntryRules.EffectiveDuration(

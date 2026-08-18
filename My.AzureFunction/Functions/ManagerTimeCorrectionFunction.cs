@@ -117,7 +117,11 @@ public class ManagerTimeCorrectionFunction
                 TaskId = taskId,
                 CorrectedByUserId = actorId,
                 CorrectedAtUtc = nowUtc,
-                PreviousDetails = task.Details,
+                // TrackedTaskCorrectionAudits.PreviousDetails is NOT NULL in the DB;
+                // TrackedTask.Details is nullable. Coalesce so correcting a task that
+                // currently has no details doesn't throw a SaveChanges constraint
+                // violation here.
+                PreviousDetails = task.Details ?? string.Empty,
                 PreviousStartDate = task.StartDate,
                 PreviousDuration = task.Duration,
                 PreviousEndDate = task.EndDate,
@@ -162,6 +166,7 @@ public class ManagerTimeCorrectionFunction
 
         await _dbContext.Entry(task).Reference(t => t.Project).LoadAsync();
         var dto = _mapper.TrackedTaskToDto(task);
+        dto.Details ??= string.Empty; // TrackedTask.Details is nullable in the DB; DTO stays non-null.
         dto.IsMonthSubmitted = taskMonthSubmitted;
         dto.IsManagerAdjusted = true;
         dto.AdjustmentKind = "Direct";

@@ -11,27 +11,23 @@
 
 <PageHeader Title="Projects" Description="Project groups and projects available for time tracking." />
 
-@* Action buttons live above the table so they don't compete with the filter row for
-   horizontal space. The MudTable's own ToolBarContent keeps the filters and search —
-   what a manager toggles while reading the list. *@
-@if (canManage || canEditProjects)
-{
-    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Class="mb-3">
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NoteAdd"
-                   OnClick="AddProject">Add Project</MudButton>
-        @* Project groups are a Manager+ concern, not part of Editor's create/edit scope. *@
-        @if (canManage)
-        {
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="AddProjectGroup">Add Group</MudButton>
-        }
-    </MudStack>
-}
-
 <MudTable @ref="table" @key="groupBy" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
           RowClassFunc="@((ProjectDisplayRow row, int _) => row.IsGroupRow ? "" : "project-child-row")">
     <ToolBarContent>
-        <MudToggleGroup T="GroupByMode" Value="groupBy" ValueChanged="OnGroupByChanged" Color="Color.Primary"
+        @* Add buttons live in the toolbar, matching the Organizations page pattern —
+           primary actions belong inside the table's white card, not floating above it. *@
+        @if (canManage || canEditProjects)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NoteAdd"
+                       OnClick="AddProject">Add Project</MudButton>
+        }
+        @* Project groups are a Manager+ concern, not part of Editor's create/edit scope. *@
+        @if (canManage)
+        {
+            <MudButton Class="ml-2" Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="AddProjectGroup">Add Group</MudButton>
+        }
+        <MudToggleGroup T="GroupByMode" Class="ml-4" Value="groupBy" ValueChanged="OnGroupByChanged" Color="Color.Primary"
                         SelectionMode="SelectionMode.SingleSelection" Size="Size.Small">
             <MudToggleItem Value="GroupByMode.Organization">By Organization</MudToggleItem>
             <MudToggleItem Value="GroupByMode.ProjectGroup">By Project Group</MudToggleItem>
@@ -47,9 +43,11 @@
                        ValueChanged="@OnShowArchivedChanged" />
         }
         <MudSpacer />
+        @* No max-width here — matches Organizations' search field so both pages'
+           search boxes size and align the same way. *@
         <MudTextField Value="searchString" ValueChanged="@(async (string v) => await OnSearchChanged(v))" Placeholder="Search" Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
-                      Immediate="true" DebounceInterval="300" Style="max-width: 280px;" />
+                      Immediate="true" DebounceInterval="300" />
     </ToolBarContent>
     <HeaderContent>
         <MudTh>Name</MudTh>

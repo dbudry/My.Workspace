@@ -1,5 +1,24 @@
 [
   {
+    "version": "1.4.0",
+    "date": "2026-08-18",
+    "changes": [
+      { "type": "Fixed", "text": "Week → Day: all-day hours are included in the day totals. The Total bar sits under the grid so it no longer covers the last rows." },
+      { "type": "Fixed", "text": "Week → Day: overlapping entries show Multiple (hover for how to edit). Submitted days show a lock icon instead of the word Locked." },
+      { "type": "Fixed", "text": "Tasks list Total row stays visible while you scroll." },
+      { "type": "Fixed", "text": "Stopping and deleting the same stopwatch work item at once no longer returns a 500." },
+      { "type": "Fixed", "text": "Edits you make in Google Calendar on a Tyme-created event now come back into Tyme." },
+      { "type": "Fixed", "text": "Tasks no longer overwrites your saved All / Week / Project view if you click a tab before the page finishes loading." },
+      { "type": "Changed", "text": "Organizations is its own menu and role (User can view, Editor can create/edit). Archive and delete stay with global Admin." },
+      { "type": "Changed", "text": "Details left blank are stored as empty (null), not a placeholder. A project is required when you log time." },
+      { "type": "Changed", "text": "After you connect Google Calendar, you choose Export and Import (and the one-time backfill) in that first dialog." },
+      { "type": "Changed", "text": "Reports Time by Project and Daily Hours can group by organization or project group and show percent or hours." },
+      { "type": "Changed", "text": "App Settings has an Intranet tab. Add User uses a clearer role picker. Scoped admins can see everyone in the user list (changing roles is still limited)." },
+      { "type": "Added", "text": "Left/right arrow keys move to the previous/next week on Tasks, or the previous/next page on tables, unless you are typing or a dialog is open." },
+      { "type": "Changed", "text": "Installed app icons use an anonymized clock mark (no third-party branding)." }
+    ]
+  },
+  {
     "version": "1.3.0",
     "date": "2026-08-17",
     "changes": [

@@ -22,8 +22,13 @@ namespace My.Client.Pages.Tyme
         MudTable<OrgDisplayRow> table = null!;
 
         bool allowOrgDelete = false;
-        bool sortAscending = true;
+        // Global-Admin-only now — there is no scoped Admin:Organizations role (see
+        // Constants.Roles.Assignable). Gates structural changes: set active/inactive,
+        // archive/unarchive, delete — for both organizations and departments.
         bool canManage = false;
+        // Editor:Organizations (or canManage, which already implies it): create/edit
+        // organizations and departments, but not the structural actions above.
+        bool canEditOrganizations = false;
 
         HttpClient client = null!;
 
@@ -68,12 +73,17 @@ namespace My.Client.Pages.Tyme
             if (user.Identity != null && !user.Identity.IsAuthenticated)
                 Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
 
-            canManage = user.IsInRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme))
-                     || user.IsInRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme));
+            // Organizations dropped Tyme's Manager/Admin tiers entirely — see
+            // AuthGates.RequireOrganizations / RequireOrganizationsAdminOnly on the server.
+            // Global Admin gets full control automatically (no separate Admin:Organizations
+            // role exists); everyone else needs the scoped Editor role to edit.
+            canManage = Constants.Roles.IsGlobalAdmin(user);
+            canEditOrganizations = canManage
+                || Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Editor);
 
             client = ClientFactory.CreateClient(Constants.API.ClientName);
 
-            SetPageTitle?.Invoke(canManage ? "Manage Organizations" : "Organizations");
+            SetPageTitle?.Invoke(canManage || canEditOrganizations ? "Manage Organizations" : "Organizations");
 
             await LoadAppSettings();
         }
@@ -99,8 +109,8 @@ namespace My.Client.Pages.Tyme
                     PageNumber = state.Page + 1,
                     PageSize = state.PageSize,
                     Search = searchString,
-                    SortBy = "Name",
-                    SortDescending = !sortAscending,
+                    SortBy = state.SortLabel ?? "Name",
+                    SortDescending = state.SortDirection == SortDirection.Descending,
                     IncludeArchived = showArchived,
                     IncludeInactive = showInactive
                 };
@@ -178,12 +188,6 @@ namespace My.Client.Pages.Tyme
             await ReloadTableAsync();
         }
 
-        private async Task ToggleSortDirection()
-        {
-            sortAscending = !sortAscending;
-            await ReloadTableAsync();
-        }
-
         private async Task OnSearchChanged(string value)
         {
             searchString = value;
@@ -208,11 +212,20 @@ namespace My.Client.Pages.Tyme
                 var detailed = await FetchOrganizationDetailsAsync(org.OrganizationId) ?? org;
                 var parameters = new DialogParameters<ViewOrganizationDialog>
                 {
-                    { x => x.Model, detailed }
+                    { x => x.Model, detailed },
+                    { x => x.CanEdit, canManage || canEditOrganizations }
                 };
 
-                await DialogService.ShowAsync<ViewOrganizationDialog>(detailed.Name, parameters,
+                var dialog = await DialogService.ShowAsync<ViewOrganizationDialog>(detailed.Name, parameters,
                     new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true, CloseButton = true });
+
+                // The dialog closes with DialogResult.Ok(true) when the viewer clicked
+                // "Edit" — hand off to the same edit flow the row's "..." menu uses, so
+                // clicking into an organization gives Editor:Organizations users (and
+                // Admins) a real path to editing contacts/details, not just a read-only view.
+                var result = await dialog.Result;
+                if (result != null && !result.Canceled && result.Data is true)
+                    await EditOrganization(detailed);
             }
             catch (Exception ex)
             {

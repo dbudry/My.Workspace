@@ -99,6 +99,29 @@ namespace My.Client.Services
             });
         }
 
+        /// <summary>
+        /// Updates only the two Google Calendar sync toggles, preserving other settings.
+        /// Used by the post-connect backfill dialog so a first-time user can turn off
+        /// PublishToGoogleCalendar / ImportFromGoogleCalendar (both default true) before
+        /// sync ever starts, instead of discovering them later in Settings.
+        /// </summary>
+        public async Task UpdateGoogleCalendarSyncPreferencesAsync(bool publishToGoogleCalendar, bool importFromGoogleCalendar)
+        {
+            var current = await GetSettingsAsync();
+            await UpdateSettingsAsync(new UpdateUserSettingsDto
+            {
+                Use24HourTime = current.Use24HourTime,
+                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
+                TimeZone = current.TimeZone,
+                PublishToGoogleCalendar = publishToGoogleCalendar,
+                ImportFromGoogleCalendar = importFromGoogleCalendar,
+                TymeEventColorId = current.TymeEventColorId,
+                TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
+                ProjectColorSource = current.ProjectColorSource,
+                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>()
+            });
+        }
+
         /// <summary>Forces the next GetSettingsAsync to fetch from the server.</summary>
         public void InvalidateCache()
         {

@@ -451,7 +451,7 @@ namespace My.Client.Components.TrackedTasks
             var from = weekStartMonday.Date;
             var to = WeekEntryGridRules.GetVisibleWeekEnd(weekStartMonday, BusinessWeekOnly);
             knownTaskNames = WeekEntryGridRules
-                .DistinctManualTaskNames(weekTasks.Select(ToSlice), projectId, from, to)
+                .DistinctManualTaskDetails(weekTasks.Select(ToSlice), projectId, from, to)
                 .ToList();
         }
 
@@ -473,7 +473,7 @@ namespace My.Client.Components.TrackedTasks
             var from = weekStartMonday.Date;
             var to = WeekEntryGridRules.GetVisibleWeekEnd(weekStartMonday, BusinessWeekOnly);
             var names = WeekEntryGridRules
-                .DistinctManualTaskNames(weekTasks.Select(ToSlice), projectId, from, to)
+                .DistinctManualTaskDetails(weekTasks.Select(ToSlice), projectId, from, to)
                 .ToList();
 
             var drafts = preserveDraftRows
@@ -789,7 +789,7 @@ namespace My.Client.Components.TrackedTasks
 
             if (newDuration > TimeSpan.Zero)
             {
-                var nameError = WeekEntryGridRules.ValidateTaskName(taskName);
+                var nameError = WeekEntryGridRules.ValidateTaskDetails(taskName);
                 if (nameError != null)
                 {
                     cell.Status = CellSaveStatus.Error;
@@ -868,7 +868,7 @@ namespace My.Client.Components.TrackedTasks
 
             var dto = new CreateTrackedTaskDto
             {
-                    Details = taskName,
+                Details = taskName,
                 StartDate = SettingsService.ConvertFromUserTime(startLocal),
                 Duration = duration,
                 IsAllDay = false,
@@ -909,7 +909,7 @@ namespace My.Client.Components.TrackedTasks
             var dto = new UpdateTrackedTaskDto
             {
                 TaskId = cell.TaskId,
-                    Details = taskName,
+                Details = taskName,
                 StartDate = SettingsService.ConvertFromUserTime(start),
                 EndDate = SettingsService.ConvertFromUserTime(end),
                 Duration = duration,

@@ -304,6 +304,7 @@ namespace My.Functions
 
                     var ev = await google.CreateEventAsync(settings.GoogleRefreshToken, settings.GoogleCalendarId, t, slug, settings.TimeZone, settings.TymeEventColorId, settings.TymeUnmatchedEventColorId);
                     t.GoogleEventId = ev.Id;
+                    t.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
                     await taskRepository.Update(t);
                     result.Created++;
                 }
@@ -698,12 +699,20 @@ namespace My.Functions
                 return EventImportOutcome.Cancelled;
             }
 
-            // Echoes of a Tyme → Google push: skip only when the TrackedTask is still
-            // here. If the user deleted the Tyme row, Google still has source=tyme and
-            // a blanket skip meant "[admin] Company Meeting" could never come back.
+            // Echoes of a Tyme → Google push: skip when the TrackedTask is still here AND
+            // Google's updated timestamp isn't meaningfully newer than what we last wrote
+            // (GoogleEventUpdatedUtc, captured on every push in TrackedTaskFunction /
+            // StopwatchItemFunction / the backfill helper below). A blanket "isOurs → skip"
+            // meant a genuine edit made directly in Google to a Tyme-originated event could
+            // never come back — the user's own edits were silently discarded. The 5s
+            // tolerance absorbs clock skew between our push completing and Google's
+            // `updated` field landing on the very next poll, so we don't treat our own echo
+            // as a foreign edit.
             var existing = (await taskRepository.Get(
                 t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
-            if (isOurs && existing != null)
+            var googleUpdated = ev.UpdatedDateTimeOffset?.UtcDateTime;
+            if (isOurs && existing != null
+                && !CalendarImportRules.IsGenuineExternalEdit(googleUpdated, existing.GoogleEventUpdatedUtc))
                 return EventImportOutcome.SkippedOurs;
 
             // Parse start/end via the pure CalendarEventDateRules helper so the logic
@@ -821,6 +830,7 @@ namespace My.Functions
                 existing.IsAllDay = isAllDay;
                 existing.ProjectId = matchedProjectId;
                 existing.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, matchedProjectId);
+                existing.GoogleEventUpdatedUtc = googleUpdated;
                 await taskRepository.Update(existing);
                 saved = existing;
                 outcome = EventImportOutcome.Updated;
@@ -837,6 +847,7 @@ namespace My.Functions
                     IsAllDay = isAllDay,
                     ProjectId = matchedProjectId,
                     GoogleEventId = ev.Id,
+                    GoogleEventUpdatedUtc = googleUpdated,
                     IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, matchedProjectId)
                 };
                 await taskRepository.Insert(saved);

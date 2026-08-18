@@ -59,6 +59,7 @@ namespace My.Functions.Helpers
             return entities.Select(t =>
             {
                 var dto = _mapper.TrackedTaskToDto(t);
+                dto.Details ??= string.Empty; // TrackedTask.Details is nullable in the DB; DTO stays non-null.
                 dto.Duration = AllDayEntryRules.EffectiveDuration(
                     t.IsAllDay, t.StartDate, t.EndDate, t.Duration, hours);
                 return dto;

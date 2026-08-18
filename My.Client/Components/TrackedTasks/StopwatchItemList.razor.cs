@@ -302,6 +302,10 @@ namespace My.Client.Components.TrackedTasks
             if (confirmed != true)
                 return;
 
+            if (busyItemId != null)
+                return;
+
+            busyItemId = item.StopwatchItemId;
             try
             {
                 await StopwatchItemsClient.DeleteAsync(item.StopwatchItemId);
@@ -316,6 +320,10 @@ namespace My.Client.Components.TrackedTasks
             catch (Exception ex)
             {
                 Snackbar.AddApiError(ex, "Couldn't delete the work item.");
+            }
+            finally
+            {
+                busyItemId = null;
             }
         }
 

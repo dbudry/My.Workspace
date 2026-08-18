@@ -10,13 +10,9 @@
         <MudTextField @bind-Value="NewUser.Email" Label="Email" Variant="Variant.Outlined"
                       Required="true" RequiredError="Email is required" Style="min-width: 250px;"
                       OnBlur="@AutoFillNameFromEmail" />
-        <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="SelectedRoles"
-                   Label="Roles" Variant="Variant.Outlined" Dense="true" Style="min-width: 250px;">
-            @foreach (var role in AvailableRoles)
-            {
-                <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
-            }
-        </MudSelect>
+        <div style="min-width: 250px;">
+            <RolePicker AvailableRoles="@AvailableRoles" @bind-SelectedRoles="SelectedRoles" Label="Roles" />
+        </div>
         <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Add User</MudButton>
     </div>
     <ValidationSummary />

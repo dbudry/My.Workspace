@@ -45,7 +45,8 @@ namespace My.Functions
         public async Task<IActionResult> GetDepartmentsAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "departments")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+            // Open to any authenticated user — matches OrganizationFunction's read endpoints.
+            if (AuthGates.RequireAuthenticated(principal, out var userId) is IActionResult unauth) return unauth;
 
             var orgId = req.Query["organizationId"];
             bool includeArchived = bool.TryParse(req.Query["includeArchived"], out var ia) && ia;
@@ -64,7 +65,8 @@ namespace My.Functions
         public async Task<IActionResult> GetDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "departments/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+            // Open to any authenticated user — matches OrganizationFunction's read endpoints.
+            if (AuthGates.RequireAuthenticated(principal, out var userId) is IActionResult unauth) return unauth;
 
             var dept = await departmentRepository.GetByIdInclude(d => d.DepartmentId == id, "Contacts");
             if (dept == null)
@@ -77,8 +79,9 @@ namespace My.Functions
         public async Task<IActionResult> CreateDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "departments")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Mutation requires Manager+. GET endpoints remain open to any Tyme user.
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Create/edit requires Editor+:Organizations or global Admin. GET endpoints remain
+            // open to any authenticated user.
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, createValidator);
             if (validationError != null)
@@ -103,7 +106,7 @@ namespace My.Functions
         public async Task<IActionResult> UpdateDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "departments")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, updateValidator);
             if (validationError != null)
@@ -124,7 +127,7 @@ namespace My.Functions
         public async Task<IActionResult> SetActiveDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "departments/{id}/setactive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var dept = await departmentRepository.GetById(id);
             if (dept == null)
@@ -141,7 +144,8 @@ namespace My.Functions
         public async Task<IActionResult> ArchiveDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "departments/{id}/archive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Archive is a structural change — global Admin only, not Editor:Organizations.
+            if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var dept = await departmentRepository.GetById(id);
             if (dept == null)
@@ -160,7 +164,8 @@ namespace My.Functions
         public async Task<IActionResult> DeleteDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "departments/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, out var userId, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            // Delete is a structural change — global Admin only, not Editor:Organizations.
+            if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var setting = await appSettingRepository.GetById(Constants.SettingKeys.AllowOrganizationDelete);
             if (setting == null || !bool.TryParse(setting.Value, out var allowed) || !allowed)

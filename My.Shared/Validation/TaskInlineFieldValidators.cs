@@ -76,7 +76,7 @@ namespace My.Shared.Validation
             RuleFor(x => x.Value)
                 .Custom((value, context) =>
                 {
-                    var err = WeekEntryGridRules.ValidateTaskName(value);
+                    var err = WeekEntryGridRules.ValidateTaskDetails(value);
                     if (err != null)
                         context.AddFailure(err);
                 });

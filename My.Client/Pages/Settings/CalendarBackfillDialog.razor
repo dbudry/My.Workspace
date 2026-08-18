@@ -1,27 +1,66 @@
 @namespace My.Client.Pages.Settings
 
+@*
+    Shown once, right after a first-time user connects Google Calendar (they've already
+    gone through Google's own consent screen by this point — that part isn't ours to
+    explain). This is the first and only Tyme-owned moment to explain what ongoing sync
+    actually means and let the user opt out of it, since PublishToGoogleCalendar and
+    ImportFromGoogleCalendar both default to true server-side (UserSettings.cs) — without
+    this dialog, sync starts silently the moment the calendar connects. Previously this
+    dialog only asked about the one-time historical backfill; it now also surfaces (and
+    lets the user turn off) the two ongoing sync toggles that otherwise default to "on"
+    with no explanation. Same choices as Settings, just asked once up front.
+*@
 <MudDialog>
     <DialogContent>
         <DialogFormStack>
             <MudText>
-                Your <strong>Tyme</strong> calendar was just created and is empty. Push your existing
-                tracked tasks from a date range so the calendar shows your recent work.
+                Your <strong>Tyme</strong> calendar was just created. Sync is optional — choose what
+                you want below. Everything here can be changed later from Settings.
             </MudText>
 
-            <div class="d-flex gap-3">
-                <MudDatePicker @bind-Date="fromDate" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
-                <MudDatePicker @bind-Date="toDate" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
-            </div>
-
-            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                Tasks already on a calendar are skipped automatically. You can change Publish/Import
-                toggles in Settings afterwards.
+            <MudSwitch T="bool" @bind-Value="publishToGoogle" Color="Color.Primary" Class="mb-0">
+                Export Tyme tasks to Google Calendar
+            </MudSwitch>
+            <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                Every task you log in Tyme is copied to your Google Calendar. Edits and deletes in Tyme
+                update that Google event.
             </MudText>
+
+            <MudSwitch T="bool" @bind-Value="importFromGoogle" Color="Color.Primary" Class="mb-0">
+                Import Google Calendar events into Tyme
+            </MudSwitch>
+            <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                Google events whose title includes a project <code>[slug]</code> (for example
+                <code>[itsup] Laptop rebuild</code>) become Tyme tasks on that project. Events without
+                a <code>[slug]</code> stay private and are never imported.
+            </MudText>
+
+            @if (publishToGoogle)
+            {
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.body2">
+                    Optionally push your existing tracked tasks from a date range too, so the calendar
+                    also shows your recent work, not just new tasks going forward:
+                </MudText>
+                <div class="d-flex gap-3">
+                    <MudDatePicker @bind-Date="fromDate" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                    <MudDatePicker @bind-Date="toDate" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                </div>
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    Tasks already on a calendar are skipped automatically.
+                </MudText>
+            }
         </DialogFormStack>
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="Skip">Skip backfill</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm">Sync to calendar</MudButton>
+        @if (publishToGoogle)
+        {
+            <MudButton OnClick="SkipBackfill">Skip backfill</MudButton>
+        }
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm">
+            @(publishToGoogle ? "Sync to calendar" : "Save preferences")
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -30,6 +69,12 @@
 
     /// <summary>Default lookback in days from the workspace AppSetting.</summary>
     [Parameter] public int DefaultDays { get; set; } = 30;
+
+    // Both default true — matches UserSettings.PublishToGoogleCalendar /
+    // ImportFromGoogleCalendar's server-side defaults, so the switches accurately
+    // reflect what's about to happen if the user doesn't change anything.
+    private bool publishToGoogle = true;
+    private bool importFromGoogle = true;
 
     private DateTime? fromDate;
     private DateTime? toDate;
@@ -43,11 +88,21 @@
 
     private void Confirm()
     {
-        if (fromDate is null || toDate is null) return;
-        Dialog.Close(DialogResult.Ok(new BackfillRange(fromDate.Value, toDate.Value)));
+        var range = publishToGoogle && fromDate is not null && toDate is not null
+            ? new BackfillRange(fromDate.Value, toDate.Value)
+            : null;
+        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, range)));
     }
 
-    private void Skip() => Dialog.Close(DialogResult.Ok<BackfillRange?>(null));
+    private void SkipBackfill() =>
+        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, null)));
 
     public record BackfillRange(DateTime From, DateTime To);
+
+    /// <summary>
+    /// The user's full sync decision: whether to keep export/import on (both default true)
+    /// and, if export stayed on, the optional historical date range to push. Range is null
+    /// when publishToGoogle is off (nothing to backfill) or the user chose "Skip backfill".
+    /// </summary>
+    public record BackfillChoice(bool PublishToGoogle, bool ImportFromGoogle, BackfillRange? Range);
 }

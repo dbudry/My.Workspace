@@ -213,9 +213,25 @@ namespace My.Client.Pages.Admin
             }
         }
 
-        private async Task HandleUserAdded(UserModel user)
+        /// <summary>
+        /// Opens the add-user dialog. Used to be an inline form (Name/Last/Email/Roles
+        /// inputs sitting directly on the page) — moved to a dialog, mirroring
+        /// <see cref="OpenEditDialog"/>, so the page toolbar stays a single row and the
+        /// Roles picker has the same room to breathe that the edit dialog gives it.
+        /// </summary>
+        private async Task OpenAddDialog()
         {
-            await LoadUsers();
+            var parameters = new DialogParameters<AddUserDialog>
+            {
+                { x => x.AvailableRoles, AvailableRoles }
+            };
+            var dialog = await DialogService.ShowAsync<AddUserDialog>(
+                "Add User",
+                parameters,
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+            var result = await dialog.Result;
+            if (result is { Canceled: false })
+                await LoadUsers();
         }
 
         private async Task OnShowArchivedChanged(bool value)
