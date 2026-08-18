@@ -82,5 +82,23 @@ namespace My.Client.Services
                     : error);
             }
         }
+
+        /// <summary>
+        /// Removes a work item from the Work Items list only — the item and all of its sessions
+        /// stay exactly as they were. Use <see cref="DeleteAsync"/> for the destructive version.
+        /// Fails (with the server's reason) if the item currently has a running session.
+        /// </summary>
+        public async Task ClearAsync(string itemId, CancellationToken cancellationToken = default)
+        {
+            var client = _clientFactory.CreateClient(Constants.API.ClientName);
+            var response = await client.PostAsync($"{Constants.API.StopwatchItem.Clear}/{itemId}/clear", null, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new HttpRequestException(string.IsNullOrWhiteSpace(error)
+                    ? "Couldn't remove the work item from your list."
+                    : error);
+            }
+        }
     }
 }

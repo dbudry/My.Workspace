@@ -72,7 +72,7 @@ namespace My.Functions
                 parameters.SortDescending = true;
             }
 
-            var filter = (System.Linq.Expressions.Expression<Func<StopwatchItem, bool>>)(i => i.UserId == userId);
+            var filter = (System.Linq.Expressions.Expression<Func<StopwatchItem, bool>>)(i => i.UserId == userId && !i.IsCleared);
             var orderBy = OrderStopwatchItems(parameters.SortBy, parameters.SortDescending);
 
             var paged = await itemRepository.GetPaged(
@@ -416,6 +416,33 @@ namespace My.Functions
                 // Another request already removed the work item (stop+delete race).
                 DetachAll();
             }
+            return new NoContentResult();
+        }
+
+        /// <summary>
+        /// Removes a work item from the user's Work Items list without touching it or its
+        /// sessions — the destructive "delete everything" action lives at DeleteStopwatchItem
+        /// instead (moved to the Sessions dialog client-side). Blocked while a session is
+        /// actively running: a cleared item drops out of GetStopwatchItems, so a running timer
+        /// on it would otherwise become unreachable from the list with no way to stop it.
+        /// </summary>
+        [Function("ClearStopwatchItem")]
+        public async Task<IActionResult> ClearStopwatchItemAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "stopwatchitems/{id}/clear")] HttpRequestData req,
+            string id)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+
+            var item = await FindOwnedItemAsync(id, userId);
+            if (item == null) return new NotFoundObjectResult("Stopwatch item not found.");
+
+            var isRunning = await dbContext.TrackedTasks.AnyAsync(t => t.StopwatchItemId == id && t.EndDate == null);
+            if (isRunning)
+                return new BadRequestObjectResult("Stop the timer before removing this from your list.");
+
+            item.IsCleared = true;
+            await itemRepository.Update(item);
             return new NoContentResult();
         }
 

@@ -291,12 +291,24 @@ namespace My.Client.Components.TrackedTasks
             }
         }
 
-        private async Task DeleteItemAsync(StopwatchItemDto item)
+        /// <summary>
+        /// Removes the item from this list only. Nothing is deleted — the item and every
+        /// session under it are untouched server-side; they're still there in Tasks/Reports.
+        /// Actually deleting a work item (and all its sessions) now lives inside the Sessions
+        /// dialog — see StopwatchSessionsDialog.DeleteWorkItemAsync.
+        /// </summary>
+        private async Task ClearItemAsync(StopwatchItemDto item)
         {
+            if (item.IsRunning)
+            {
+                Snackbar.Add("Stop the timer before removing this from your list.", Severity.Warning);
+                return;
+            }
+
             var confirmed = await DialogService.ShowMessageBoxAsync(
-                "Delete work item",
-                $"Delete \"{item.Details}\" and all of its logged sessions? This can't be undone.",
-                yesText: "Delete",
+                "Remove from your list",
+                $"Remove \"{item.Details}\" from your Work Items list? Its logged time isn't affected — you'll still find it in Tasks and Reports.",
+                yesText: "Remove",
                 cancelText: "Cancel");
 
             if (confirmed != true)
@@ -308,10 +320,10 @@ namespace My.Client.Components.TrackedTasks
             busyItemId = item.StopwatchItemId;
             try
             {
-                await StopwatchItemsClient.DeleteAsync(item.StopwatchItemId);
+                await StopwatchItemsClient.ClearAsync(item.StopwatchItemId);
                 items.Remove(item);
                 await PersistLocalAsync();
-                Snackbar.Add("Work item deleted.", Severity.Success);
+                Snackbar.Add("Removed from your list.", Severity.Success);
                 await InvokeAsync(StateHasChanged);
 
                 // Reload so paging counts stay correct and any next-page item slides into view.
@@ -319,7 +331,7 @@ namespace My.Client.Components.TrackedTasks
             }
             catch (Exception ex)
             {
-                Snackbar.AddApiError(ex, "Couldn't delete the work item.");
+                Snackbar.AddApiError(ex, "Couldn't remove the work item from your list.");
             }
             finally
             {

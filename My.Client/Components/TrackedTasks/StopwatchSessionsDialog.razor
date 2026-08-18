@@ -212,6 +212,22 @@
                 Create Duration
             </MudButton>
         }
+        @* The destructive "delete everything" action lives here, not on the main list. *@
+        <MudTooltip Text="@(hasLockedSessions
+            ? "Cannot delete: one or more sessions are in a submitted month"
+            : hasRunningSession
+                ? "Stop the timer before deleting this work item"
+                : "Delete this work item and all of its logged sessions — can't be undone")">
+            <span>
+                <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Delete"
+                           OnClick="DeleteWorkItemAsync"
+                           Disabled="@(isBusy || hasLockedSessions || hasRunningSession)"
+                           Class="@(sessions.Count == 0 ? "mr-auto" : "")">
+                    Delete work item
+                </MudButton>
+            </span>
+        </MudTooltip>
         <MudButton OnClick="Close">Close</MudButton>
     </DialogActions>
 </MudDialog>

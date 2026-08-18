@@ -851,6 +851,9 @@ namespace My.DAL.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<bool>("IsCleared")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("LastWorkedAt")
                         .HasColumnType("datetime2");
 
