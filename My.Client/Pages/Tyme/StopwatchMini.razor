@@ -9,7 +9,7 @@
 <PageTitle>Stopwatch</PageTitle>
 
 <TrackTaskTime OnWorkItemStarted="@HandleWorkItemStarted" />
-<StopwatchItemList @ref="stopwatchItemListComponent" />
+<StopwatchItemList @ref="stopwatchItemListComponent" Compact="true" />
 
 @code {
     private StopwatchItemList stopwatchItemListComponent = null!;

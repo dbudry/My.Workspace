@@ -375,7 +375,9 @@ else
     private RenderFragment<TaskListRow> RenderTaskRow => context => __builder =>
     {
         var canEdit = CanInlineEdit(context);
-        var isStopwatch = context.Kind == TaskListRowKind.Stopwatch && context.StopwatchItem != null;
+        // Week view builds these from a plain session TrackedTask (no full StopwatchItem
+        // DTO), so Kind alone — not StopwatchItem — is what marks a row as stopwatch here.
+        var isStopwatch = context.Kind == TaskListRowKind.Stopwatch;
         // Manual rows stop bubble so field click-to-edit does not also fire row handlers.
         // Stopwatch rows must bubble — click opens the sessions editor (not inline fields).
         var stopCellBubble = canEdit;
@@ -456,7 +458,7 @@ else
             {
                 <div class="tasks-project-cell tasks-project-cell-interactive"
                      title="Edit sessions"
-                     @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                     @onclick="@(() => OpenStopwatchSessionsAsync(context))"
                      @onclick:stopPropagation="true">
                     <ProjectAffiliationDisplay @key="@($"{displayProjectName}|{projectColorSource}|sw")"
                                                ProjectName="@displayProjectName"
@@ -513,7 +515,7 @@ else
                 {
                     <div class="tasks-inline-display tasks-inline-display-name"
                          title="@displayName"
-                         @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                         @onclick="@(() => OpenStopwatchSessionsAsync(context))"
                          @onclick:stopPropagation="true">
                         <MudText Typo="Typo.body2" Class="tasks-row-name-text tasks-details-ellipsis"
                                  Style="@(context.IsRunning ? "font-weight: bold;" : null)">@displayName</MudText>
@@ -592,7 +594,7 @@ else
                 @* Same date/time tracks as manual rows (no outer tasks-inline-display padding). *@
                 <div class="tasks-inline-date-time tasks-stopwatch-hit"
                      title="Edit sessions"
-                     @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                     @onclick="@(() => OpenStopwatchSessionsAsync(context))"
                      @onclick:stopPropagation="true">
                     <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
                     @if (trackTimeOfDay)
@@ -656,7 +658,7 @@ else
                 @* Total is sum of sessions — open sessions dialog to change duration. *@
                 <div class="tasks-list-duration-hit tasks-stopwatch-hit"
                      title="Edit sessions to change duration"
-                     @onclick="@(() => OpenStopwatchSessionsAsync(context.StopwatchItem!))"
+                     @onclick="@(() => OpenStopwatchSessionsAsync(context))"
                      @onclick:stopPropagation="true">
                     <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
                 </div>
@@ -675,21 +677,26 @@ else
         <MudTd DataLabel="Actions" Style="text-align:center;" @onclick:stopPropagation="true">
             @if (isStopwatch)
             {
-                var sw = context.StopwatchItem!;
                 <div class="d-flex justify-center align-center" style="gap: 0;">
                     <MudTooltip Text="Sessions — durations, create duration; name/project when unlocked">
                         <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
-                                       OnClick="@(() => OpenStopwatchSessionsAsync(sw))" />
+                                       OnClick="@(() => OpenStopwatchSessionsAsync(context))" />
                     </MudTooltip>
-                    <MudTooltip Text="@(sw.HasLockedSessions
-                        ? "Cannot delete: one or more sessions are in a submitted month"
-                        : "Delete work item and all sessions")">
-                        <span>
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                           Disabled="@sw.HasLockedSessions"
-                                           OnClick="@(() => DeleteStopwatchItemAsync(sw))" />
-                        </span>
-                    </MudTooltip>
+                    @* Week view only has the plain session TrackedTask, not the aggregated
+                       StopwatchItem (HasLockedSessions), so deleting the whole work item from
+                       here isn't offered — Sessions dialog covers it once opened. *@
+                    @if (context.StopwatchItem is { } sw)
+                    {
+                        <MudTooltip Text="@(sw.HasLockedSessions
+                            ? "Cannot delete: one or more sessions are in a submitted month"
+                            : "Delete work item and all sessions")">
+                            <span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                               Disabled="@sw.HasLockedSessions"
+                                               OnClick="@(() => DeleteStopwatchItemAsync(sw))" />
+                            </span>
+                        </MudTooltip>
+                    }
                 </div>
             }
             else if (context.Kind == TaskListRowKind.Manual && task != null)

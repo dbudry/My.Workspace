@@ -418,14 +418,16 @@ namespace My.Functions
             if (user == null)
                 return new NotFoundObjectResult("User not found.");
 
-            var targetRoles = dto.Roles
+            // Requested roles are the caller's in-scope set only. Out-of-scope roles on
+            // the target stay via TryMergeRoleUpdate — a Tyme admin can add Admin:Tyme
+            // without stripping Organizations/Intranet, and cannot "rescue" a user out
+            // of another module because those roles are never in this list.
+            var requestedRoles = dto.Roles
                 .Where(r => !string.IsNullOrWhiteSpace(r))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
-            if (targetRoles.Count == 0)
-                return new BadRequestObjectResult("At least one role is required.");
 
-            foreach (var role in targetRoles)
+            foreach (var role in requestedRoles)
             {
                 if (!Constants.Roles.IsAssignableRole(role))
                     return new BadRequestObjectResult($"Role '{role}' is not assignable.");
@@ -433,12 +435,9 @@ namespace My.Functions
                     return new StatusCodeResult(403);
             }
 
-            // Caller must have authority over the target's *current* roles AND every role they
-            // intend to assign. Without this a scoped admin could "rescue" a user out of their
-            // scope, or vice-versa.
             var currentRoles = await _userManager.GetRolesAsync(user);
-            if (!Constants.Roles.CanManageUser(principal, currentRoles))
-                return new StatusCodeResult(403);
+            if (!Constants.Roles.TryMergeRoleUpdate(principal, currentRoles, requestedRoles, out var targetRoles))
+                return new BadRequestObjectResult("At least one role is required.");
 
             var emailOwner = await _userManager.FindByEmailAsync(dto.Email);
             if (emailOwner != null && !string.Equals(emailOwner.Id, user.Id, StringComparison.Ordinal))
@@ -502,7 +501,7 @@ namespace My.Functions
                 if (toRemove.Count > 0 || toAdd.Count > 0)
                     _cache.Remove(RoleCacheKey(user.Id));
 
-                return new OkObjectResult(ToDto(user, targetRoles));
+                return new OkObjectResult(ToDto(user, targetRoles.ToList()));
             }
             catch (DbUpdateException ex)
             {
@@ -523,7 +522,7 @@ namespace My.Functions
             {
                 var principal = new ClaimsPrincipal(req.Identities);
 
-                if (!Constants.Roles.IsAnyAdmin(principal))
+                if (!Constants.Roles.CanChangeUserActiveStatus(principal))
                     return new StatusCodeResult(403);
 
                 if (string.IsNullOrWhiteSpace(id))
@@ -535,8 +534,6 @@ namespace My.Functions
                     return new NotFoundObjectResult("User not found.");
 
                 var roles = await GetUserRolesAsync(id);
-                if (!Constants.Roles.CanManageUser(principal, roles))
-                    return new StatusCodeResult(403);
 
                 if (user.Email?.Equals(principal.FindFirstValue(ClaimTypes.Email), StringComparison.OrdinalIgnoreCase) == true)
                     return new BadRequestObjectResult("You cannot change your own active status.");

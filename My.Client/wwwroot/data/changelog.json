@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.2.0",
+    "date": "2026-08-19",
+    "changes": [
+      { "type": "Fixed", "text": "Stopwatch: editing a session duration no longer asks for a project when the work item already has one." },
+      { "type": "Fixed", "text": "Users: a module admin can add a role without removing that person's Organizations or Intranet access. Roles in other modules stay as they are." },
+      { "type": "Changed", "text": "Users: only global Admin can set someone inactive. Module admins still assign roles in their module." },
+      { "type": "Fixed", "text": "Mini stopwatch stays a table when you shrink the window (columns scroll sideways instead of stacking into clipped cards)." },
+      { "type": "Fixed", "text": "Week → Day and Project: day totals line up under the duration boxes. Labels are not bolded." },
+      { "type": "Fixed", "text": "Week → Day and Project show stopwatch time as read-only rows. Edit via Sessions, same as All and Week → List." },
+      { "type": "Added", "text": "Stopwatch Project header has Org / Group for the color bar, same control and saved choice as Tasks → All." },
+      { "type": "Fixed", "text": "Reports chart: unspecified organizations group into one bucket with stable colors." }
+    ]
+  },
+  {
     "version": "1.1.2",
     "date": "2026-08-18",
     "changes": [

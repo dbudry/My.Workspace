@@ -34,7 +34,7 @@ namespace My.Functions.Helpers
                 && (from == null || t.StartDate >= from)
                 && (to == null || t.StartDate <= to)
                 && (term == null || term == ""
-                    || t.Details.Contains(term)
+                    || (t.Details != null && t.Details.Contains(term))
                     || (t.Project != null && (
                         t.Project.Name.Contains(term)
                         || (t.Project.DisplayName != null && t.Project.DisplayName.Contains(term))

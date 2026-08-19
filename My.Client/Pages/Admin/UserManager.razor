@@ -89,10 +89,9 @@
                 @{
                     var showDelete = ShowDeleteControls && !IsCurrentUser(context);
                     var deleteBlockReason = showDelete ? GetDeleteBlockReason(context) : null;
-                    // Edit is always a standalone icon; everything else goes in the overflow menu.
-                    var showMoreMenu = (!context.IsArchived)
-                        || (context.IsArchived && isGlobalAdmin)
-                        || showDelete;
+                    // Edit is always a standalone icon. Inactive/archive/Google/delete are
+                    // global Admin only — scoped admins assign roles, they cannot deactivate.
+                    var showMoreMenu = isGlobalAdmin || showDelete;
                 }
                 <MudTooltip Text="Edit roles and profile">
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
@@ -109,31 +108,28 @@
                                 Restore
                             </MudMenuItem>
                         }
-                        @if (!context.IsArchived)
+                        @if (!context.IsArchived && isGlobalAdmin)
                         {
                             <MudMenuItem Icon="@(context.IsActive ? Icons.Material.Filled.Block : Icons.Material.Filled.CheckCircle)"
                                          OnClick="@(() => ToggleActive(context))">
                                 @(context.IsActive ? "Set inactive" : "Set active")
                             </MudMenuItem>
-                            @if (isGlobalAdmin)
-                            {
-                                <MudMenuItem Icon="@Icons.Material.Filled.Archive"
-                                             OnClick="@(() => ArchiveUser(context))">
-                                    Archive
-                                </MudMenuItem>
-                                <MudMenuItem Icon="@Icons.Material.Filled.CloudSync"
-                                             OnClick="@(() => PullEventsFromGoogle(context))">
-                                    Pull missed events from Google
-                                </MudMenuItem>
-                                <MudMenuItem Icon="@Icons.Material.Filled.RestartAlt"
-                                             OnClick="@(() => PurgeToken(context))">
-                                    Force re-sign-in
-                                </MudMenuItem>
-                                <MudMenuItem Icon="@Icons.Material.Filled.NoAccounts"
-                                             OnClick="@(() => PurgePermissions(context))">
-                                    Revoke Google permissions
-                                </MudMenuItem>
-                            }
+                            <MudMenuItem Icon="@Icons.Material.Filled.Archive"
+                                         OnClick="@(() => ArchiveUser(context))">
+                                Archive
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.CloudSync"
+                                         OnClick="@(() => PullEventsFromGoogle(context))">
+                                Pull missed events from Google
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.RestartAlt"
+                                         OnClick="@(() => PurgeToken(context))">
+                                Force re-sign-in
+                            </MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.NoAccounts"
+                                         OnClick="@(() => PurgePermissions(context))">
+                                Revoke Google permissions
+                            </MudMenuItem>
                         }
                         @if (showDelete)
                         {
