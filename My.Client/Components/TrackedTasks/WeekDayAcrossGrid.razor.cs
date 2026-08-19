@@ -39,7 +39,12 @@ public partial class WeekDayAcrossGrid : IDisposable
         public DateTime BoundStartDate { get; set; }
         public bool IsMultiple { get; set; }
         public bool IsSubmitted { get; set; }
-        public bool IsReadOnly => IsMultiple || IsSubmitted;
+
+        /// <summary>Cell holds time tracked via the Stopwatch. Read-only here — edited
+        /// through the Sessions dialog, same rule as List/All (see RebuildRows).</summary>
+        public bool IsStopwatch { get; set; }
+        public string? StopwatchItemId { get; set; }
+        public bool IsReadOnly => IsMultiple || IsSubmitted || IsStopwatch;
         public string? DurationError { get; set; }
         public string? ErrorMessage { get; set; }
         public string? HintTooltip { get; set; }
@@ -54,6 +59,11 @@ public partial class WeekDayAcrossGrid : IDisposable
         public string ProjectName { get; set; } = "";
         public string TaskName { get; set; } = "";
         public DayCellVm[] Cells { get; set; } = Array.Empty<DayCellVm>();
+
+        /// <summary>Row is a stopwatch work item's sessions for the week (grouped by
+        /// StopwatchItemId), not a manual task — see RebuildRows.</summary>
+        public bool IsStopwatch { get; set; }
+        public string? StopwatchItemId { get; set; }
 
         /// <summary>Inline New Task row until at least one day is saved.</summary>
         public bool IsDraft { get; set; }
@@ -432,6 +442,71 @@ public partial class WeekDayAcrossGrid : IDisposable
                 ProjectId = key.ProjectId,
                 ProjectName = key.ProjectName,
                 TaskName = key.TaskName,
+                Cells = cells
+            });
+        }
+
+        // Stopwatch work items this week: one read-only row per item (grouped by
+        // StopwatchItemId, not name — an item's name isn't guaranteed unique), summed per
+        // day. Previously these sessions were skipped entirely, so a week that was mostly
+        // stopwatch-tracked showed "No time this week" here while List/All showed the full
+        // total. Edited via the Sessions dialog only, same rule as the other read-only
+        // (Multiple / All day) cells above — not typed inline.
+        var stopwatchGroups = weekTasks
+            .Where(t => !string.IsNullOrEmpty(t.StopwatchItemId))
+            .Select(t => (Task: t, Slice: ToSlice(t)))
+            .Where(x => WeekEntryGridRules.OverlapsDayRange(x.Slice, from, to))
+            .GroupBy(x => x.Task.StopwatchItemId!)
+            .OrderBy(g => g.First().Task.Project?.DisplayName ?? g.First().Task.Project?.Name ?? "No project",
+                StringComparer.OrdinalIgnoreCase)
+            .ThenBy(g => g.First().Task.Details, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in stopwatchGroups)
+        {
+            var sessions = group.Select(x => x.Task).ToList();
+            var first = sessions[0];
+            var projectId = string.IsNullOrEmpty(first.ProjectId) ? null : first.ProjectId;
+            var projectName = first.Project?.DisplayName ?? first.Project?.Name ?? "No project";
+            var taskName = first.Details ?? "";
+
+            var cells = new DayCellVm[visibleDays.Count];
+            for (var i = 0; i < visibleDays.Count; i++)
+            {
+                var day = visibleDays[i];
+                var dayTotal = TimeSpan.Zero;
+                foreach (var s in sessions)
+                {
+                    if (s.StartDate.Date == day.Date)
+                        dayTotal += s.Duration;
+                }
+
+                cells[i] = new DayCellVm
+                {
+                    Date = day,
+                    TaskName = taskName,
+                    ProjectId = projectId,
+                    ProjectName = projectName,
+                    DurationText = WeekEntryGridRules.FormatDayDurationInput(dayTotal),
+                    SavedDuration = dayTotal,
+                    BoundStartDate = day.Date.Add(defaultStartTime),
+                    IsStopwatch = true,
+                    StopwatchItemId = group.Key,
+                    IsSubmitted = WeekEntryGridRules.IsDaySubmitted(day, submittedList),
+                    Status = CellSaveStatus.Idle,
+                    ErrorMessage = dayTotal > TimeSpan.Zero ? "Stopwatch" : null,
+                    HintTooltip = dayTotal > TimeSpan.Zero
+                        ? "Tracked with the Stopwatch. Open Sessions to edit."
+                        : null
+                };
+            }
+
+            next.Add(new RowVm
+            {
+                ProjectId = projectId ?? "",
+                ProjectName = projectName,
+                TaskName = taskName,
+                IsStopwatch = true,
+                StopwatchItemId = group.Key,
                 Cells = cells
             });
         }
@@ -828,6 +903,39 @@ public partial class WeekDayAcrossGrid : IDisposable
 
     private async Task OpenCellAsync(DayCellVm cell)
     {
+        // Stopwatch-tracked time: no TaskId to bind an inline editor to, and typing over it
+        // would fight the stopwatch's own session records — open Sessions instead, same as
+        // clicking a stopwatch row in List/All.
+        if (cell.IsStopwatch)
+        {
+            if (string.IsNullOrEmpty(cell.StopwatchItemId))
+                return;
+
+            var swParams = new DialogParameters<StopwatchSessionsDialog>
+            {
+                { x => x.ItemId, cell.StopwatchItemId },
+                { x => x.ItemName, cell.TaskName },
+                { x => x.ItemProjectId, cell.ProjectId },
+                { x => x.ItemProjectName, cell.ProjectName },
+                { x => x.HttpClient, client }
+            };
+
+            var swDialog = await DialogService.ShowAsync<StopwatchSessionsDialog>(
+                cell.TaskName,
+                swParams,
+                new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+            var swResult = await swDialog.Result;
+
+            if (swResult is { Canceled: false })
+            {
+                await LoadWeekAsync();
+                if (EntriesChanged.HasDelegate)
+                    await EntriesChanged.InvokeAsync();
+            }
+
+            return;
+        }
+
         // No entry yet: open Create prefilled for this row's task/project/day.
         if (string.IsNullOrEmpty(cell.TaskId))
         {

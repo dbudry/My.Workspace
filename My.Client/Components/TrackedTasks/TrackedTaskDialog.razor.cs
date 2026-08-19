@@ -212,6 +212,13 @@ namespace My.Client.Components.TrackedTasks
             }
         }
 
+        /// <summary>
+        /// Project id to persist. Stopwatch sessions hide the picker and inherit
+        /// <see cref="ProjectId"/> from the work item — don't require a resolved
+        /// picker object (lookup can miss; see <see cref="ProjectsCache.ResolveByIdAsync"/>).
+        /// </summary>
+        private string? EffectiveProjectId => selectedProject?.ProjectId ?? ProjectId;
+
         private async Task LoadProjects()
         {
             if (string.IsNullOrEmpty(ProjectId))
@@ -219,16 +226,7 @@ namespace My.Client.Components.TrackedTasks
 
             try
             {
-                var match = await ProjectsCache.LookupAsync(search: ProjectName ?? ProjectId);
-                selectedProject = match.FirstOrDefault(p => p.ProjectId == ProjectId);
-
-                // Lookup is capped at 25 rows — fall back to a name search when id-only misses.
-                if (selectedProject == null && !string.IsNullOrEmpty(ProjectName))
-                {
-                    match = await ProjectsCache.LookupAsync(search: ProjectName);
-                    selectedProject = match.FirstOrDefault(p => p.ProjectId == ProjectId)
-                        ?? match.FirstOrDefault(p => p.Name.Equals(ProjectName, StringComparison.OrdinalIgnoreCase));
-                }
+                selectedProject = await ProjectsCache.ResolveByIdAsync(ProjectId, ProjectName);
             }
             catch { }
         }
@@ -270,8 +268,8 @@ namespace My.Client.Components.TrackedTasks
 
             // A project is always required — mirrors the server-side gate in
             // TrackedTaskFunctions.ValidateProjectIsLoggable. Catch it here so the user
-            // gets an inline message next to the picker instead of a raw 400 from the API.
-            if (selectedProject == null)
+            // gets an inline message instead of a raw 400 from the API.
+            if (string.IsNullOrEmpty(EffectiveProjectId))
             {
                 saveError = "A project is required to log time.";
                 return;
@@ -357,7 +355,7 @@ namespace My.Client.Components.TrackedTasks
                         Duration = duration,
                         IsAllDay = editIsAllDay,
                         EndDate = editIsAllDay ? endDate : null,
-                        ProjectId = selectedProject?.ProjectId,
+                        ProjectId = EffectiveProjectId,
                         StopwatchItemId = string.IsNullOrWhiteSpace(StopwatchItemId) ? null : StopwatchItemId
                     };
                     response = await HttpClient.PostAsJsonAsync(Constants.API.TrackedTask.Create, dto);
@@ -372,7 +370,7 @@ namespace My.Client.Components.TrackedTasks
                         EndDate = endDate,
                         Duration = duration,
                         IsAllDay = editIsAllDay,
-                        ProjectId = selectedProject?.ProjectId
+                        ProjectId = EffectiveProjectId
                     };
                     response = await HttpClient.PutAsJsonAsync(Constants.API.TrackedTask.Update, dto);
                 }

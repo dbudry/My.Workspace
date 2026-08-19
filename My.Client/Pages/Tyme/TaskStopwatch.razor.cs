@@ -38,8 +38,10 @@ namespace My.Client.Pages.Tyme
         private async Task OpenMiniStopwatch()
         {
             var url = Navigation.ToAbsoluteUri("/tyme/stopwatch-mini").ToString();
+            // Work Items uses Breakpoint.Xs (stack only below 600px). MudBlazor 9's Sm
+            // stacks below 960px, so a 760px pop-out was always the card layout.
             await JS.InvokeVoidAsync("open", url, "_blank",
-                "width=500,height=350,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
+                "width=760,height=520,menubar=no,toolbar=no,location=no,status=no,resizable=yes");
         }
     }
 }

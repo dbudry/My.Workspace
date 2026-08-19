@@ -22,7 +22,8 @@
             <MudText Typo="Typo.subtitle2" Class="mb-1">Mini pop-out</MudText>
             <MudText Typo="Typo.body2" Class="mb-3">
                 The <strong>Mini Pop Out</strong> button opens a slim, always-visible window so
-                you can keep the timer running while working in other apps.
+                you can keep the timer running while working in other apps. Mini Pop Out keeps
+                table columns if you shrink the window (scroll sideways if needed).
             </MudText>
             <MudText Typo="Typo.subtitle2" Class="mb-1">Manual entry</MudText>
             <MudText Typo="Typo.body2">
@@ -48,11 +49,12 @@
                 </li>
                 <li class="mb-1">
                     <strong>Project</strong> — choose project, week, and business/full week. Existing
-                    tasks for that project this week appear as rows (task left, day durations across).
-                    <strong>New Task</strong> adds a row; type a task name, then enter duration
+                    tasks for that project this week appear as rows (Details left, day durations across).
+                    Stopwatch time for that project is a read-only row (timer icon); open Sessions to edit.
+                    <strong>New Task</strong> adds a row; Details is optional, then enter duration
                     (H:MM) per day. Use the edit icon next to a day to open that day's full entry
-                    dialog. Footer shows this project's day totals and an <em>All projects</em> row.
-                    Changes save automatically.
+                    dialog. Footer shows this project's day totals and an <em>All projects</em> row,
+                    lined up under the day boxes. Changes save automatically.
                 </li>
             </ul>
             <MudText Typo="Typo.body2">
@@ -63,17 +65,30 @@
 
         <MudExpansionPanel Text="Editing past tasks" Icon="@Icons.Material.Filled.Edit">
             <MudText Typo="Typo.body2" Class="mb-2">
-                In All or Week, click a row to open it in a dialog where you
-                can change the project, name, start time, or duration — or delete the entry entirely.
-                Use <strong>By Organization</strong> / <strong>By Project Group</strong> on the toolbar to choose
-                which color the bar next to each project uses. Hover the color or name to see the org or group name.
+                In All or Week, click a row to edit Details, project, start, or duration, or delete when unlocked.
+                Duration accepts 02:30, :15, or 15m. <strong>Enter</strong> finishes the field.
+                On All, Week → List, and Stopwatch, use <strong>Org</strong> / <strong>Group</strong> next to the Project
+                column header to choose which color the bar next to each project uses. Hover the color or
+                name to see the org or group name. Week → Day does not use that control.
             </MudText>
             <MudText Typo="Typo.body2" Class="mb-2">
                 On the <strong>Stopwatch</strong> list, the X removes a work item from the list only —
                 logged time stays in Tasks and Reports. Stop the timer first. Open
                 <strong>Sessions</strong> to edit details/project when unlocked, change session
                 durations, or <strong>Delete work item</strong> (and all of its sessions). The
-                installed app opens on the mini stopwatch.
+                installed app opens on the mini stopwatch. Mini Pop Out keeps table columns if you shrink the
+                window (scroll sideways if needed).
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Next to Project, <strong>Org</strong> / <strong>Group</strong> chooses which color
+                the bar uses (same saved choice as Tasks → All). Hover the bar for the org or group name.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                On Week → Day, day totals at the bottom include all-day hours (usually 8 hours)
+                and line up under the duration boxes. The Total bar sits under the grid so it
+                does not cover the last rows. Stopwatch time appears as read-only rows (timer
+                icon); click a day to open Sessions. Overnight sessions stay on the start date
+                (same as All, List, Reports, and Calendar) — they are not split at midnight.
             </MudText>
             <MudText Typo="Typo.body2">
                 Tasks marked with a <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
@@ -829,17 +844,19 @@
 
         <MudExpansionPanel Text="Admin user actions" Icon="@Icons.Material.Filled.AdminPanelSettings">
             <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Admin → Users</strong> shows every user in your scope. The action icons
-                on each row do different things — some are available to any admin in scope,
-                some are global-Admin-only:
+                <strong>Admin → Users</strong>: Add User uses a role picker grouped by module.
+                Scoped admins can see every account and assign roles inside their module.
+                Roles in other modules stay as they are — they are not removed on save.
+                Set inactive/active, archive, force re-sign-in, revoke Google permissions,
+                optional permanent delete, and pull Google events are global Admin only.
             </MudText>
             <ul class="mb-3" style="padding-left: 1.2rem;">
                 <li class="mb-1">
-                    <strong>Set inactive / active</strong> (<code>any admin in scope</code>) — locks
+                    <strong>Set inactive / active</strong> (<code>global Admin only</code>) — locks
                     the user out of the app without removing their data. Reactivating restores access.
                 </li>
                 <li class="mb-1">
-                    <strong>Archive</strong> (<code>any admin in scope</code>) — same as inactive,
+                    <strong>Archive</strong> (<code>global Admin only</code>) — same as inactive,
                     but also hides the user from every view except this page.
                 </li>
                 <li class="mb-1">
@@ -862,9 +879,8 @@
                 </li>
             </ul>
             <MudText Typo="Typo.body2">
-                Scope rules: a scoped admin (e.g. <code>Admin:Tyme</code>) can only act on users
-                whose roles are entirely within that scope. They cannot touch users with roles in
-                other scopes or users with global roles — only the global Admin can.
+                Scoped admins edit only in-scope roles; other modules stay on the user.
+                Account-level actions (inactive, archive, Google, delete) stay global Admin only.
             </MudText>
         </MudExpansionPanel>
     </MudExpansionPanels>

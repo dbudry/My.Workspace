@@ -40,30 +40,47 @@ namespace My.Client.Models.Dashboard
                     .ToList();
             }
 
-            IEnumerable<IGrouping<(string? Id, string? Name), ProjectDataItem>> grouped = axis switch
+            IEnumerable<IGrouping<(string Id, string Name), ProjectDataItem>> grouped = axis switch
             {
-                ChartAxis.Organization => data.GroupBy(p => (p.OrganizationId, p.OrganizationName)),
-                ChartAxis.ProjectGroup => data.GroupBy(p => (p.ProjectGroupId, p.ProjectGroupName)),
-                _ => data.GroupBy(p => (p.OrganizationId, p.OrganizationName))
+                ChartAxis.Organization => data.GroupBy(p => UnspecifiedKey(p.OrganizationId, p.OrganizationName)),
+                ChartAxis.ProjectGroup => data.GroupBy(p => UnspecifiedKey(p.ProjectGroupId, p.ProjectGroupName)),
+                _ => data.GroupBy(p => UnspecifiedKey(p.OrganizationId, p.OrganizationName))
             };
 
             return grouped
                 .Select(g =>
                 {
                     var sample = g.First();
-                    return new ProjectDataItem(
-                        g.Key.Id ?? "Unspecified",
-                        string.IsNullOrEmpty(g.Key.Name) ? "Unspecified" : g.Key.Name!,
+                    var item = new ProjectDataItem(
+                        g.Key.Id,
+                        g.Key.Name,
                         TimeSpan.FromSeconds(g.Sum(p => p.Time.TotalSeconds)),
                         "")
                     {
                         OrganizationColor = sample.OrganizationColor,
                         ProjectGroupColor = sample.ProjectGroupColor,
                     };
+                    // Keep parent ids on the pivoted row so Palette can generate a stable
+                    // color per org/group (it keys off these, not ProjectId).
+                    if (axis == ChartAxis.ProjectGroup)
+                    {
+                        item.ProjectGroupId = g.Key.Id;
+                        item.ProjectGroupName = g.Key.Name;
+                    }
+                    else
+                    {
+                        item.OrganizationId = g.Key.Id;
+                        item.OrganizationName = g.Key.Name;
+                    }
+                    return item;
                 })
                 .OrderByDescending(p => p.Time)
                 .ToList();
         }
+
+        private static (string Id, string Name) UnspecifiedKey(string? id, string? name) => (
+            string.IsNullOrEmpty(id) ? "Unspecified" : id,
+            string.IsNullOrEmpty(name) ? "Unspecified" : name);
 
         /// <summary>
         /// Per-segment palette aligned with the output of <see cref="Pivot"/> (same order).
@@ -80,7 +97,7 @@ namespace My.Client.Models.Dashboard
             // org (or group) rendered as the exact same chart color ΓÇö indistinguishable
             // segments. Every project gets its own generated color instead.
             if (axis == ChartAxis.Project)
-                return GenerateDistinctPalette(pivoted.Select(p => p.ProjectId).ToList());
+                return GenerateDistinctPalette(pivoted.Select(p => (string?)p.ProjectId));
 
             var resolved = pivoted
                 .Select(item => axis == ChartAxis.ProjectGroup ? item.ProjectGroupColor : item.OrganizationColor)
@@ -97,7 +114,7 @@ namespace My.Client.Models.Dashboard
                 .Where(x => string.IsNullOrWhiteSpace(x.Color))
                 .Select(x => x.Index)
                 .ToList();
-            var generatedForMissing = GenerateDistinctPalette(missingIndices.Select(i => keys[i]).ToList());
+            var generatedForMissing = GenerateDistinctPalette(missingIndices.Select(i => keys[i]));
 
             var result = new string[resolved.Length];
             for (int i = 0; i < resolved.Length; i++)
@@ -119,14 +136,15 @@ namespace My.Client.Models.Dashboard
         /// (e.g. by time, descending). Saturation/lightness are fixed at levels that read
         /// clearly on both the light and dark theme backgrounds.
         /// </summary>
-        private static string[] GenerateDistinctPalette(List<string?> keys)
+        private static string[] GenerateDistinctPalette(IEnumerable<string?> keys)
         {
-            var rank = keys
+            var keyList = keys as IList<string?> ?? keys.ToList();
+            var rank = keyList
                 .Select((key, index) => (Key: key ?? "", Index: index))
                 .OrderBy(x => x.Key, StringComparer.Ordinal)
                 .ToList();
 
-            var colors = new string[keys.Count];
+            var colors = new string[keyList.Count];
             for (int i = 0; i < rank.Count; i++)
             {
                 var hue = (i * GoldenAngleDegrees) % 360;

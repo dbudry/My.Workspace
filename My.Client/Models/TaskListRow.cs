@@ -54,6 +54,13 @@ namespace My.Client.Models
 
         public StopwatchItemDto? StopwatchItem { get; init; }
 
+        /// <summary>
+        /// Set whenever Kind is Stopwatch, even when a full <see cref="StopwatchItem"/> DTO
+        /// wasn't loaded (e.g. Week view builds this row from a plain session TrackedTask).
+        /// Prefer this over StopwatchItem when only the id is needed (opening Sessions).
+        /// </summary>
+        public string? StopwatchItemId { get; init; }
+
         public TrackedTask? ManualTask { get; init; }
 
         /// <summary>Overlay-only snapshot — ManualTask keeps the employee's original fields.</summary>

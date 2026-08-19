@@ -144,6 +144,8 @@ public class TaskListRowBuilderTests
         Assert.Equal("Zebra", rows[0].Details);
         Assert.Equal("Session work", rows[1].Details);
         Assert.Equal("Alpha", rows[2].Details);
+        Assert.Equal(TaskListRowKind.Stopwatch, rows[1].Kind);
+        Assert.Equal("sw1", rows[1].StopwatchItemId);
         Assert.NotNull(rows[1].ManualTask);
         Assert.Equal("sw1", rows[1].ManualTask!.StopwatchItemId);
     }

@@ -1,3 +1,5 @@
+@using My.Shared.Rules
+
 <MudContainer MaxWidth="MaxWidth.ExtraLarge">
 
     <MudText Typo="Typo.h6" Align="Align.Center">Work Items</MudText>
@@ -11,8 +13,11 @@
         }
         else
         {
-            <MudTable Items="@items" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
-                      Class="mt-3 tasks-list-table stopwatch-items-table"
+            @* Mini pop-out: never card-stack (Breakpoint.None). Full page: Xs = cards only
+               below 600px. MudBlazor 9's Sm stacks below 960px — do not use it here. *@
+            <MudTable Items="@items" Hover="true" Dense="true"
+                      Breakpoint="@(Compact ? Breakpoint.None : Breakpoint.Xs)"
+                      Class="@($"mt-3 tasks-list-table stopwatch-items-table{(Compact ? " stopwatch-items-table-compact" : "")}")"
                       RowClassFunc="@((item, _) => item.IsRunning ? "running-row" : "")">
                 <ColGroup>
                     <col class="stopwatch-col-timer" />
@@ -23,7 +28,29 @@
                 </ColGroup>
                 <HeaderContent>
                     <MudTh Style="text-align: center;">Timer</MudTh>
-                    <MudTh>Project</MudTh>
+                    <MudTh>
+                        <div class="tasks-project-header">
+                            <span>Project</span>
+                            <div class="tasks-project-color-toggle" role="tablist" aria-label="Project color source" @onclick:stopPropagation>
+                                <button type="button"
+                                        role="tab"
+                                        class="@(projectColorSource == ProjectColorSource.Organization ? "is-active" : null)"
+                                        aria-selected="@(projectColorSource == ProjectColorSource.Organization)"
+                                        aria-label="By Organization"
+                                        title="By Organization"
+                                        disabled="@isSavingColorSource"
+                                        @onclick="@(() => OnProjectColorSourceChangedAsync(ProjectColorSource.Organization))">Org</button>
+                                <button type="button"
+                                        role="tab"
+                                        class="@(projectColorSource == ProjectColorSource.ProjectGroup ? "is-active" : null)"
+                                        aria-selected="@(projectColorSource == ProjectColorSource.ProjectGroup)"
+                                        aria-label="By Project Group"
+                                        title="By Project Group"
+                                        disabled="@isSavingColorSource"
+                                        @onclick="@(() => OnProjectColorSourceChangedAsync(ProjectColorSource.ProjectGroup))">Group</button>
+                            </div>
+                        </div>
+                    </MudTh>
                     <MudTh>Details</MudTh>
                     <MudTh>Total</MudTh>
                     <MudTh Style="text-align: center;">Actions</MudTh>
@@ -59,12 +86,14 @@
                         else
                         {
                             <div @onclick="@(() => OpenSessionsAsync(context))" style="cursor: pointer;">
-                                <ProjectAffiliationDisplay ProjectName="@context.Project?.Name"
+                                <ProjectAffiliationDisplay @key="@($"{context.StopwatchItemId}|{projectColorSource}")"
+                                                           ProjectName="@context.Project?.Name"
                                                            DisplayName="@GetProjectDisplayName(context)"
                                                            OrganizationName="@context.Project?.OrganizationName"
                                                            OrganizationColor="@context.Project?.OrganizationColor"
                                                            ProjectGroupName="@context.Project?.ProjectGroupName"
-                                                           ProjectGroupColor="@context.Project?.ProjectGroupColor" />
+                                                           ProjectGroupColor="@context.Project?.ProjectGroupColor"
+                                                           ColorSource="@projectColorSource" />
                             </div>
                         }
                     </MudTd>

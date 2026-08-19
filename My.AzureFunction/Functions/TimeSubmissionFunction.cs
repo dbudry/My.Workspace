@@ -379,8 +379,8 @@ namespace My.Functions
                 {
                     TaskId = alias.TaskId,
                     Kind = "Alias",
-                    TaskDetails = task.Details,
-                    OriginalDetails = task.Details,
+                    TaskDetails = task.Details ?? string.Empty,
+                    OriginalDetails = task.Details ?? string.Empty,
                     OriginalStartDate = task.StartDate,
                     OriginalDurationSeconds = ActualDuration(task).TotalSeconds,
                     OriginalProjectName = task.Project?.Name,
@@ -400,7 +400,7 @@ namespace My.Functions
                 {
                     TaskId = audit.TaskId,
                     Kind = "Direct",
-                    TaskDetails = task.Details,
+                    TaskDetails = task.Details ?? string.Empty,
                     OriginalDetails = audit.PreviousDetails,
                     OriginalStartDate = audit.PreviousStartDate,
                     OriginalDurationSeconds = ActualPreviousDuration(audit).TotalSeconds,
