@@ -20,6 +20,11 @@ namespace My.Client.Components.TrackedTasks
         private string? busyItemId;
         private bool tickLoopRunning;
         private CancellationTokenSource? tickCts;
+        private ProjectColorSource projectColorSource = ProjectColorSource.ProjectGroup;
+        private bool isSavingColorSource;
+
+        /// <summary>Mini pop-out: keep a real table at every width (scroll sideways if needed).</summary>
+        [Parameter] public bool Compact { get; set; }
 
         [Inject] private ISnackbar Snackbar { get; set; } = null!;
         [Inject] private IDialogService DialogService { get; set; } = null!;
@@ -39,9 +44,42 @@ namespace My.Client.Components.TrackedTasks
                 isLoading = false;
             }
 
-            await SettingsService.GetSettingsAsync();
+            var settings = await SettingsService.GetSettingsAsync();
+            projectColorSource = NormalizeLabelColorToggle(settings.ProjectColorSource);
             _ = LoadItems(currentPage + 1, pagingAttributes.PageSize > 0 ? pagingAttributes.PageSize : 10, showSpinner: items.Count == 0);
             StartTickLoop();
+        }
+
+        private static ProjectColorSource NormalizeLabelColorToggle(ProjectColorSource source) =>
+            source == ProjectColorSource.Organization
+                ? ProjectColorSource.Organization
+                : ProjectColorSource.ProjectGroup;
+
+        private async Task OnProjectColorSourceChangedAsync(ProjectColorSource source)
+        {
+            source = NormalizeLabelColorToggle(source);
+            if (source == projectColorSource) return;
+
+            var previous = projectColorSource;
+            projectColorSource = source;
+            await InvokeAsync(StateHasChanged);
+
+            isSavingColorSource = true;
+            try
+            {
+                await SettingsService.UpdateProjectColorSourceAsync(source);
+            }
+            catch (Exception ex)
+            {
+                projectColorSource = previous;
+                Snackbar.AddApiError(ex, "Couldn't save label color preference.");
+                await InvokeAsync(StateHasChanged);
+            }
+            finally
+            {
+                isSavingColorSource = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
 
         private static string? GetProjectDisplayName(StopwatchItemDto item)

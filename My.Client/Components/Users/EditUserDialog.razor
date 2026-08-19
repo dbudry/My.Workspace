@@ -9,10 +9,24 @@
         <EditForm Model="@model" OnValidSubmit="@Save">
             <DataAnnotationsValidator />
             <DialogFormStack>
-                @if (legacyRoles.Count > 0)
+                @if (outOfScopeRoles.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        Roles in other modules stay as they are:
+                        @string.Join(", ", outOfScopeRoles)
+                    </MudAlert>
+                }
+                @if (legacyRoles.Count > 0 && stripLegacy)
                 {
                     <MudAlert Severity="Severity.Warning" Dense="true">
                         Legacy roles not assignable (will be removed on save):
+                        @string.Join(", ", legacyRoles)
+                    </MudAlert>
+                }
+                else if (legacyRoles.Count > 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        Unrecognized roles will be left unchanged:
                         @string.Join(", ", legacyRoles)
                     </MudAlert>
                 }
@@ -22,7 +36,8 @@
                               Required="true" RequiredError="Last name is required" />
                 <MudTextField @bind-Value="model.Email" Label="Email" Variant="Variant.Outlined"
                               Required="true" RequiredError="Email is required" />
-                <RolePicker AvailableRoles="@AvailableRoles" @bind-SelectedRoles="selectedRoles" Label="Roles" />
+                <RolePicker AvailableRoles="@AvailableRoles" LockedRoles="@LockedRoles"
+                            @bind-SelectedRoles="selectedRoles" Label="Roles" />
                 <ValidationSummary />
                 @* Hidden submit so EditForm validation drives the Save button via OnValidSubmit. *@
                 <button type="submit" style="display:none;"></button>
@@ -51,9 +66,14 @@
 
     private UserModel model = null!;
     private List<string> selectedRoles = new();
+    private List<string> outOfScopeRoles = new();
     private List<string> legacyRoles = new();
+    private bool stripLegacy;
     private bool isSaving;
     private EditContext? _editContext;
+
+    private IReadOnlyList<string> LockedRoles =>
+        stripLegacy ? outOfScopeRoles : outOfScopeRoles.Concat(legacyRoles).ToList();
 
     protected override void OnInitialized()
     {
@@ -70,8 +90,13 @@
             IsActive = User.IsActive,
             IsArchived = User.IsArchived
         };
+        var catalog = Constants.Roles.Assignable().ToHashSet(StringComparer.Ordinal);
         var assignable = AvailableRoles.ToHashSet(StringComparer.Ordinal);
-        legacyRoles = model.Roles.Where(r => !assignable.Contains(r)).ToList();
+        // Only global Admin gets the unscoped Admin role in AssignableFor — they can
+        // drop catalog-unknown leftovers. Scoped admins must not strip them.
+        stripLegacy = assignable.Contains(Constants.Roles.Admin);
+        legacyRoles = model.Roles.Where(r => !catalog.Contains(r)).ToList();
+        outOfScopeRoles = model.Roles.Where(r => catalog.Contains(r) && !assignable.Contains(r)).ToList();
         selectedRoles = model.Roles.Where(r => assignable.Contains(r)).ToList();
         _editContext = new EditContext(model);
     }
@@ -89,7 +114,7 @@
 
     private async Task Save()
     {
-        if (selectedRoles.Count == 0)
+        if (selectedRoles.Count == 0 && LockedRoles.Count == 0)
         {
             Snackbar.Add("At least one role must be selected.", Severity.Warning);
             return;

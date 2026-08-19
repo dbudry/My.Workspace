@@ -894,6 +894,112 @@ h1:focus {
     width: 6.5rem;
 }
 
+/* Mini pop-out is a desktop window. Never use the 600px stacked start form
+   (full-width Start + one-field-per-row) or MudBlazor's card table. Keep
+   columns; scroll sideways when the window is dragged narrow. */
+.mini-layout {
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.mini-layout .stopwatch-start-row {
+    grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+    padding-bottom: 1.35rem;
+}
+
+.mini-layout .stopwatch-start-details-and-action {
+    flex-wrap: nowrap;
+}
+
+.mini-layout .stopwatch-start-button-slot {
+    width: auto;
+    margin-top: 8px;
+}
+
+.mini-layout .stopwatch-start-button.mud-button-root,
+.mini-layout .stopwatch-start-button {
+    width: auto;
+    height: 40px;
+    min-height: 40px;
+}
+
+.mini-layout .stopwatch-start-name .mud-input-control-helper-container {
+    position: absolute;
+}
+
+.mini-layout .tasks-list-table table,
+.mini-layout .stopwatch-items-table-compact table {
+    table-layout: fixed;
+    min-width: 36rem;
+}
+
+.mini-layout .tasks-list-table .mud-table-container {
+    max-height: calc(100dvh - 6rem);
+    overflow: auto;
+}
+
+/* Undo MudBlazor xs/sm card layout if it still attaches (resize, leftover class). */
+@media (max-width: 959.98px) {
+    .mini-layout .mud-xs-table .mud-table-root .mud-table-head .mud-table-row,
+    .mini-layout .mud-sm-table .mud-table-root .mud-table-head .mud-table-row {
+        display: table-row;
+    }
+
+    .mini-layout .mud-xs-table .mud-table-root .mud-table-foot,
+    .mini-layout .mud-sm-table .mud-table-root .mud-table-foot {
+        display: table-footer-group;
+    }
+
+    .mini-layout .mud-xs-table .mud-table-smalldevices-sortselect,
+    .mini-layout .mud-sm-table .mud-table-smalldevices-sortselect {
+        display: none;
+    }
+
+    .mini-layout .mud-xs-table .mud-table-body,
+    .mini-layout .mud-sm-table .mud-table-body {
+        border-top: none;
+    }
+
+    .mini-layout .mud-xs-table .mud-table-row,
+    .mini-layout .mud-sm-table .mud-table-row {
+        display: table-row;
+    }
+
+    .mini-layout .mud-xs-table .mud-table-cell,
+    .mini-layout .mud-sm-table .mud-table-cell {
+        display: table-cell;
+        padding: 4px 8px;
+        text-align: inherit !important;
+        border: none;
+        border-bottom: 1px solid var(--mud-palette-table-lines);
+    }
+
+    .mini-layout .mud-xs-table .mud-table-cell:before,
+    .mini-layout .mud-sm-table .mud-table-cell:before {
+        content: none;
+        padding: 0;
+    }
+
+    .mini-layout .mud-xs-table.tasks-list-table table,
+    .mini-layout .mud-sm-table.tasks-list-table table {
+        table-layout: fixed;
+        min-width: 36rem;
+    }
+
+    .mini-layout .mud-xs-table.tasks-list-table tbody td,
+    .mini-layout .mud-sm-table.tasks-list-table tbody td,
+    .mini-layout .mud-xs-table.tasks-list-table .tasks-details-cell,
+    .mini-layout .mud-sm-table.tasks-list-table .tasks-details-cell {
+        overflow: hidden;
+        max-width: 0;
+    }
+
+    .mini-layout .mud-xs-table.tasks-list-table tbody td:not(.tasks-details-cell),
+    .mini-layout .mud-sm-table.tasks-list-table tbody td:not(.tasks-details-cell) {
+        max-width: none;
+    }
+}
+
 /* table-layout:fixed + max-width:0 is what actually clips nowrap text to "…". */
 .tasks-list-table tbody td {
     overflow: hidden;
@@ -904,7 +1010,27 @@ h1:focus {
     max-width: 0;
 }
 
-/* Card layout (MudTable Sm): do not crush Details — max-width:0 is a desktop table trick. */
+/* MudBlazor 9 stacks .mud-xs-table below 600px and .mud-sm-table below 960px.
+   Those stacked cells are display:flex rows, but our desktop col widths +
+   overflow:hidden + max-width:0 still apply — labels become "De", Start becomes
+   "St". Undo the desktop tricks whenever MudBlazor is in card mode. */
+@media (max-width: 959.98px) {
+    .mud-sm-table.tasks-list-table table,
+    .mud-xs-table.tasks-list-table table {
+        table-layout: auto;
+        min-width: 0;
+    }
+
+    .mud-sm-table.tasks-list-table tbody td,
+    .mud-xs-table.tasks-list-table tbody td,
+    .mud-sm-table.tasks-list-table .tasks-details-cell,
+    .mud-xs-table.tasks-list-table .tasks-details-cell {
+        overflow: visible;
+        max-width: none;
+        width: auto;
+    }
+}
+
 @media (max-width: 599.99px) {
     .tasks-details-cell {
         max-width: none;
@@ -1094,7 +1220,16 @@ h1:focus {
 }
 
 /* ---- Week / Project day grids: rows scroll; Total bar sits under them ---- */
+/* Two tables (body + footer) must share one geometry. Auto layout sized the
+   footer task column to the short "Total" label and the body to "Project /
+   Details", so day totals sat left of the inputs. table-layout:fixed + the
+   same --week-* widths on both tables is what keeps them lined up. */
 .week-entry-grid-wrap {
+    --week-task-col: 16rem;
+    --week-day-col: 5.25rem;
+    --week-row-total-col: 0rem;
+    --week-day-cols: 5;
+    --week-grid-width: calc(var(--week-task-col) + (var(--week-day-cols) * var(--week-day-col)) + var(--week-row-total-col));
     display: flex;
     flex-direction: column;
     max-height: calc(100dvh - 16rem);
@@ -1104,12 +1239,16 @@ h1:focus {
     overflow-y: hidden;
 }
 
+.week-entry-grid-wrap--row-total {
+    --week-row-total-col: 4.5rem;
+}
+
 .week-entry-grid-scroll {
     overflow-x: hidden;
     overflow-y: auto;
     flex: 1 1 auto;
     min-height: 0;
-    width: max-content;
+    width: var(--week-grid-width);
     min-width: 100%;
     -webkit-overflow-scrolling: touch;
 }
@@ -1120,12 +1259,11 @@ h1:focus {
     z-index: 3;
     background: var(--mud-palette-background);
     box-shadow: 0 1px 0 var(--mud-palette-table-lines);
+    font-weight: 500;
 }
 
 .week-entry-totals-table {
     flex: 0 0 auto;
-    width: max-content;
-    max-width: none;
 }
 
 .week-entry-totals-table tfoot td {
@@ -1141,27 +1279,26 @@ h1:focus {
 }
 
 .week-entry-grid-table {
-    border-collapse: separate;
-    border-spacing: 6px 8px;
-    min-width: min-content;
-    width: max-content;
+    table-layout: fixed;
+    border-collapse: collapse;
+    border-spacing: 0;
+    width: var(--week-grid-width);
+    min-width: var(--week-grid-width);
     max-width: none;
 }
 
 .week-entry-col-task {
     text-align: left;
-    min-width: 12rem;
-    max-width: 22rem;
-    padding: 2px 8px 4px 0;
-    font-weight: 500;
+    width: var(--week-task-col);
+    padding: 4px 8px 4px 0;
+    font-weight: 400;
     color: var(--mud-palette-text-secondary);
-    /* Top-align with duration inputs (middle-align dropped draft fields below the day cells). */
     vertical-align: top;
     position: sticky;
     left: 0;
     z-index: 2;
-    /* Match page/content background — surface white looked like a random card strip. */
     background: var(--mud-palette-background);
+    box-sizing: border-box;
 }
 
 /* Draft task name: same ~36px shell as week-entry-day-duration (no floating label). */
@@ -1212,28 +1349,41 @@ tfoot .week-entry-col-task {
 
 .week-entry-col-day {
     text-align: center;
-    /* Compact field + in-field pencil adornment. */
-    min-width: 4.85rem;
-    width: 4.85rem;
-    padding: 2px 2px;
-    font-weight: 500;
+    width: var(--week-day-col);
+    min-width: var(--week-day-col);
+    padding: 4px 3px;
+    font-weight: 400;
     color: var(--mud-palette-text-secondary);
     vertical-align: top;
+    box-sizing: border-box;
 }
 
 tbody .week-entry-col-day {
-    font-weight: 400;
     color: inherit;
 }
 
 .week-entry-col-total {
     text-align: right;
-    min-width: 3.5rem;
+    width: var(--week-row-total-col);
+    min-width: var(--week-row-total-col);
     padding: 4px 0 4px 8px;
-    font-weight: 500;
+    font-weight: 400;
     color: var(--mud-palette-text-secondary);
     white-space: nowrap;
     vertical-align: middle;
+    box-sizing: border-box;
+}
+
+/* Same width as the duration input so footer numbers sit under the box, not the cell. */
+.week-entry-day-total {
+    width: 4.85rem;
+    margin: 0 auto;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 36px;
 }
 
 .week-entry-day-cell {
@@ -1339,10 +1489,9 @@ tbody .week-entry-col-day {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    /* Match top of duration field (~36px control, no floating label offset). */
     padding-top: 0;
-    min-width: 11rem;
-    max-width: 16rem;
+    min-width: 0;
+    max-width: 100%;
     min-height: 36px;
     justify-content: center;
 }
@@ -1352,8 +1501,8 @@ tbody .week-entry-col-day {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    min-width: 12rem;
-    max-width: 18rem;
+    min-width: 0;
+    max-width: 100%;
     padding: 0;
     margin: 0;
 }

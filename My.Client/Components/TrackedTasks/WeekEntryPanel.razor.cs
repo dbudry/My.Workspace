@@ -41,9 +41,14 @@ namespace My.Client.Components.TrackedTasks
             public string? ErrorMessage { get; set; }
             public string? HintTooltip { get; set; }
             public bool IsMultiple { get; set; }
+
+            /// <summary>Cell holds time tracked via the Stopwatch. Read-only here — edited
+            /// through the Sessions dialog, same rule as Week Day / List / All.</summary>
+            public bool IsStopwatch { get; set; }
+            public string? StopwatchItemId { get; set; }
             public CancellationTokenSource? DebounceCts { get; set; }
             public int SaveGeneration { get; set; }
-            public bool IsReadOnly => IsSubmitted;
+            public bool IsReadOnly => IsSubmitted || IsStopwatch;
         }
 
         private sealed class TaskRow
@@ -53,7 +58,12 @@ namespace My.Client.Components.TrackedTasks
             /// <summary>Free-text name while the row is still a draft (no saved days yet).</summary>
             public string DraftTaskName { get; set; } = "";
             public DayCell[] Cells { get; set; } = Array.Empty<DayCell>();
-            public bool HasPersistedData => Cells.Any(c => !string.IsNullOrEmpty(c.TaskId));
+
+            /// <summary>Row is a stopwatch work item's sessions for the week (grouped by
+            /// StopwatchItemId), not a manual task — see RebuildTaskRows.</summary>
+            public bool IsStopwatch { get; set; }
+            public string? StopwatchItemId { get; set; }
+            public bool HasPersistedData => IsStopwatch || Cells.Any(c => !string.IsNullOrEmpty(c.TaskId));
 
             public string? ResolvedTaskName =>
                 HasPersistedData
@@ -273,6 +283,36 @@ namespace My.Client.Components.TrackedTasks
         /// </summary>
         private async Task OpenTaskDialogForCellAsync(TaskRow row, DayCell cell)
         {
+            if (cell.IsStopwatch)
+            {
+                if (string.IsNullOrEmpty(row.StopwatchItemId))
+                    return;
+
+                var swParams = new DialogParameters<StopwatchSessionsDialog>
+                {
+                    { x => x.ItemId, row.StopwatchItemId },
+                    { x => x.ItemName, row.SelectedTaskName },
+                    { x => x.ItemProjectId, selectedProject?.ProjectId },
+                    { x => x.ItemProjectName, selectedProject?.DisplayName },
+                    { x => x.HttpClient, client }
+                };
+
+                var swDialog = await DialogService.ShowAsync<StopwatchSessionsDialog>(
+                    row.SelectedTaskName,
+                    swParams,
+                    new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+                var swResult = await swDialog.Result;
+
+                if (swResult is { Canceled: false })
+                {
+                    await LoadWeekAsync();
+                    if (EntriesChanged.HasDelegate)
+                        await EntriesChanged.InvokeAsync();
+                }
+
+                return;
+            }
+
             if (string.IsNullOrEmpty(cell.TaskId))
             {
                 if (cell.IsReadOnly || selectedProject == null)
@@ -483,6 +523,61 @@ namespace My.Client.Components.TrackedTasks
             var next = new List<TaskRow>();
             foreach (var name in names)
                 next.Add(BuildRowForTaskName(name));
+
+            // Stopwatch work items on this project this week: one read-only row per item
+            // (grouped by StopwatchItemId, not name), summed per day. Previously these
+            // sessions were skipped entirely (DistinctManualTaskNames excludes them), so a
+            // project worked mostly via the Stopwatch showed no rows and an empty grid.
+            var stopwatchGroups = weekTasks
+                .Where(t => !string.IsNullOrEmpty(t.StopwatchItemId)
+                    && string.Equals(t.ProjectId, projectId, StringComparison.Ordinal))
+                .Select(t => (Task: t, Slice: ToSlice(t)))
+                .Where(x => WeekEntryGridRules.OverlapsDayRange(x.Slice, from, to))
+                .GroupBy(x => x.Task.StopwatchItemId!)
+                .OrderBy(g => g.First().Task.Details, StringComparer.OrdinalIgnoreCase);
+
+            var submittedList = submittedMonths.Select(x => (x.Year, x.Month)).ToList();
+            foreach (var group in stopwatchGroups)
+            {
+                var sessions = group.Select(x => x.Task).ToList();
+                var taskName = sessions[0].Details ?? "";
+                var cells = new DayCell[visibleDays.Count];
+                for (var i = 0; i < visibleDays.Count; i++)
+                {
+                    var day = visibleDays[i];
+                    var dayTotal = TimeSpan.Zero;
+                    foreach (var s in sessions)
+                    {
+                        if (s.StartDate.Date == day.Date)
+                            dayTotal += s.Duration;
+                    }
+
+                    cells[i] = new DayCell
+                    {
+                        Date = day,
+                        IsSubmitted = WeekEntryGridRules.IsDaySubmitted(day, submittedList),
+                        DurationText = WeekEntryGridRules.FormatDayDurationInput(dayTotal),
+                        SavedDuration = dayTotal,
+                        BoundStartDate = day.Date.Add(defaultStartTime),
+                        IsStopwatch = true,
+                        StopwatchItemId = group.Key,
+                        Status = CellSaveStatus.Idle,
+                        ErrorMessage = dayTotal > TimeSpan.Zero ? "Stopwatch" : null,
+                        HintTooltip = dayTotal > TimeSpan.Zero
+                            ? "Tracked with the Stopwatch. Open Sessions to edit."
+                            : null
+                    };
+                }
+
+                next.Add(new TaskRow
+                {
+                    SelectedTaskName = taskName,
+                    DraftTaskName = taskName,
+                    IsStopwatch = true,
+                    StopwatchItemId = group.Key,
+                    Cells = cells
+                });
+            }
 
             foreach (var draft in drafts)
                 next.Add(BuildDraftRow(draft.DraftTaskName));

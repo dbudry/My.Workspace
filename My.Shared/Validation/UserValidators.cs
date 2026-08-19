@@ -44,8 +44,9 @@ namespace My.Shared.Validation
                 .NotEmpty().WithMessage("Last name is required.")
                 .MaximumLength(50);
 
-            RuleFor(x => x.Roles)
-                .NotEmpty().WithMessage("At least one role is required.");
+            // Empty means "no in-scope roles in this request". UpdateUser merges with
+            // roles the caller cannot assign; a fully empty result is rejected there.
+            RuleFor(x => x.Roles).NotNull();
         }
     }
 }

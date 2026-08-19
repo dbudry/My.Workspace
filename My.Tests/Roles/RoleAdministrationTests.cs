@@ -11,13 +11,16 @@ namespace My.Tests.Roles;
 /// <see cref="Constants.Roles.AdministeredScopes"/>,
 /// <see cref="Constants.Roles.IsVisibleTo"/>,
 /// <see cref="Constants.Roles.CanManageUser"/>,
+/// <see cref="Constants.Roles.CanChangeUserActiveStatus"/>,
 /// <see cref="Constants.Roles.IsVisibleInTymeTeamView"/>,
-/// <see cref="Constants.Roles.CanAssignRole"/>, and
-/// <see cref="Constants.Roles.AssignableFor"/>.
+/// <see cref="Constants.Roles.CanAssignRole"/>,
+/// <see cref="Constants.Roles.AssignableFor"/>, and
+/// <see cref="Constants.Roles.TryMergeRoleUpdate"/>.
 ///
 /// These power the user-management UI/endpoints. Any admin can see every
-/// account on Users; mutating still requires <see cref="Constants.Roles.CanManageUser"/>
-/// over every role on the target. Tyme team surfaces stay Tyme-scoped.
+/// account on Users. Role updates merge in-scope changes and leave other
+/// modules alone. Account-level mutations still use
+/// <see cref="Constants.Roles.CanManageUser"/>. Tyme team surfaces stay Tyme-scoped.
 /// </summary>
 public class RoleAdministrationTests
 {
@@ -158,7 +161,7 @@ public class RoleAdministrationTests
     public void IsVisibleTo_scoped_admin_sees_target_with_any_global_role()
     {
         // Directory visibility is open so a scoped admin can find anyone.
-        // Changing roles still requires CanManageUser (global stays out of reach).
+        // Role updates merge in-scope changes; a global role on the target stays.
         var admin = PrincipalWithRoles(AdminInTyme);
 
         Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin }));
@@ -199,6 +202,14 @@ public class RoleAdministrationTests
 
         Assert.False(Constants.Roles.CanManageUser(admin, new[] { ManagerInTyme, AdminInUnrelated }));
         Assert.False(Constants.Roles.CanManageUser(admin, new[] { Constants.Roles.Admin }));
+    }
+
+    [Fact]
+    public void CanChangeUserActiveStatus_true_only_for_global_Admin()
+    {
+        Assert.True(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(Constants.Roles.Admin)));
+        Assert.False(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(AdminInTyme)));
+        Assert.False(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(ManagerInTyme)));
     }
 
     // ---------- IsVisibleInTymeTeamView ----------
@@ -330,5 +341,106 @@ public class RoleAdministrationTests
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations)));
         Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
         Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations)));
+    }
+
+    // ---------- TryMergeRoleUpdate ----------
+
+    private static string EditorInOrganizations =>
+        Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations);
+
+    private static string UserInIntranet =>
+        Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Intranet);
+
+    [Fact]
+    public void TryMergeRoleUpdate_scoped_admin_adds_tyme_preserving_other_modules()
+    {
+        var admin = PrincipalWithRoles(AdminInTyme);
+        var current = new[] { EditorInOrganizations, UserInIntranet };
+        var requested = new[] { AdminInTyme };
+
+        Assert.True(Constants.Roles.TryMergeRoleUpdate(admin, current, requested, out var merged));
+        Assert.Equal(3, merged.Count);
+        Assert.Contains(AdminInTyme, merged);
+        Assert.Contains(EditorInOrganizations, merged);
+        Assert.Contains(UserInIntranet, merged);
+    }
+
+    [Fact]
+    public void TryMergeRoleUpdate_scoped_admin_cannot_request_out_of_scope_role()
+    {
+        var admin = PrincipalWithRoles(AdminInTyme);
+
+        Assert.False(Constants.Roles.TryMergeRoleUpdate(
+            admin,
+            new[] { UserInTyme },
+            new[] { UserInTyme, EditorInOrganizations },
+            out _));
+    }
+
+    [Fact]
+    public void TryMergeRoleUpdate_scoped_admin_can_remove_in_scope_role()
+    {
+        var admin = PrincipalWithRoles(AdminInTyme);
+
+        Assert.True(Constants.Roles.TryMergeRoleUpdate(
+            admin,
+            new[] { UserInTyme, EditorInOrganizations },
+            Array.Empty<string>(),
+            out var merged));
+        Assert.Single(merged);
+        Assert.Contains(EditorInOrganizations, merged);
+    }
+
+    [Fact]
+    public void TryMergeRoleUpdate_global_admin_drops_unknown_legacy()
+    {
+        var admin = PrincipalWithRoles(Constants.Roles.Admin);
+
+        Assert.True(Constants.Roles.TryMergeRoleUpdate(
+            admin,
+            new[] { UserInTyme, "ObsoleteRole" },
+            new[] { UserInTyme },
+            out var merged));
+        Assert.Single(merged);
+        Assert.Contains(UserInTyme, merged);
+    }
+
+    [Fact]
+    public void TryMergeRoleUpdate_scoped_admin_preserves_unknown_legacy()
+    {
+        var admin = PrincipalWithRoles(AdminInTyme);
+
+        Assert.True(Constants.Roles.TryMergeRoleUpdate(
+            admin,
+            new[] { UserInTyme, "ObsoleteRole" },
+            new[] { UserInTyme },
+            out var merged));
+        Assert.Equal(2, merged.Count);
+        Assert.Contains(UserInTyme, merged);
+        Assert.Contains("ObsoleteRole", merged);
+    }
+
+    [Fact]
+    public void TryMergeRoleUpdate_rejects_empty_merged()
+    {
+        var admin = PrincipalWithRoles(AdminInTyme);
+
+        Assert.False(Constants.Roles.TryMergeRoleUpdate(
+            admin,
+            new[] { UserInTyme },
+            Array.Empty<string>(),
+            out _));
+    }
+
+    [Fact]
+    public void TryMergeRoleUpdate_non_admin_returns_false()
+    {
+        var manager = PrincipalWithRoles(ManagerInTyme);
+
+        Assert.False(Constants.Roles.TryMergeRoleUpdate(
+            manager,
+            new[] { UserInTyme },
+            new[] { UserInTyme },
+            out _));
     }
 }

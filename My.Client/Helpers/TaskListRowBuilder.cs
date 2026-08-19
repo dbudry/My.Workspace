@@ -30,9 +30,36 @@ namespace My.Client.Helpers
                 SortDate = lastWorked,
                 DisplayDate = lastWorked,
                 IsRunning = item.IsRunning,
-                StopwatchItem = item
+                StopwatchItem = item,
+                StopwatchItemId = item.StopwatchItemId
             };
         }
+
+        /// <summary>
+        /// Week view's per-day session rows only carry a plain <see cref="TrackedTask"/>
+        /// (no aggregated <see cref="StopwatchItemDto"/> — that requires a separate call).
+        /// Still Kind = Stopwatch so the UI shows the Timer marker and routes edits to the
+        /// Sessions dialog instead of exposing raw inline fields (see FromWeekTasks).
+        /// </summary>
+        public static TaskListRow FromWeekStopwatchSession(TrackedTask task) =>
+            new()
+            {
+                Kind = TaskListRowKind.Stopwatch,
+                Details = task.Details ?? string.Empty,
+                ProjectName = task.Project?.Name,
+                ProjectDisplayName = task.Project?.DisplayName,
+                OrganizationName = task.Project?.OrganizationName,
+                OrganizationColor = task.Project?.OrganizationColor,
+                ProjectGroupName = task.Project?.ProjectGroupName,
+                ProjectGroupColor = task.Project?.ProjectGroupColor,
+                Duration = task.Duration,
+                SortDate = task.StartDate,
+                DisplayDate = task.StartDate,
+                IsRunning = task.IsRunning,
+                IsLocked = task.IsLocked,
+                StopwatchItemId = task.StopwatchItemId,
+                ManualTask = task
+            };
 
         public static TaskListRow FromManual(TrackedTask task) =>
             new()
@@ -112,7 +139,9 @@ namespace My.Client.Helpers
 
         /// <summary>
         /// Rows for Tasks → Weekly: manuals (with original/adjusted display mode) plus
-        /// stopwatch sessions as editable manual-shaped rows, sorted by start then name.
+        /// stopwatch sessions marked Kind = Stopwatch (same as the All tab) so they show
+        /// the Timer marker and open Sessions instead of exposing raw inline edit fields.
+        /// Sorted by start then name.
         /// </summary>
         public static List<TaskListRow> FromWeekTasks(
             IEnumerable<TrackedTask> tasks,
@@ -126,7 +155,7 @@ namespace My.Client.Helpers
             {
                 if (!string.IsNullOrEmpty(task.StopwatchItemId))
                 {
-                    rows.Add(FromManual(task));
+                    rows.Add(FromWeekStopwatchSession(task));
                     continue;
                 }
 

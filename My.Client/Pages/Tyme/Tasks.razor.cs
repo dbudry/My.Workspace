@@ -1060,27 +1060,42 @@ namespace My.Client.Pages.Tyme
         /// </summary>
         private async Task OnRowClickAsync(TaskListRow row)
         {
-            if (row.Kind == TaskListRowKind.Stopwatch && row.StopwatchItem != null)
-                await OpenStopwatchSessionsAsync(row.StopwatchItem);
+            if (row.Kind == TaskListRowKind.Stopwatch)
+                await OpenStopwatchSessionsAsync(row);
             else if (row.IsLocked && row.ManualTask != null)
                 await OpenTaskDialog(row);
         }
 
         private static string FormatDuration(TaskListRow row) => FormatRowDuration(row);
 
-        private async Task OpenStopwatchSessionsAsync(StopwatchItemDto item)
+        /// <summary>
+        /// Opens Sessions for a stopwatch-kind row. Works whether the row came from the All
+        /// tab (full StopwatchItem DTO) or Week view (only the session's plain TrackedTask —
+        /// see TaskListRowBuilder.FromWeekStopwatchSession), so both surfaces get the same
+        /// "click a stopwatch entry → edit its sessions" behavior instead of Week silently
+        /// treating stopwatch time as an inline-editable manual task.
+        /// </summary>
+        private async Task OpenStopwatchSessionsAsync(TaskListRow row)
         {
+            var itemId = row.StopwatchItem?.StopwatchItemId ?? row.StopwatchItemId;
+            if (string.IsNullOrEmpty(itemId)) return;
+
+            var projectId = row.StopwatchItem?.ProjectId ?? row.ManualTask?.ProjectId;
+            var projectName = row.StopwatchItem != null
+                ? ProjectDisplayHelper.FromDto(row.StopwatchItem.Project)
+                : (row.ManualTask?.Project?.DisplayName ?? row.ProjectDisplayName ?? row.ProjectName);
+
             var parameters = new DialogParameters<StopwatchSessionsDialog>
             {
-                { x => x.ItemId, item.StopwatchItemId },
-                { x => x.ItemName, item.Details },
-                { x => x.ItemProjectId, item.ProjectId },
-                { x => x.ItemProjectName, ProjectDisplayHelper.FromDto(item.Project) },
+                { x => x.ItemId, itemId },
+                { x => x.ItemName, row.Details },
+                { x => x.ItemProjectId, projectId },
+                { x => x.ItemProjectName, projectName },
                 { x => x.HttpClient, client }
             };
 
             var dialog = await DialogService.ShowAsync<StopwatchSessionsDialog>(
-                item.Details,
+                row.Details,
                 parameters,
                 new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
             var result = await dialog.Result;

@@ -16,11 +16,19 @@
                   Class="@Class" />
 
 <div class="d-flex flex-wrap gap-2 mt-2">
-    @if (SelectedRoles.Count == 0)
+    @if (SelectedRoles.Count == 0 && LockedRoles.Count == 0)
     {
         <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">
             No roles selected
         </MudText>
+    }
+    @foreach (var role in SortedLockedRoles())
+    {
+        <MudTooltip Text="Assigned in another module — you can only change roles in yours.">
+            <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)" Variant="Variant.Outlined">
+                @FormatRole(role)
+            </MudChip>
+        </MudTooltip>
     }
     @foreach (var role in SortedSelectedRoles())
     {
@@ -34,6 +42,13 @@
 @code {
     [Parameter, EditorRequired]
     public IReadOnlyList<string> AvailableRoles { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Roles the caller cannot assign (other modules, or unrecognized leftovers a
+    /// scoped admin must not strip). Shown as outlined chips without a remove button.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<string> LockedRoles { get; set; } = Array.Empty<string>();
 
     [Parameter]
     public List<string> SelectedRoles { get; set; } = new();
@@ -92,6 +107,9 @@
 
     private IEnumerable<string> SortedSelectedRoles() =>
         SelectedRoles.OrderBy(RoleSortKey, StringComparer.Ordinal);
+
+    private IEnumerable<string> SortedLockedRoles() =>
+        LockedRoles.OrderBy(RoleSortKey, StringComparer.Ordinal);
 
     // Groups by scope ΓÇö Global first, then the same order scopes are introduced in
     // Constants.Roles.Assignable() (Intranet, Organizations, Tyme) ΓÇö then by role rank

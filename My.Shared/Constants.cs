@@ -178,10 +178,10 @@ namespace My.Shared.Constants
             ///
             /// Any admin — global or scoped (e.g. Admin:Tyme) — can see every user in the
             /// directory, including users who also hold a global or out-of-scope role.
-            /// Visibility is intentionally wide open so a scoped admin can find anyone;
-            /// actually mutating a user's roles is the operation that stays locked down —
-            /// see <see cref="CanManageUser"/>, which still requires authority over every
-            /// role currently on the target before an update is allowed.
+            /// Visibility is intentionally wide open so a scoped admin can find anyone.
+            /// Role updates use <see cref="TryMergeRoleUpdate"/> (only the caller's module
+            /// changes; other roles stay). Account-level mutations still use
+            /// <see cref="CanManageUser"/> / <see cref="CanChangeUserActiveStatus"/>.
             /// </summary>
             public static bool IsVisibleTo(System.Security.Claims.ClaimsPrincipal admin, IEnumerable<string> targetRoles)
             {
@@ -208,6 +208,13 @@ namespace My.Shared.Constants
                 }
                 return true;
             }
+
+            /// <summary>
+            /// Locking a user out (inactive) or restoring login is workspace-wide.
+            /// Scoped admins can assign roles in their module; they cannot deactivate anyone.
+            /// </summary>
+            public static bool CanChangeUserActiveStatus(System.Security.Claims.ClaimsPrincipal principal)
+                => IsGlobalAdmin(principal);
 
             /// <summary>
             /// Should this user appear in manager Tyme team surfaces (Management,
@@ -252,6 +259,56 @@ namespace My.Shared.Constants
                 var i = role.IndexOf(':');
                 if (i < 0) return false; // global role requires global admin
                 return scopes.Contains(role.Substring(i + 1));
+            }
+
+            /// <summary>
+            /// Builds the role set to persist for an admin's user update.
+            /// <paramref name="requestedRoles"/> replaces only roles the caller
+            /// <see cref="CanAssignRole">may assign</see>. Current roles outside that
+            /// set stay so a Tyme admin can add <c>Admin:Tyme</c> without stripping
+            /// Organizations or Intranet. A global Admin may drop catalog-unknown
+            /// leftovers (true legacy). Returns false if the caller is not an admin, if
+            /// any requested role is outside their assignable set, or if the result
+            /// would leave the user with no roles.
+            /// </summary>
+            public static bool TryMergeRoleUpdate(
+                System.Security.Claims.ClaimsPrincipal admin,
+                IEnumerable<string> currentRoles,
+                IEnumerable<string> requestedRoles,
+                out IReadOnlyList<string> merged)
+            {
+                merged = Array.Empty<string>();
+                if (!IsAnyAdmin(admin)) return false;
+
+                var requested = new List<string>();
+                var seenRequested = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var role in requestedRoles ?? Array.Empty<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(role)) continue;
+                    if (!CanAssignRole(admin, role)) return false;
+                    if (seenRequested.Add(role)) requested.Add(role);
+                }
+
+                var result = new List<string>();
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                var dropUnknown = IsGlobalAdmin(admin);
+
+                foreach (var role in currentRoles ?? Array.Empty<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(role)) continue;
+                    if (CanAssignRole(admin, role)) continue;
+                    if (dropUnknown && !IsAssignableRole(role)) continue;
+                    if (seen.Add(role)) result.Add(role);
+                }
+
+                foreach (var role in requested)
+                {
+                    if (seen.Add(role)) result.Add(role);
+                }
+
+                if (result.Count == 0) return false;
+                merged = result;
+                return true;
             }
         }
 

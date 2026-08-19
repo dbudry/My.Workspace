@@ -17,9 +17,18 @@ else if (!string.IsNullOrEmpty(loadError))
 else
 {
     @* Rows scroll; Total sits under the grid (not sticky-over the last day cells). *@
-    <div class="week-entry-grid-wrap mb-3">
+    <div class="week-entry-grid-wrap week-entry-grid-wrap--row-total mb-3"
+         style="@($"--week-day-cols:{visibleDays.Count}")">
     <div class="week-entry-grid-scroll">
         <table class="week-entry-grid-table">
+            <colgroup>
+                <col class="week-entry-col-task" />
+                @foreach (var _ in visibleDays)
+                {
+                    <col class="week-entry-col-day" />
+                }
+                <col class="week-entry-col-total" />
+            </colgroup>
             <thead>
                 <tr>
                     <th class="week-entry-col-task">Project / Details</th>
@@ -87,6 +96,14 @@ else
                                     <div class="week-day-row-label">
                                         <MudTooltip Text="@(row.ProjectName ?? "")">
                                             <MudText Typo="Typo.body2" Class="week-day-project-name">
+                                                @if (row.IsStopwatch)
+                                                {
+                                                    <MudTooltip Text="Stopwatch work item">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small"
+                                                                 Color="Color.Info" Class="mr-1"
+                                                                 Style="vertical-align: text-bottom;" />
+                                                    </MudTooltip>
+                                                }
                                                 <strong>@(row.ProjectName ?? "No project")</strong>
                                             </MudText>
                                         </MudTooltip>
@@ -127,15 +144,15 @@ else
                                                       Disabled="@(isLoading || (!cell.IsReadOnly && !row.CanEnterDuration))"
                                                       Class="week-entry-day-duration"
                                                       Adornment="Adornment.End"
-                                                      AdornmentIcon="@(cell.IsMultiple ? Icons.Material.Filled.Layers : Icons.Material.Filled.Edit)"
+                                                      AdornmentIcon="@(cell.IsStopwatch ? Icons.Material.Filled.Timer : (cell.IsMultiple ? Icons.Material.Filled.Layers : Icons.Material.Filled.Edit))"
                                                       IconSize="Size.Small"
-                                                      AdornmentColor="@(string.IsNullOrEmpty(cell.TaskId) && !cell.IsMultiple ? Color.Default : Color.Primary)"
+                                                      AdornmentColor="@(string.IsNullOrEmpty(cell.TaskId) && !cell.IsMultiple && !cell.IsStopwatch ? Color.Default : Color.Primary)"
                                                       OnAdornmentClick="@(() => OpenCellAsync(cell))" />
                                         <MudText Typo="Typo.caption"
                                                  Align="Align.Center"
                                                  Class="week-entry-day-status"
                                                  Style="@(cell.Status == CellSaveStatus.Error
-                                                     || (!string.IsNullOrEmpty(cell.ErrorMessage) && !cell.IsMultiple)
+                                                     || (!string.IsNullOrEmpty(cell.ErrorMessage) && !cell.IsMultiple && !cell.IsStopwatch)
                                                      ? "color: var(--mud-palette-error);"
                                                      : "color: var(--mud-palette-text-secondary);")">
                                             @(!string.IsNullOrEmpty(cell.ErrorMessage) && cell.IsReadOnly
@@ -158,19 +175,25 @@ else
     @if (rows.Count > 0 && VisibleRows.Any())
     {
         <table class="week-entry-grid-table week-entry-totals-table">
+            <colgroup>
+                <col class="week-entry-col-task" />
+                @foreach (var _ in visibleDays)
+                {
+                    <col class="week-entry-col-day" />
+                }
+                <col class="week-entry-col-total" />
+            </colgroup>
             <tfoot>
                 <tr>
-                    <td class="week-entry-col-task">
-                        <MudText Typo="Typo.subtitle2">Total</MudText>
-                    </td>
+                    <td class="week-entry-col-task">Total</td>
                     @for (var di = 0; di < visibleDays.Count; di++)
                     {
-                        <td class="week-entry-col-day" style="font-family: monospace;">
-                            <strong>@DayColumnTotalLabel(di)</strong>
+                        <td class="week-entry-col-day">
+                            <div class="week-entry-day-total">@DayColumnTotalLabel(di)</div>
                         </td>
                     }
-                    <td class="week-entry-col-total" style="font-family: monospace;">
-                        <strong>@GrandTotalLabel</strong>
+                    <td class="week-entry-col-total">
+                        <div class="week-entry-day-total" style="width: auto; margin: 0; text-align: right;">@GrandTotalLabel</div>
                     </td>
                 </tr>
             </tfoot>
