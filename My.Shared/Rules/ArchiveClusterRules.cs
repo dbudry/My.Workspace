@@ -2,7 +2,8 @@ namespace My.Shared.Rules;
 
 /// <summary>
 /// Organization, department, project, and time logged on those projects are one
-/// archive cluster. They move into / out of the archived bucket together.
+/// archive cluster on the way <b>in</b> (archive org takes departments and projects).
+/// Unarchive org always restores departments; projects restore only when asked.
 ///
 /// Locked by <c>ArchiveClusterRulesTests</c> — do not weaken these rules without
 /// an explicit product change.
@@ -65,14 +66,16 @@ public static class ArchiveClusterRules
     }
 
     /// <summary>
-    /// Unarchive org → unarchive every department and project that uses it.
+    /// Unarchive org → unarchive every department that uses it. Projects restore
+    /// only when <paramref name="unarchiveProjects"/> is true.
     /// </summary>
     public static void UnarchiveFromOrganization(
-        Node organization, IList<Node> departments, IList<Node> projects, bool setActive)
+        Node organization, IList<Node> departments, IList<Node> projects, bool setActive, bool unarchiveProjects = true)
     {
         RestoreFromArchivedBucket(organization, setActive);
         foreach (var dept in departments.Where(d => d.OrganizationId == organization.Id))
             RestoreFromArchivedBucket(dept, setActive);
+        if (!unarchiveProjects) return;
         foreach (var project in projects.Where(p => ProjectBelongsToOrganization(p, organization.Id, departments)))
             RestoreFromArchivedBucket(project, setActive);
     }

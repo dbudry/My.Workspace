@@ -22,13 +22,13 @@ namespace My.Client.Pages.Tyme
         MudTable<OrgDisplayRow> table = null!;
 
         bool allowOrgDelete = false;
-        // Global-Admin-only now — there is no scoped Admin:Organizations role (see
-        // Constants.Roles.Assignable). Gates structural changes: set active/inactive,
-        // archive/unarchive, delete — for both organizations and departments.
+        // Admin:Organizations — set active/inactive, archive/unarchive, delete
+        // for organizations and departments. Global Admin does not imply this.
         bool canManage = false;
-        // Editor:Organizations (or canManage, which already implies it): create/edit
-        // organizations and departments, but not the structural actions above.
+        // Editor:Organizations (or canManage): create/edit orgs and departments.
         bool canEditOrganizations = false;
+        // Manager:Tyme+ may restore projects when unarchiving an organization.
+        bool canUnarchiveProjects = false;
 
         HttpClient client = null!;
 
@@ -73,13 +73,10 @@ namespace My.Client.Pages.Tyme
             if (user.Identity != null && !user.Identity.IsAuthenticated)
                 Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
 
-            // Organizations dropped Tyme's Manager/Admin tiers entirely — see
-            // AuthGates.RequireOrganizations / RequireOrganizationsAdminOnly on the server.
-            // Global Admin gets full control automatically (no separate Admin:Organizations
-            // role exists); everyone else needs the scoped Editor role to edit.
-            canManage = Constants.Roles.IsGlobalAdmin(user);
+            canManage = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Admin);
             canEditOrganizations = canManage
                 || Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Editor);
+            canUnarchiveProjects = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.Manager);
 
             client = ClientFactory.CreateClient(Constants.API.ClientName);
 
@@ -431,26 +428,41 @@ namespace My.Client.Pages.Tyme
             {
                 var choice = await DialogService.ShowMessageBoxAsync(
                     "Unarchive organization",
-                    $"Unarchive \"{org.Name}\"? This also unarchives its departments and projects (time on those projects comes back with them). By default they will be Active.",
+                    $"Unarchive \"{org.Name}\"? Its departments come back with it.",
                     yesText: "Unarchive as Active",
                     noText: "Unarchive as Inactive",
                     cancelText: "Cancel");
                 if (choice is null) return;
 
+                var unarchiveProjects = false;
+                if (canUnarchiveProjects)
+                {
+                    var projectsChoice = await DialogService.ShowMessageBoxAsync(
+                        "Projects under this organization",
+                        $"Also unarchive projects under \"{org.Name}\"? Time on those projects can be logged again only if you restore them.",
+                        yesText: "Yes, unarchive projects",
+                        noText: "No, leave projects archived",
+                        cancelText: "Cancel");
+                    if (projectsChoice is null) return;
+                    unarchiveProjects = projectsChoice == true;
+                }
+
                 try
                 {
                     var response = await client.PostAsJsonAsync(
                         $"{Constants.API.Organization.Archive}/{org.OrganizationId}/archive",
-                        new ArchiveOrganizationRequestDto { SetActive = choice == true });
+                        new ArchiveOrganizationRequestDto
+                        {
+                            SetActive = choice == true,
+                            UnarchiveProjects = unarchiveProjects
+                        });
                     if (!response.IsSuccessStatusCode)
                     {
                         Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't unarchive organization."), Severity.Error);
                         return;
                     }
 
-                    Snackbar.Add(choice == true
-                        ? "Organization, departments, and projects unarchived and set Active."
-                        : "Organization, departments, and projects unarchived (inactive).", Severity.Success);
+                    Snackbar.Add(UnarchiveSuccessMessage(choice == true, unarchiveProjects), Severity.Success);
                     InvalidateAfterOrgMutation();
                     await ReloadTableAsync();
                 }
@@ -493,6 +505,14 @@ namespace My.Client.Pages.Tyme
         /// Ask whether to mark projects under the org inactive. Cancel aborts the parent action.
         /// Departments always go inactive with the org — they are not part of this prompt.
         /// </summary>
+        private static string UnarchiveSuccessMessage(bool setActive, bool unarchiveProjects)
+        {
+            var state = setActive ? "set Active" : "inactive";
+            return unarchiveProjects
+                ? $"Organization, departments, and projects unarchived ({state})."
+                : $"Organization and departments unarchived ({state}). Projects stay archived.";
+        }
+
         private async Task<bool?> ConfirmCascadeProjectsAsync(string orgName)
         {
             return await DialogService.ShowMessageBoxAsync(

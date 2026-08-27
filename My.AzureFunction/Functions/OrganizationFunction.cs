@@ -237,16 +237,33 @@ namespace My.Functions
         public async Task<IActionResult> SetActiveOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "organizations/{id}/setactive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var org = await organizationRepository.GetById(id);
             if (org == null)
                 return new NotFoundObjectResult("Organization not found!");
 
+            var cascadeProjects = false;
+            try
+            {
+                var body = await req.ReadFromJsonAsync<SetActiveOrganizationRequestDto>();
+                if (body != null)
+                    cascadeProjects = body.CascadeProjects;
+            }
+            catch
+            {
+                // empty body is fine (activate, or deactivate without project cascade)
+            }
+
             org.IsActive = !org.IsActive;
+            if (!org.IsActive)
+                await DeactivateOrgChildrenAsync(org.OrganizationId, cascadeProjects);
+
             await organizationRepository.Update(org);
 
-            logger.LogInformation("Organization {Id} IsActive set to {IsActive}", id, org.IsActive);
+            logger.LogInformation(
+                "Organization {Id} IsActive set to {IsActive} (cascadeProjects={CascadeProjects})",
+                id, org.IsActive, cascadeProjects);
             return new OkObjectResult(new { org.IsActive });
         }
 
@@ -254,27 +271,74 @@ namespace My.Functions
         public async Task<IActionResult> ArchiveOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "organizations/{id}/archive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Archive is a structural change — global Admin only, not Editor:Organizations.
+            // Archive is a structural change — Admin:Organizations, not Editor:Organizations.
             if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var org = await organizationRepository.GetById(id);
             if (org == null)
                 return new NotFoundObjectResult("Organization not found!");
 
-            org.IsArchived = !org.IsArchived;
-            if (org.IsArchived)
-                org.IsActive = false;
+            var wasArchived = org.IsArchived;
+            ArchiveOrganizationRequestDto? body = null;
+            try
+            {
+                body = await req.ReadFromJsonAsync<ArchiveOrganizationRequestDto>();
+            }
+            catch
+            {
+                // empty / non-JSON body
+            }
+
+            if (!org.IsArchived)
+            {
+                await ArchiveClusterApplier.ArchiveFromOrganizationAsync(dbContext, org);
+            }
+            else
+            {
+                var unarchiveProjects = body?.UnarchiveProjects ?? false;
+                if (unarchiveProjects
+                    && !Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager))
+                    return new StatusCodeResult(403);
+
+                await ArchiveClusterApplier.UnarchiveFromOrganizationAsync(
+                    dbContext, org, setActive: body?.SetActive ?? true, unarchiveProjects);
+            }
 
             await organizationRepository.Update(org);
-            logger.LogInformation("Organization {Id} IsArchived set to {IsArchived}", id, org.IsArchived);
+            logger.LogInformation(
+                "Organization {Id} IsArchived set to {IsArchived} (was {WasArchived}); IsActive={IsActive}",
+                id, org.IsArchived, wasArchived, org.IsActive);
             return new OkObjectResult(new { org.IsArchived, org.IsActive });
+        }
+
+        /// <summary>
+        /// When an organization is deactivated (not archived), departments under it
+        /// always go inactive. Projects only if <paramref name="cascadeProjects"/>.
+        /// Does not activate or archive anything.
+        /// </summary>
+        private async Task DeactivateOrgChildrenAsync(string organizationId, bool cascadeProjects)
+        {
+            var depts = await dbContext.Departments
+                .Where(d => d.OrganizationId == organizationId && d.IsActive)
+                .ToListAsync();
+            foreach (var dept in depts)
+                dept.IsActive = false;
+
+            if (cascadeProjects)
+            {
+                var projects = await dbContext.Projects
+                    .Where(p => p.OrganizationId == organizationId && p.IsActive)
+                    .ToListAsync();
+                foreach (var project in projects)
+                    project.IsActive = false;
+            }
         }
 
         [Function("DeleteOrganization")]
         public async Task<IActionResult> DeleteOrganizationAsync([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "organizations/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Delete is a structural change — global Admin only, not Editor:Organizations.
+            // Delete is a structural change — Admin:Organizations, not Editor:Organizations.
             if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var setting = await appSettingRepository.GetById(Constants.SettingKeys.AllowOrganizationDelete);

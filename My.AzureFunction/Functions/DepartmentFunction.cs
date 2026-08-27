@@ -8,6 +8,7 @@ using My.Shared.Constants;
 using My.Shared.Dtos.Department;
 using My.Shared.Dtos.Organization;
 using My.Shared.Dtos.Contact;
+using My.DAL.Data;
 using My.DAL.Models;
 using My.DAL.Repository;
 using My.Functions.Authorization;
@@ -20,6 +21,7 @@ namespace My.Functions
         private readonly IRepository<Department> departmentRepository;
         private readonly IRepository<Organization> organizationRepository;
         private readonly IRepository<AppSetting> appSettingRepository;
+        private readonly ApplicationDbContext dbContext;
         private readonly AppMapper mapper;
         private readonly ILogger<DepartmentFunctions> logger;
         private readonly IValidator<CreateDepartmentDto> createValidator;
@@ -27,11 +29,13 @@ namespace My.Functions
 
         public DepartmentFunctions(
             IRepositoryFactory repositoryFactory,
+            ApplicationDbContext dbContext,
             AppMapper mapper,
             ILogger<DepartmentFunctions> logger,
             IValidator<CreateDepartmentDto> createValidator,
             IValidator<UpdateDepartmentDto> updateValidator)
         {
+            this.dbContext = dbContext;
             this.mapper = mapper;
             this.logger = logger;
             this.createValidator = createValidator;
@@ -144,16 +148,24 @@ namespace My.Functions
         public async Task<IActionResult> ArchiveDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "departments/{id}/archive")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Archive is a structural change — global Admin only, not Editor:Organizations.
+            // Archive is a structural change — Admin:Organizations, not Editor:Organizations.
             if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var dept = await departmentRepository.GetById(id);
             if (dept == null)
                 return new NotFoundObjectResult("Department not found!");
 
-            dept.IsArchived = !dept.IsArchived;
-            if (dept.IsArchived)
-                dept.IsActive = false;
+            if (!dept.IsArchived)
+            {
+                await ArchiveClusterApplier.ArchiveFromDepartmentAsync(dbContext, dept);
+            }
+            else
+            {
+                var org = string.IsNullOrEmpty(dept.OrganizationId)
+                    ? null
+                    : await organizationRepository.GetById(dept.OrganizationId);
+                await ArchiveClusterApplier.UnarchiveFromDepartmentAsync(dbContext, dept, org, setActive: true);
+            }
 
             await departmentRepository.Update(dept);
             logger.LogInformation("Department {Id} IsArchived set to {IsArchived}", id, dept.IsArchived);
@@ -164,7 +176,7 @@ namespace My.Functions
         public async Task<IActionResult> DeleteDepartmentAsync([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "departments/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Delete is a structural change — global Admin only, not Editor:Organizations.
+            // Delete is a structural change — Admin:Organizations, not Editor:Organizations.
             if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var setting = await appSettingRepository.GetById(Constants.SettingKeys.AllowOrganizationDelete);

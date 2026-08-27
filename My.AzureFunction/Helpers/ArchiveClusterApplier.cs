@@ -22,11 +22,11 @@ internal static class ArchiveClusterApplier
     }
 
     internal static async Task UnarchiveFromOrganizationAsync(
-        ApplicationDbContext db, Organization org, bool setActive)
+        ApplicationDbContext db, Organization org, bool setActive, bool unarchiveProjects)
     {
         var (depts, deptNodes, projects, projectNodes) = await LoadOrgGraphAsync(db, org.OrganizationId);
         var orgNode = ToNode(org);
-        ArchiveClusterRules.UnarchiveFromOrganization(orgNode, deptNodes, projectNodes, setActive);
+        ArchiveClusterRules.UnarchiveFromOrganization(orgNode, deptNodes, projectNodes, setActive, unarchiveProjects);
         WriteBack(org, orgNode);
         WriteBack(depts, deptNodes);
         WriteBack(projects, projectNodes);

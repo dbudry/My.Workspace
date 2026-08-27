@@ -100,13 +100,9 @@
                     }
                 }
 
-                @* Organizations is its own scope, independent of Tyme (see
-                   My.Shared.Constants.Scopes.Organizations) — placed directly below Intranet in
-                   the nav, not nested under Admin, so a plain User:Organizations viewer (who
-                   isn't any kind of Admin) still gets a nav link. Global Admin also sees this
-                   without a separate Admin:Organizations role — hasOrganizationsReader uses the
-                   permissive HasAccess check, matching the "Organizations:User" page policy
-                   (no ":Scoped" suffix). *@
+                @* Organizations is its own scope, independent of Tyme — placed directly below
+                   Intranet so a User:Organizations viewer still gets a nav link. Global Admin
+                   does not see this unless they hold an Organizations-scoped role. *@
                 @if (hasOrganizationsReader)
                 {
                     <MudNavLink Href="organizations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business" Class="nav-top-level">Organizations</MudNavLink>
@@ -231,10 +227,7 @@
         {
             isAnyAdmin = Constants.Roles.IsAnyAdmin(user);
             isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
-            // Permissive check (HasAccess, not HasScopedAccess) — global Admin sees the link
-            // without a separate Admin:Organizations role, matching the "Organizations:User"
-            // page policy (no ":Scoped" suffix).
-            hasOrganizationsReader = Constants.Roles.HasAccess(user, Constants.Scopes.Organizations);
+            hasOrganizationsReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations);
             hasIntranetReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
             hasIntranetMaintenance = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Editor);
             hasIntranetAdmin = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Admin);

@@ -250,6 +250,15 @@
                         The submission is recorded as submitted by the manager (audit field).
                     </MudText>
 
+                    <MudSwitch T="bool" Value="allowUserTeamReports" Label="Allow users to view other employees on Reports"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => allowUserTeamReports = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, any Tyme user can pick employees on Reports and see their time
+                        (charts, Details, CSV), including unsubmitted months. Off by default.
+                        Tyme managers and admins can always do this. Corrections stay on Management.
+                    </MudText>
+
                     <MudSwitch T="bool" Value="allowManagerTimeCorrection" Label="Allow manager time correction"
                                Color="Color.Primary" Class="mb-2"
                                ValueChanged="@((bool v) => allowManagerTimeCorrection = v)" />

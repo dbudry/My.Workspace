@@ -1,7 +1,12 @@
 @inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
 @using My.Client.Services
 @using My.Client.Theme
 @inject LocalStorageService LocalStorage
+@inject SessionExpiryService SessionExpiry
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <MudThemeProvider @ref="_themeProvider" Theme="_theme" IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
@@ -9,7 +14,34 @@
 <MudSnackbarProvider />
 
 <div class="mini-layout" style="padding: 12px;">
-    @Body
+    @if (SessionExpiry.IsExpired)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2" Variant="Variant.Filled">
+            Your sign-in expired.
+            <MudButton Color="Color.Inherit" Variant="Variant.Outlined" Size="Size.Small"
+                       Class="ml-2" OnClick="HandleReSignIn">Sign in</MudButton>
+        </MudAlert>
+    }
+    @* Mini popup is not MainLayout — without this boundary, AccessTokenNotAvailableException
+       from the project picker paints the framework pink "unhandled error" bar. *@
+    <ErrorBoundary @ref="_errorBoundary">
+        <ChildContent>
+            @Body
+        </ChildContent>
+        <ErrorContent Context="ex">
+            @if (ex is AccessTokenNotAvailableException)
+            {
+                <div></div>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined">
+                    Something went wrong.
+                    <MudButton Color="Color.Inherit" Size="Size.Small" OnClick="ResetErrorBoundary">Retry</MudButton>
+                </MudAlert>
+            }
+        </ErrorContent>
+    </ErrorBoundary>
 </div>
 
 @code {
@@ -18,6 +50,26 @@
     private ThemeMode _mode = ThemeMode.System;
     private bool _isDarkMode;
     private bool _initialized;
+    private ErrorBoundary? _errorBoundary;
+
+    private void ResetErrorBoundary() => _errorBoundary?.Recover();
+
+    protected override void OnInitialized()
+    {
+        SessionExpiry.Changed += OnSessionChanged;
+    }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+    private void HandleReSignIn()
+    {
+        var options = new InteractiveRequestOptions
+        {
+            Interaction = InteractionType.SignIn,
+            ReturnUrl = Navigation.Uri
+        };
+        Navigation.NavigateToLogin("authentication/login", options);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -37,4 +89,6 @@
 
         StateHasChanged();
     }
+
+    public void Dispose() => SessionExpiry.Changed -= OnSessionChanged;
 }

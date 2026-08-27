@@ -157,7 +157,7 @@ namespace My.Functions
         public async Task<IActionResult> DeleteContactAsync([HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "contacts/{id}")] HttpRequestData req, string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            // Delete is a structural change — global Admin only, not Editor:Organizations.
+            // Delete is a structural change — Admin:Organizations, not Editor:Organizations.
             if (AuthGates.RequireOrganizationsAdminOnly(principal, out var userId) is IActionResult unauth) return unauth;
 
             var contact = await contactRepository.GetById(id);
