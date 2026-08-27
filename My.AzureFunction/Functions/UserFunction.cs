@@ -242,7 +242,8 @@ namespace My.Functions
                 {
                     Constants.Roles.Admin,
                     Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme),
-                    Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet)
+                    Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet),
+                    Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)
                 };
 
                 var assignedRoles = new List<string>();

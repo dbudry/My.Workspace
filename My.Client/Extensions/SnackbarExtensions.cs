@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using MudBlazor;
 
 namespace My.Client.Extensions;
@@ -21,6 +22,9 @@ public static class SnackbarExtensions
         {
             // 401 is already handled (and snackbar'd) by UnauthorizedDelegatingHandler.
             HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => null,
+
+            // TokenExpiryDelegatingHandler already flipped the session-expired banner.
+            AccessTokenNotAvailableException => null,
 
             // 5xx after retries — almost always a backend issue or warm-up failure.
             HttpRequestException httpEx when (int?)httpEx.StatusCode >= 500 =>

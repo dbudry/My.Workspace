@@ -51,7 +51,8 @@ namespace My.Client.Services
         public async Task<(IReadOnlyList<Project> Items, bool HasNext)> LookupActivePageAsync(
             string? search = null,
             int pageNumber = 1,
-            int pageSize = ListQueryParameters.MaxPageSize)
+            int pageSize = ListQueryParameters.MaxPageSize,
+            CancellationToken cancellationToken = default)
         {
             var query = new ListQueryParameters
             {
@@ -66,7 +67,7 @@ namespace My.Client.Services
             };
 
             var client = _clientFactory.CreateClient(Constants.API.ClientName);
-            var response = await TryGetPagedAsync(client, Constants.API.Project.Get, query);
+            var response = await TryGetPagedAsync(client, Constants.API.Project.Get, query, cancellationToken);
             if (response?.Items == null)
                 return (Array.Empty<Project>(), false);
 
@@ -167,14 +168,15 @@ namespace My.Client.Services
             HttpClient client,
             string basePath,
             ListQueryParameters query,
+            CancellationToken cancellationToken = default,
             params (string Key, string? Value)[] extra)
         {
             var url = ListQueryUrlBuilder.Build(basePath, query, extra);
-            using var response = await client.GetAsync(url);
+            using var response = await client.GetAsync(url, cancellationToken);
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            return await response.Content.ReadFromJsonAsync<PagedResponse<ProjectDto>>();
+            return await response.Content.ReadFromJsonAsync<PagedResponse<ProjectDto>>(cancellationToken: cancellationToken);
         }
 
     }

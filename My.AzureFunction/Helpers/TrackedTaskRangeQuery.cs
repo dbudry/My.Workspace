@@ -42,5 +42,38 @@ namespace My.Functions.Helpers
 
             return await query.Take(UnboundedMaxRows).ToListAsync(ct);
         }
+
+        /// <summary>
+        /// Same as <see cref="LoadAsync"/> but for a set of user ids (Reports team view).
+        /// Empty <paramref name="userIds"/> returns an empty list without hitting SQL.
+        /// </summary>
+        internal static async Task<List<TrackedTask>> LoadForUsersAsync(
+            ApplicationDbContext db,
+            IReadOnlyCollection<string> userIds,
+            DateTime? from,
+            DateTime? to,
+            CancellationToken ct = default)
+        {
+            if (userIds.Count == 0)
+                return new List<TrackedTask>();
+
+            var idList = userIds as List<string> ?? userIds.ToList();
+
+            IQueryable<TrackedTask> query = db.TrackedTasks.AsNoTracking()
+                .Where(t =>
+                    idList.Contains(t.UserId)
+                    && (from == null || t.StartDate >= from)
+                    && (to == null || t.StartDate <= to));
+
+            foreach (var includeProperty in IncludeGraph.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                query = query.Include(includeProperty);
+
+            query = query.Include(t => t.User).AsSplitQuery().OrderByDescending(t => t.StartDate);
+
+            if (from.HasValue && to.HasValue)
+                return await query.ToListAsync(ct);
+
+            return await query.Take(UnboundedMaxRows).ToListAsync(ct);
+        }
     }
 }

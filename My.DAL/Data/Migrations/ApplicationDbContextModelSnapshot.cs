@@ -186,6 +186,12 @@ namespace My.DAL.Data.Migrations
                         },
                         new
                         {
+                            Key = "TymeAllowUserTeamReports",
+                            Description = "When enabled, Tyme users can view other employees' time on Reports (read-only).",
+                            Value = "false"
+                        },
+                        new
+                        {
                             Key = "TymeManagerCorrectionMode",
                             Description = "When manager correction is enabled: Alias (overlay, original preserved) or Direct (in-place edit with audit).",
                             Value = "Alias"
@@ -354,6 +360,14 @@ namespace My.DAL.Data.Migrations
                             Description = "Organizations-scoped editor role (create/edit organizations and departments).",
                             Name = "Editor:Organizations",
                             NormalizedName = "EDITOR:ORGANIZATIONS"
+                        },
+                        new
+                        {
+                            Id = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901",
+                            ConcurrencyStamp = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901",
+                            Description = "Organizations-scoped admin role (archive/delete/set active and assign Organizations roles).",
+                            Name = "Admin:Organizations",
+                            NormalizedName = "ADMIN:ORGANIZATIONS"
                         });
                 });
 

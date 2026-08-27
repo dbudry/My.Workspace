@@ -9,6 +9,7 @@ using My.Client.Models;
 using My.Client.Models.Dashboard;
 using My.Client.Models.Paging;
 using My.Client.Services;
+using My.Shared.Dtos.Analytics;
 using My.Shared.Dtos.Paging;
 using My.Shared.Dtos.Project;
 using My.Shared.Dtos.TrackedTask;
@@ -28,6 +29,13 @@ namespace My.Client.Pages.Tyme
         private DateTime? dateTo;
         private Project? selectedProject;
         private bool isLoading = true;
+        private bool canViewTeamReports;
+        private string currentUserId = string.Empty;
+        private HashSet<string> selectedUserIds = new();
+        private bool selectAllEmployeesChecked;
+        private bool selectNoneEmployeesChecked;
+        private string employeeSearchText = "";
+        private List<UserOption> userOptions = new();
         private EmployeeTimeDisplayMode displayMode = EmployeeTimeDisplayMode.Both;
 
         private const int SummaryTabIndex = 0;
@@ -263,6 +271,8 @@ namespace My.Client.Pages.Tyme
             if (user.Identity != null && !user.Identity.IsAuthenticated)
                 Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
 
+            currentUserId = user.FindFirst(Constants.Claims.AppUserId)?.Value ?? string.Empty;
+
             client = ClientFactory.CreateClient(Constants.API.ClientName);
 
             SetPageTitle?.Invoke("Reports");
@@ -305,9 +315,117 @@ namespace My.Client.Pages.Tyme
             dateFrom = new DateTime(userToday.Year, userToday.Month, 1);
             dateTo = userToday.ToDateTime(TimeOnly.MinValue);
 
+            await LoadEmployeeOptionsAsync();
             await Task.WhenAll(LoadProjects(), LoadAllTasks());
             ApplyClientFilters();
             isLoading = false;
+        }
+
+        private IEnumerable<UserOption> FilteredEmployeeOptions =>
+            string.IsNullOrWhiteSpace(employeeSearchText)
+                ? userOptions
+                : userOptions.Where(u =>
+                    u.UserName.Contains(employeeSearchText, StringComparison.OrdinalIgnoreCase));
+
+        private string EmployeeSelectionLabel
+        {
+            get
+            {
+                if (selectedUserIds.Count == 0)
+                    return "No employees selected";
+                if (userOptions.Count > 0 && userOptions.All(u => selectedUserIds.Contains(u.UserId)))
+                    return "All employees";
+                var nameById = userOptions.ToDictionary(u => u.UserId, u => u.UserName);
+                return string.Join(", ", selectedUserIds
+                    .Select(id => nameById.GetValueOrDefault(id, id))
+                    .OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
+            }
+        }
+
+        private async Task LoadEmployeeOptionsAsync()
+        {
+            try
+            {
+                var employees = await client.GetFromJsonAsync<List<ManageableEmployeeDto>>(
+                    Constants.API.Analytics.GetManageableEmployees);
+                userOptions = (employees ?? new())
+                    .Select(e => new UserOption { UserId = e.UserId, UserName = e.UserName })
+                    .OrderBy(u => u.UserName)
+                    .ToList();
+                canViewTeamReports = userOptions.Count > 0;
+                if (canViewTeamReports)
+                {
+                    if (!string.IsNullOrEmpty(currentUserId)
+                        && userOptions.Any(u => u.UserId == currentUserId))
+                        selectedUserIds = new HashSet<string> { currentUserId };
+                    else
+                        selectedUserIds = new HashSet<string> { userOptions[0].UserId };
+                    SyncEmployeeSelectionState();
+                }
+            }
+            catch
+            {
+                // User:Tyme with the setting off used to 403; the API now returns [].
+                // Any failure keeps Reports self-only.
+                canViewTeamReports = false;
+                userOptions = new();
+            }
+        }
+
+        private void SyncEmployeeSelectionState()
+        {
+            if (userOptions.Count > 0 && userOptions.All(u => selectedUserIds.Contains(u.UserId)))
+            {
+                selectAllEmployeesChecked = true;
+                selectNoneEmployeesChecked = false;
+            }
+            else if (selectedUserIds.Count == 0)
+            {
+                selectNoneEmployeesChecked = true;
+                selectAllEmployeesChecked = false;
+            }
+            else
+            {
+                selectAllEmployeesChecked = false;
+                selectNoneEmployeesChecked = false;
+            }
+        }
+
+        private void OnSelectAllEmployeesChanged(bool value)
+        {
+            selectAllEmployeesChecked = value;
+            if (value)
+            {
+                selectNoneEmployeesChecked = false;
+                selectedUserIds = userOptions.Select(u => u.UserId).ToHashSet();
+            }
+            SyncEmployeeSelectionState();
+        }
+
+        private void OnSelectNoneEmployeesChanged(bool value)
+        {
+            selectNoneEmployeesChecked = value;
+            if (value)
+            {
+                selectAllEmployeesChecked = false;
+                selectedUserIds = new HashSet<string>();
+            }
+            SyncEmployeeSelectionState();
+        }
+
+        private void OnEmployeeCheckboxChanged(string userId, bool isChecked)
+        {
+            if (isChecked)
+                selectedUserIds.Add(userId);
+            else
+                selectedUserIds.Remove(userId);
+            SyncEmployeeSelectionState();
+        }
+
+        private sealed class UserOption
+        {
+            public string UserId { get; set; } = null!;
+            public string UserName { get; set; } = null!;
         }
 
         /// <summary>Workspace mode from App Settings only — no per-user override.</summary>
@@ -344,12 +462,39 @@ namespace My.Client.Pages.Tyme
         {
             try
             {
+                if (canViewTeamReports)
+                {
+                    allTasks = await LoadTeamReportTasksAsync();
+                    return;
+                }
+
                 allTasks = await TrackedTasksClient.LoadRangeAsync(dateFrom, dateTo);
             }
             catch (Exception ex)
             {
                 Snackbar.AddApiError(ex, "Couldn't load tracked tasks.");
             }
+        }
+
+        private async Task<List<TrackedTask>> LoadTeamReportTasksAsync()
+        {
+            if (selectedUserIds.Count == 0)
+                return new List<TrackedTask>();
+
+            var url = Constants.API.Analytics.ConstructUrlForTeamReports(dateFrom, dateTo, selectedUserIds);
+            var dtos = await client.GetFromJsonAsync<List<TrackedTaskDto>>(url)
+                ?? new List<TrackedTaskDto>();
+            try
+            {
+                await SettingsService.GetSettingsAsync();
+            }
+            catch
+            {
+                // Tests / offline: fall back to UTC.
+            }
+
+            var tz = SettingsService.GetTimeZoneInfo();
+            return dtos.Select(d => new TrackedTask(d, tz)).ToList();
         }
 
         private async Task ApplyFilters()
@@ -462,6 +607,17 @@ namespace My.Client.Pages.Tyme
             dateFrom = new DateTime(userToday.Year, userToday.Month, 1);
             dateTo = userToday.ToDateTime(TimeOnly.MinValue);
             selectedProject = null;
+            if (canViewTeamReports)
+            {
+                if (!string.IsNullOrEmpty(currentUserId)
+                    && userOptions.Any(u => u.UserId == currentUserId))
+                    selectedUserIds = new HashSet<string> { currentUserId };
+                else if (userOptions.Count > 0)
+                    selectedUserIds = new HashSet<string> { userOptions[0].UserId };
+                else
+                    selectedUserIds = new HashSet<string>();
+                SyncEmployeeSelectionState();
+            }
             await ApplyFilters();
         }
 
@@ -528,6 +684,7 @@ namespace My.Client.Pages.Tyme
                         },
                     IsMonthSubmitted = task.IsMonthSubmitted,
                     UserId = task.UserId,
+                    UserName = task.UserName,
                     IsManagerAdjusted = !isAlias,
                     AdjustmentKind = isAlias ? "AliasOverlay" : "DirectOverlay"
                 });
@@ -559,14 +716,31 @@ namespace My.Client.Pages.Tyme
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("\"Date\",\"Project\",\"Details\",\"Duration\"");
+            if (canViewTeamReports)
+                sb.AppendLine("\"Date\",\"Employee\",\"Project\",\"Details\",\"Duration\"");
+            else
+                sb.AppendLine("\"Date\",\"Project\",\"Details\",\"Duration\"");
             foreach (var task in taskDetailRows)
             {
-                sb.AppendLine(
-                    $"\"{Escape(FormatReportDate(task.StartDate))}\"," +
-                    $"\"{Escape(task.Project?.DisplayName ?? task.Project?.Name ?? "None")}\"," +
-                    $"\"{Escape(task.Details)}\"," +
-                    $"\"{Escape($"{(int)task.Duration.TotalHours:00}:{task.Duration.Minutes:00}")}\"");
+                var duration = $"{(int)task.Duration.TotalHours:00}:{task.Duration.Minutes:00}";
+                var project = task.Project?.DisplayName ?? task.Project?.Name ?? "None";
+                if (canViewTeamReports)
+                {
+                    sb.AppendLine(
+                        $"\"{Escape(FormatReportDate(task.StartDate))}\"," +
+                        $"\"{Escape(task.UserName ?? "Unknown")}\"," +
+                        $"\"{Escape(project)}\"," +
+                        $"\"{Escape(task.Details)}\"," +
+                        $"\"{Escape(duration)}\"");
+                }
+                else
+                {
+                    sb.AppendLine(
+                        $"\"{Escape(FormatReportDate(task.StartDate))}\"," +
+                        $"\"{Escape(project)}\"," +
+                        $"\"{Escape(task.Details)}\"," +
+                        $"\"{Escape(duration)}\"");
+                }
             }
 
             await TriggerCsvDownloadAsync(sb.ToString());

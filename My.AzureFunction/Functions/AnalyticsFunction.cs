@@ -7,8 +7,10 @@ using System.Security.Claims;
 using My.Functions.Authorization;
 using My.Functions.Helpers;
 using My.Shared.Constants;
+using My.Shared.Dtos;
 using My.Shared.Dtos.Analytics;
 using My.Shared.Dtos.Dashboard;
+using My.Shared.Dtos.TrackedTask;
 using My.Shared.Rules;
 using My.DAL.Data;
 using My.DAL.Models;
@@ -24,15 +26,18 @@ namespace My.Functions
         private readonly IRepository<TrackedTaskAlias> aliasRepository;
         private readonly IRepository<TimeSubmission> submissionRepository;
         private readonly ApplicationDbContext dbContext;
+        private readonly AppMapper mapper;
         private readonly ILogger<AnalyticsFunctions> logger;
 
         public AnalyticsFunctions(
             IRepositoryFactory repositoryFactory,
             ApplicationDbContext dbContext,
+            AppMapper mapper,
             ILogger<AnalyticsFunctions> logger)
         {
             this.logger = logger;
             this.dbContext = dbContext;
+            this.mapper = mapper;
             this.repositoryFactory = repositoryFactory;
             trackedTaskRepository = repositoryFactory.GetRepository<TrackedTask>();
             aliasRepository = repositoryFactory.GetRepository<TrackedTaskAlias>();
@@ -140,16 +145,21 @@ namespace My.Functions
         }
 
         /// <summary>
-        /// Manager employee-picker source: active Tyme-scoped users the caller can manage,
-        /// independent of whether they have tasks in a date range.
+        /// Employee-picker source for Management, Data Extraction, and Reports team view.
+        /// Manager:Tyme+ always receive the list. Other Tyme users receive it only when
+        /// <see cref="Constants.SettingKeys.TymeAllowUserTeamReports"/> is on; otherwise
+        /// an empty array (200, not 403 — Reports probes this without a permission snackbar).
         /// </summary>
         [Function("GetManageableEmployees")]
         public async Task<IActionResult> GetManageableEmployeesAsync(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analytics/manageableemployees")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth)
+            if (AuthGates.RequireScopedTyme(principal) is IActionResult unauth)
                 return unauth;
+
+            if (!await CallerCanViewTymeTeamReportsAsync(principal))
+                return new OkObjectResult(Array.Empty<ManageableEmployeeDto>());
 
             var users = await dbContext.ApplicationUsers
                 .Where(u => u.IsActive && !u.IsArchived)
@@ -232,6 +242,73 @@ namespace My.Functions
             });
 
             return new OkObjectResult(export);
+        }
+
+        /// <summary>
+        /// Read-only other-users' tasks for Reports. SQL-filters by the requested user ids
+        /// (intersected with Tyme team visibility). Empty UserIds returns the caller's rows only.
+        /// Does not reuse alluserstasks (that loads every task in the window for corrections).
+        /// </summary>
+        [Function("GetTeamReports")]
+        public async Task<IActionResult> GetTeamReportsAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analytics/teamreports")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth)
+                return unauth;
+
+            if (!await CallerCanViewTymeTeamReportsAsync(principal))
+                return new StatusCodeResult(403);
+
+            DateTime? from = DateTime.TryParse(req.Query["From"], out var f) ? f.ToUniversalTime() : null;
+            DateTime? to = DateTime.TryParse(req.Query["To"], out var t) ? t.ToUniversalTime().AddDays(1).AddTicks(-1) : null;
+
+            var requestedIds = ParseUserIds(req.Query["UserIds"]);
+            if (requestedIds.Count == 0)
+                requestedIds.Add(userId);
+
+            var visible = await ListVisibleTymeUserIdsAsync(principal);
+            visible.Add(userId);
+            requestedIds.IntersectWith(visible);
+            if (requestedIds.Count == 0)
+                return new OkObjectResult(Array.Empty<TrackedTaskDto>());
+
+            var tasks = await TrackedTaskRangeQuery.LoadForUsersAsync(dbContext, requestedIds, from, to);
+            if (tasks.Count == 0)
+                return new OkObjectResult(Array.Empty<TrackedTaskDto>());
+
+            var workdayHours = await GetWorkdayHoursAsync();
+            var taskUserIds = tasks.Select(x => x.UserId).Distinct().ToList();
+            var submittedRows = await dbContext.TimeSubmissions.AsNoTracking()
+                .Where(s => taskUserIds.Contains(s.UserId))
+                .Select(s => new { s.UserId, s.Year, s.Month })
+                .ToListAsync();
+            var submittedSet = submittedRows
+                .Select(s => (s.UserId, s.Year, s.Month))
+                .ToHashSet();
+
+            var dtos = tasks.Select(task =>
+            {
+                var dto = mapper.TrackedTaskToDto(task);
+                dto.Details ??= string.Empty;
+                dto.Duration = AllDayEntryRules.EffectiveDuration(
+                    task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours);
+                dto.IsMonthSubmitted = submittedSet.Contains((task.UserId, task.StartDate.Year, task.StartDate.Month));
+                dto.User = ToUserDto(task.User);
+                return dto;
+            }).ToList();
+
+            var taskIds = tasks.Select(t => t.TaskId).ToList();
+            var adjustmentContext = await TrackedTaskAdjustmentEnricher.LoadForTasksAsync(dbContext, taskIds);
+            for (var i = 0; i < dtos.Count; i++)
+            {
+                adjustmentContext.Aliases.TryGetValue(tasks[i].TaskId, out var alias);
+                adjustmentContext.Audits.TryGetValue(tasks[i].TaskId, out var audit);
+                TrackedTaskAdjustmentEnricher.ApplyEmployeeView(
+                    dtos[i], alias, audit, adjustmentContext, mapper, workdayHours);
+            }
+
+            return new OkObjectResult(dtos);
         }
 
         [Function("GetAllUsersTrackedTasks")]
@@ -417,6 +494,66 @@ namespace My.Functions
             int hours = (totalTime.Days * 24) + totalTime.Hours;
             string amountWorkTimeLastMonthText = $"{hours}:{totalTime.Minutes:00}:{totalTime.Seconds:00}";
             return amountWorkTimeLastMonthText;
+        }
+
+        private async Task<bool> CallerCanViewTymeTeamReportsAsync(ClaimsPrincipal principal)
+        {
+            var row = await dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.TymeAllowUserTeamReports);
+            var allowUsers = TymeUserTeamReportsRules.IsEnabled(row?.Value);
+            return Constants.Roles.CanViewTymeTeamReports(principal, allowUsers);
+        }
+
+        private async Task<HashSet<string>> ListVisibleTymeUserIdsAsync(ClaimsPrincipal principal)
+        {
+            var users = await dbContext.ApplicationUsers
+                .Where(u => u.IsActive && !u.IsArchived)
+                .Select(u => u.Id)
+                .ToListAsync();
+            if (users.Count == 0)
+                return new HashSet<string>(StringComparer.Ordinal);
+
+            var rolesByUser = await LoadRolesByUserAsync(users);
+            var visible = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var id in users)
+            {
+                var roles = rolesByUser.TryGetValue(id, out var rs) ? rs : Array.Empty<string>();
+                if (Constants.Roles.IsVisibleInTymeTeamView(principal, roles))
+                    visible.Add(id);
+            }
+
+            return visible;
+        }
+
+        private static HashSet<string> ParseUserIds(string? raw)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            if (string.IsNullOrWhiteSpace(raw))
+                return ids;
+
+            foreach (var id in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                ids.Add(id);
+
+            return ids;
+        }
+
+        private static ApplicationUserDto ToUserDto(ApplicationUser? user) =>
+            user == null
+                ? new ApplicationUserDto()
+                : new ApplicationUserDto
+                {
+                    FirstName = user.FirstName ?? string.Empty,
+                    LastName = user.LastName ?? string.Empty,
+                    Username = user.Email ?? user.UserName ?? string.Empty,
+                    IsActive = user.IsActive,
+                    IsArchived = user.IsArchived
+                };
+
+        private async Task<double> GetWorkdayHoursAsync()
+        {
+            var workdayRow = await dbContext.AppSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
+            return AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
         }
     }
 }

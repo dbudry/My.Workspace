@@ -1,12 +1,9 @@
 @page "/organizations"
-@* Organizations is its own scope, independent of Tyme — see My.Shared.Constants.Scopes.Organizations.
-   Open to any User+:Organizations, or global Admin (the "Organizations:User" policy — no ":Scoped"
-   suffix — is the permissive form, so global Admin passes without needing a separate
-   Admin:Organizations role; see ScopedRoleHandler/Constants.Roles.HasAccess).
-   Read-only view for User:Organizations. Edit (create/edit orgs & departments, no archive/delete)
-   is gated by canEditOrganizations; archive/delete/structural changes are gated by canManage,
-   which is global-Admin-only now — there is no Manager:Organizations tier. *@
-@attribute [Authorize(Policy = "Organizations:User")]
+@* Organizations is its own scope, independent of Tyme.
+   Open to User+:Organizations only (Organizations:User:Scoped). Global Admin does not pass.
+   Read-only for User:Organizations. Edit is Editor:Organizations. Archive/delete/set-active
+   is Admin:Organizations (canManage). There is no Manager:Organizations tier. *@
+@attribute [Authorize(Policy = "Organizations:User:Scoped")]
 
 @using My.Client.Models
 @using My.Client.Components.Organizations
@@ -79,8 +76,8 @@
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(() => AddDepartment(org))">Add department</MudMenuItem>
                             }
-                            @* Set active/inactive, archive, and delete are structural changes reserved
-                               for global Admin — Editor:Organizations can create/edit but not these. *@
+                            @* Set active/inactive, archive, and delete are Admin:Organizations.
+                               Editor:Organizations can create/edit but not these. *@
                             @if (canManage)
                             {
                                 @if (!org.IsArchived)

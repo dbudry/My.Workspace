@@ -80,6 +80,23 @@ public class ArchiveClusterRulesTests
     }
 
     [Fact]
+    public void Unarchive_organization_can_leave_projects_archived()
+    {
+        var (org, _, depts, projects) = SampleGraph();
+        ArchiveClusterRules.ArchiveFromOrganization(org, depts, projects);
+
+        ArchiveClusterRules.UnarchiveFromOrganization(org, depts, projects, setActive: true, unarchiveProjects: false);
+
+        Assert.False(org.IsArchived);
+        Assert.All(depts.Where(d => d.OrganizationId == org.Id), d => Assert.False(d.IsArchived));
+        Assert.All(projects.Where(p => ArchiveClusterRules.ProjectBelongsToOrganization(p, org.Id, depts)), p =>
+        {
+            Assert.True(p.IsArchived);
+            Assert.False(p.IsActive);
+        });
+    }
+
+    [Fact]
     public void Archive_project_does_not_archive_organization_or_siblings()
     {
         var (org, _, depts, projects) = SampleGraph();

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using My.Client.Helpers;
 using My.Shared.Dtos.TrackedTask;
+using My.Shared.Rules;
 
 namespace My.Client.Models
 {
@@ -53,6 +54,9 @@ namespace My.Client.Models
 
         public string UserId { get; set; } = null!;
 
+        /// <summary>Display name when the row belongs to another employee (Reports team view).</summary>
+        public string? UserName { get; set; }
+
         /// <summary>When set, this row is a stopwatch session linked to a work item.</summary>
         public string? StopwatchItemId { get; set; }
 
@@ -97,6 +101,8 @@ namespace My.Client.Models
             ProjectId = trackedTask.ProjectId;
             IsMonthSubmitted = trackedTask.IsMonthSubmitted;
             UserId = trackedTask.UserId;
+            UserName = UserDisplayNameRules.Resolve(
+                trackedTask.User?.FirstName, trackedTask.User?.LastName, trackedTask.User?.Username);
 
             if (trackedTask.Project != null)
             {

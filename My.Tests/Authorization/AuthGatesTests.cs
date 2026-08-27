@@ -158,4 +158,123 @@ public class AuthGatesTests
         Assert.Null(result);
         Assert.Equal(UserIdValue, userId);
     }
+
+    // ---------- RequireOrganizations ----------
+    //
+    // Same as Tyme/Intranet: an Organizations-scoped role is required. Global Admin does not pass.
+
+    [Fact]
+    public void RequireOrganizations_anonymous_caller_gets_401()
+    {
+        var result = AuthGates.RequireOrganizations(Anonymous(), out var userId);
+
+        Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(string.Empty, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizations_global_admin_does_not_pass_without_organizations_role()
+    {
+        var principal = Authenticated(Constants.Roles.Admin);
+
+        var result = AuthGates.RequireOrganizations(principal, out var userId);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizations_authenticated_without_organizations_role_gets_403()
+    {
+        // Has a role, just not in the Organizations scope (Tyme:User doesn't count here).
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Tyme));
+
+        var result = AuthGates.RequireOrganizations(principal, out var userId);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizations_scoped_user_role_passes_default_gate()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations));
+
+        var result = AuthGates.RequireOrganizations(principal, out var userId);
+
+        Assert.Null(result);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizations_scoped_user_role_fails_editor_minrole_gate_with_403()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations));
+
+        var result = AuthGates.RequireOrganizations(principal, out _, Constants.Roles.Editor);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+    }
+
+    [Fact]
+    public void RequireOrganizations_scoped_editor_role_passes_editor_minrole_gate()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations));
+
+        var result = AuthGates.RequireOrganizations(principal, out _, Constants.Roles.Editor);
+
+        Assert.Null(result);
+    }
+
+    // ---------- RequireOrganizationsAdminOnly ----------
+    //
+    // Structural changes (archive/delete) — Admin:Organizations. Editor:Organizations does not
+    // satisfy this. Global Admin does not satisfy this.
+
+    [Fact]
+    public void RequireOrganizationsAdminOnly_anonymous_caller_gets_401()
+    {
+        var result = AuthGates.RequireOrganizationsAdminOnly(Anonymous(), out var userId);
+
+        Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(string.Empty, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizationsAdminOnly_global_admin_does_not_pass()
+    {
+        var principal = Authenticated(Constants.Roles.Admin);
+
+        var result = AuthGates.RequireOrganizationsAdminOnly(principal, out var userId);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizationsAdminOnly_admin_organizations_passes()
+    {
+        var principal = Authenticated(
+            Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations));
+
+        var result = AuthGates.RequireOrganizationsAdminOnly(principal, out var userId);
+
+        Assert.Null(result);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireOrganizationsAdminOnly_scoped_editor_role_does_NOT_pass()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations));
+
+        var result = AuthGates.RequireOrganizationsAdminOnly(principal, out _);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+    }
 }

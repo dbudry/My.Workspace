@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
@@ -91,6 +92,60 @@ namespace My.Tests.Components
         // MudBlazor registers services that only implement IAsyncDisposable; bUnit's synchronous
         // Dispose() would throw on them. Dispose the provider asynchronously first so the later
         // synchronous Dispose() is a no-op.
+        async Task IAsyncLifetime.DisposeAsync()
+        {
+            if (Services is IAsyncDisposable asyncProvider)
+                await asyncProvider.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Own DI graph so the throwing HttpClient is the one <see cref="ProjectsCache"/>
+    /// actually receives (a second AddSingleton in the smoke-test class would not
+    /// replace the empty stub).
+    /// </summary>
+    public class ProjectAutocompleteLoadFailureTests : BunitContext, IAsyncLifetime
+    {
+        public ProjectAutocompleteLoadFailureTests()
+        {
+            Services.AddMudServices(options => options.PopoverOptions.CheckForPopoverProvider = false);
+            Services.AddSingleton<IHttpClientFactory>(new ThrowingProjectsHttpClientFactory());
+            Services.AddSingleton<ProjectsCache>();
+            JSInterop.Mode = JSRuntimeMode.Loose;
+        }
+
+        [Fact]
+        public async Task Focus_when_projects_api_throws_does_not_crash_the_picker()
+        {
+            var cut = Render<ProjectAutocomplete>();
+
+            // MudPopover content is portaled (not in cut.Markup). Success is that
+            // OnFocusIn completes instead of throwing out to the renderer.
+            var exception = await Record.ExceptionAsync(() =>
+                cut.Find(".project-autocomplete").TriggerEventAsync("onfocusin", new FocusEventArgs()));
+
+            Assert.Null(exception);
+            Assert.Contains("mud-input", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private sealed class ThrowingProjectsHttpClientFactory : IHttpClientFactory
+        {
+            public HttpClient CreateClient(string name)
+                => new HttpClient(new ThrowingProjectsHandler())
+                {
+                    BaseAddress = new Uri("https://test.local/")
+                };
+        }
+
+        private sealed class ThrowingProjectsHandler : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request, CancellationToken cancellationToken)
+                => throw new HttpRequestException("Functions host not ready");
+        }
+
+        Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+
         async Task IAsyncLifetime.DisposeAsync()
         {
             if (Services is IAsyncDisposable asyncProvider)
