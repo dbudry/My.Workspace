@@ -1,4 +1,6 @@
 @namespace My.Client.Components.Projects
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using My.Client.Extensions
 @using My.Client.Helpers
 @using My.Client.Models
 @using My.Client.Services
@@ -6,6 +8,7 @@
 @implements IDisposable
 @inject ProjectsCache ProjectsCache
 @inject IJSRuntime Js
+@inject ISnackbar Snackbar
 
 @*
     Project picker with free-text field + popover list.
@@ -58,7 +61,7 @@
             else if (_results.Count == 0 && !_loading)
             {
                 <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
-                    No matching projects. Try a different name or slug.
+                    @(_loadError ?? "No matching projects. Try a different name or slug.")
                 </MudText>
             }
             else
@@ -153,6 +156,7 @@
     private bool _open;
     private bool _loading;
     private bool _loadingMore;
+    private string? _loadError;
     private bool _suppressBlurClose;
     private int _highlightIndex = -1;
     private List<Project> _results = new();
@@ -244,6 +248,7 @@
         _activeQuery = query?.Trim() ?? string.Empty;
         _pageNumber = 0;
         _hasMore = false;
+        _loadError = null;
         _results = new List<Project>();
         _loading = true;
         _loadingMore = false;
@@ -272,10 +277,36 @@
     {
         var nextPage = _pageNumber + 1;
         var pageSize = ListQueryParameters.MaxPageSize;
-        var (items, hasNext) = await ProjectsCache.LookupActivePageAsync(
-            search: string.IsNullOrWhiteSpace(_activeQuery) ? null : _activeQuery,
-            pageNumber: nextPage,
-            pageSize: pageSize);
+        IReadOnlyList<Project> items;
+        bool hasNext;
+        try
+        {
+            (items, hasNext) = await ProjectsCache.LookupActivePageAsync(
+                search: string.IsNullOrWhiteSpace(_activeQuery) ? null : _activeQuery,
+                pageNumber: nextPage,
+                pageSize: pageSize,
+                cancellationToken: token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (token.IsCancellationRequested)
+                return;
+
+            // Mini stopwatch is MiniLayout, not MainLayout. An uncaught
+            // AccessTokenNotAvailableException after a cold-start 500 painted
+            // the framework pink bar and killed the popup.
+            if (ex is not AccessTokenNotAvailableException)
+                Snackbar.AddApiError(ex, "Couldn't load projects.");
+            _loadError = ex is AccessTokenNotAvailableException
+                ? "Your sign-in expired. Sign in again to load projects."
+                : "Couldn't load projects. The server may be waking up — try again.";
+            items = Array.Empty<Project>();
+            hasNext = false;
+        }
 
         if (token.IsCancellationRequested)
             return;

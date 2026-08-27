@@ -555,6 +555,7 @@ namespace My.DAL.Data.Migrations
                     { "AllowUserDelete", "Allow administrators to delete users", "false" },
                     { "DataRetentionDays", "Days of data retention before a user can be deleted", "2555" },
                     { "TeamAvailabilityCalendarId", "Google calendar id of the workspace-shared 'Team Availability' calendar. Empty disables the team-availability dual-publish feature.", "" },
+                    { "TymeAllowUserTeamReports", "When enabled, Tyme users can view other employees' time on Reports (read-only).", "false" },
                     { "TymeCalendarBackfillDefaultDays", "Default lookback window (in days) when pushing existing tracked tasks onto a newly-connected user's primary Google calendar.", "30" },
                     { "TymeCalendarBackfillPromptUser", "When true, users are prompted to choose a date range (or skip) on connect. When false, the default lookback above is applied silently.", "true" },
                     { "TymeSubmissionMonthInterval", "How often (in months) employees are expected to submit their time.", "1" },
@@ -576,9 +577,10 @@ namespace My.DAL.Data.Migrations
                     { "e5f6a7b8-c9d0-1234-e5f6-a7b8c9d01234", "e5f6a7b8-c9d0-1234-e5f6-a7b8c9d01234", "Intranet-scoped editor role (create/edit pages and manage documents).", "Editor:Intranet", "EDITOR:INTRANET" },
                     { "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345", "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345", "Intranet-scoped admin role (full control of navigation structure and content).", "Admin:Intranet", "ADMIN:INTRANET" },
                     { "f72e9c7c-2517-427b-b08b-56966c51f5d4", "f72e9c7c-2517-427b-b08b-56966c51f5d4", "Manager role for for users and reports", "Manager", "MANAGER" },
-                    // Organizations scope (own menu/role; archive/delete stays global Admin).
+                    // Organizations scope (own menu/role; Admin handles archive/delete/set-active).
                     { "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789", "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789", "Organizations-scoped user role (view organizations and departments).", "User:Organizations", "USER:ORGANIZATIONS" },
-                    { "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890", "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890", "Organizations-scoped editor role (create/edit organizations and departments).", "Editor:Organizations", "EDITOR:ORGANIZATIONS" }
+                    { "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890", "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890", "Organizations-scoped editor role (create/edit organizations and departments).", "Editor:Organizations", "EDITOR:ORGANIZATIONS" },
+                    { "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901", "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901", "Organizations-scoped admin role (archive/delete/set active and assign Organizations roles).", "Admin:Organizations", "ADMIN:ORGANIZATIONS" }
                 });
 
             migrationBuilder.CreateIndex(

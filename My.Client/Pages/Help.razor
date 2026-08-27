@@ -182,6 +182,9 @@
                 The <strong>Reports</strong> page is a filterable list of your tracked tasks —
                 useful for invoicing, weekly summaries, or just seeing where your time went.
                 Filter by date range, project, or project group; sort and search the result set.
+                When App Settings allows it (or you are a Tyme manager/admin), an Employees
+                picker lets you include other people's time — read-only, including unsubmitted months.
+                Corrections stay on Management.
             </MudText>
             <MudText Typo="Typo.body2" Class="mb-2">
                 <strong>Management</strong> (Manager-and-up only) shows the same view
@@ -282,9 +285,19 @@
                 optionally a department). That association flows through to reports and
                 makes it easier to see how much time has gone into work for each client.
             </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Organizations is its own module scope. <code>User:Organizations</code> can view.
+                <code>Editor:Organizations</code> can create and edit organizations and departments.
+                <code>Admin:Organizations</code> can archive, unarchive, set active/inactive, and
+                delete (when enabled), and can assign Organizations roles on Users.
+                Workspace <code>Admin</code> does not open this menu. A Tyme Manager does not
+                get it unless they also have an Organizations role.
+            </MudText>
             <MudText Typo="Typo.body2">
-                Only Managers and Admins can create or edit organizations, departments, and
-                projects. Regular users pick from the existing project list when tracking time.
+                Archiving an organization also archives its departments and projects. Unarchiving
+                restores the organization and its departments; if you also have Manager:Tyme (or
+                Admin:Tyme), you are asked whether to unarchive its projects too. Regular Tyme
+                users pick from the existing project list when tracking time.
             </MudText>
         </MudExpansionPanel>
     </MudExpansionPanels>
@@ -727,9 +740,10 @@
             <MudText Typo="Typo.body2" Class="mb-3">
                 <strong>Important:</strong> Global <code>Admin</code> is for main software setup
                 (Users, App Settings, Logs, etc.). It does <strong>not</strong> automatically give
-                you access to Tyme or the Intranet. Module surfaces require an explicit scoped
-                role (e.g. <code>User:Tyme</code>, <code>Editor:Intranet</code>). Global admins
-                use the impersonation dialog when they need to act inside a module.
+                you access to Tyme, Intranet, or Organizations. Module surfaces require an explicit
+                scoped role (e.g. <code>User:Tyme</code>, <code>Editor:Intranet</code>,
+                <code>Admin:Organizations</code>). Global admins use the impersonation dialog when
+                they need to act inside a module.
             </MudText>
             <MudText Typo="Typo.subtitle2" Class="mb-1">Tyme module roles</MudText>
             <ul class="mb-3" style="padding-left: 1.2rem;">
@@ -739,8 +753,8 @@
                 </li>
                 <li class="mb-1">
                     <strong>Manager:Tyme</strong> — everything a User can do, plus manage
-                    organizations, departments, and projects, and use <em>Management</em>
-                    for everyone in the Tyme scope.
+                    projects and use <em>Management</em> for everyone in the Tyme scope.
+                    Organizations is a separate role scope.
                 </li>
                 <li class="mb-1">
                     <strong>Admin:Tyme</strong> — everything a Manager can do, plus manage user
@@ -762,6 +776,19 @@
                 <li>
                     <strong>Admin:Intranet</strong> — navigation tree plus everything Editors
                     can do. See the <strong>Intranet</strong> section above.
+                </li>
+            </ul>
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Organizations module roles</MudText>
+            <ul class="mb-3" style="padding-left: 1.2rem;">
+                <li class="mb-1">
+                    <strong>User:Organizations</strong> — view organizations and departments.
+                </li>
+                <li class="mb-1">
+                    <strong>Editor:Organizations</strong> — create and edit organizations and departments.
+                </li>
+                <li>
+                    <strong>Admin:Organizations</strong> — archive/unarchive, set active/inactive,
+                    delete when enabled, and assign Organizations roles.
                 </li>
             </ul>
             <MudText Typo="Typo.body2">
@@ -793,6 +820,11 @@
                 </li>
                 <li>
                     <strong>Allow Project Deletion</strong> — same idea for projects.
+                </li>
+                <li class="mb-1">
+                    <strong>Allow users to view other employees on Reports</strong> — when on,
+                    any Tyme user can pick employees on Reports (read-only). Tyme managers and
+                    admins can always do this. Off by default.
                 </li>
                 <li class="mb-1">
                     <strong>Calendar backfill — default lookback (days)</strong> — how far back

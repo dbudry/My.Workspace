@@ -13,6 +13,7 @@ namespace My.Tests.Roles;
 /// <see cref="Constants.Roles.CanManageUser"/>,
 /// <see cref="Constants.Roles.CanChangeUserActiveStatus"/>,
 /// <see cref="Constants.Roles.IsVisibleInTymeTeamView"/>,
+/// <see cref="Constants.Roles.CanViewTymeTeamReports"/>,
 /// <see cref="Constants.Roles.CanAssignRole"/>,
 /// <see cref="Constants.Roles.AssignableFor"/>, and
 /// <see cref="Constants.Roles.TryMergeRoleUpdate"/>.
@@ -234,6 +235,52 @@ public class RoleAdministrationTests
         Assert.False(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { AdminInUnrelated }));
     }
 
+    // ---------- CanViewTymeTeamReports ----------
+
+    [Fact]
+    public void CanViewTymeTeamReports_ManagerInTyme_always()
+    {
+        var manager = PrincipalWithRoles(ManagerInTyme);
+
+        Assert.True(Constants.Roles.CanViewTymeTeamReports(manager, allowUsers: false));
+        Assert.True(Constants.Roles.CanViewTymeTeamReports(manager, allowUsers: true));
+    }
+
+    [Fact]
+    public void CanViewTymeTeamReports_AdminInTyme_always()
+    {
+        var admin = PrincipalWithRoles(AdminInTyme);
+
+        Assert.True(Constants.Roles.CanViewTymeTeamReports(admin, allowUsers: false));
+        Assert.True(Constants.Roles.CanViewTymeTeamReports(admin, allowUsers: true));
+    }
+
+    [Fact]
+    public void CanViewTymeTeamReports_UserInTyme_only_when_workspace_allows()
+    {
+        var user = PrincipalWithRoles(UserInTyme);
+
+        Assert.False(Constants.Roles.CanViewTymeTeamReports(user, allowUsers: false));
+        Assert.True(Constants.Roles.CanViewTymeTeamReports(user, allowUsers: true));
+    }
+
+    [Fact]
+    public void CanViewTymeTeamReports_EditorInTyme_only_when_workspace_allows()
+    {
+        var editor = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Editor, TymeScope));
+
+        Assert.False(Constants.Roles.CanViewTymeTeamReports(editor, allowUsers: false));
+        Assert.True(Constants.Roles.CanViewTymeTeamReports(editor, allowUsers: true));
+    }
+
+    [Fact]
+    public void CanViewTymeTeamReports_global_Admin_alone_does_not()
+    {
+        var global = PrincipalWithRoles(Constants.Roles.Admin);
+
+        Assert.False(Constants.Roles.CanViewTymeTeamReports(global, allowUsers: true));
+    }
+
     // ---------- CanAssignRole ----------
 
     [Fact]
@@ -335,12 +382,29 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void IsAssignableRole_accepts_organizations_user_and_editor_rejects_admin()
+    public void IsAssignableRole_accepts_organizations_user_editor_admin()
     {
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations)));
-        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
         Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations)));
+    }
+
+    [Fact]
+    public void AssignableFor_organizations_admin_returns_only_organizations_roles()
+    {
+        var assignable = Constants.Roles.AssignableFor(
+            PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
+
+        Assert.All(assignable, r =>
+        {
+            var colon = r.IndexOf(':');
+            Assert.True(colon > 0, $"AssignableFor returned bare role '{r}' to an Organizations admin.");
+            Assert.Equal(Constants.Scopes.Organizations, r.Substring(colon + 1));
+        });
+        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations), assignable);
+        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations), assignable);
+        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations), assignable);
     }
 
     // ---------- TryMergeRoleUpdate ----------

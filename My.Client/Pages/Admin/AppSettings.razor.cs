@@ -31,6 +31,7 @@ namespace My.Client.Pages.Admin
         private int dataRetentionDays = 2555;
         private int submissionMonthInterval = 1;
         private bool allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.DefaultEnabled;
+        private bool allowUserTeamReports = TymeUserTeamReportsRules.DefaultEnabled;
         private bool allowManagerTimeCorrection = true;
         private string managerCorrectionMode = "Alias";
 
@@ -130,6 +131,9 @@ namespace My.Client.Pages.Admin
 
                     var managerSubmitVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf);
                     allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(managerSubmitVal?.Value);
+
+                    var userTeamReportsVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowUserTeamReports);
+                    allowUserTeamReports = TymeUserTeamReportsRules.IsEnabled(userTeamReportsVal?.Value);
 
                     var managerCorrectionVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowManagerTimeCorrection);
                     if (managerCorrectionVal != null && bool.TryParse(managerCorrectionVal.Value, out var managerCorrectionParsed))
@@ -295,6 +299,12 @@ namespace My.Client.Pages.Admin
                         Key = Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf,
                         Value = allowManagerSubmitOnBehalf.ToString().ToLower(),
                         Description = "When enabled, Tyme managers and admins can submit an employee's time month on their behalf."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.TymeAllowUserTeamReports,
+                        Value = allowUserTeamReports.ToString().ToLower(),
+                        Description = "When enabled, Tyme users can view other employees' time on Reports (read-only)."
                     },
                     new() { Key = Constants.SettingKeys.TymeAllowManagerTimeCorrection, Value = allowManagerTimeCorrection.ToString().ToLower() },
                     new() { Key = Constants.SettingKeys.TymeManagerCorrectionMode, Value = managerCorrectionMode },

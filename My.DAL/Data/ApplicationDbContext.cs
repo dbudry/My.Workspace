@@ -461,6 +461,12 @@ namespace My.DAL.Data
                 },
                 new AppSetting
                 {
+                    Key = "TymeAllowUserTeamReports",
+                    Value = "false",
+                    Description = "When enabled, Tyme users can view other employees' time on Reports (read-only)."
+                },
+                new AppSetting
+                {
                     Key = "TymeManagerCorrectionMode",
                     Value = "Alias",
                     Description = "When manager correction is enabled: Alias (overlay, original preserved) or Direct (in-place edit with audit)."
@@ -586,7 +592,7 @@ namespace My.DAL.Data
                     Description = "Intranet-scoped admin role (full control of navigation structure and content).",
                     ConcurrencyStamp = "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345"
                 },
-                // Organizations scope (own menu/role; archive/delete stays global Admin)
+                // Organizations scope (own menu/role; Admin handles archive/delete/set-active)
                 new ApplicationRole
                 {
                     Id = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789",
@@ -602,6 +608,14 @@ namespace My.DAL.Data
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations).ToUpper(),
                     Description = "Organizations-scoped editor role (create/edit organizations and departments).",
                     ConcurrencyStamp = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890"
+                },
+                new ApplicationRole
+                {
+                    Id = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations).ToUpper(),
+                    Description = "Organizations-scoped admin role (archive/delete/set active and assign Organizations roles).",
+                    ConcurrencyStamp = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901"
                 });
 
             // Note: If you add/remove roles, AppSettings, or other HasData here,

@@ -22,6 +22,40 @@
             <ProjectAutocomplete @bind-Value="selectedProject" Label="Project" Variant="Variant.Outlined"
                                  Margin="Margin.Dense" SearchFunc="SearchProjects" />
         </div>
+        @if (canViewTeamReports)
+        {
+            <div class="reports-filter-employees">
+                <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" FullWidth="true"
+                         Disabled="@(userOptions.Count == 0)" MaxHeight="300">
+                    <ActivatorContent>
+                        <div @onclick="context.ToggleAsync" style="cursor: pointer;">
+                            <MudTextField T="string" Value="@EmployeeSelectionLabel" Label="Employees"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true"
+                                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ArrowDropDown"
+                                          Disabled="@(userOptions.Count == 0)" />
+                        </div>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <div class="px-2 py-1 reports-employees-menu" @onclick:stopPropagation="true">
+                            <MudTextField T="string" @bind-Value="employeeSearchText" Placeholder="Search employees"
+                                          Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                          Immediate="true" Class="mb-1" />
+                            <MudCheckBox T="bool" Value="selectAllEmployeesChecked" Label="Select All" Dense="true"
+                                         ValueChanged="OnSelectAllEmployeesChanged" />
+                            <MudCheckBox T="bool" Value="selectNoneEmployeesChecked" Label="Select None" Dense="true"
+                                         ValueChanged="OnSelectNoneEmployeesChanged" />
+                            <MudDivider Class="my-1" />
+                            @foreach (var u in FilteredEmployeeOptions)
+                            {
+                                <MudCheckBox T="bool" Value="@selectedUserIds.Contains(u.UserId)" Label="@u.UserName" Dense="true"
+                                             ValueChanged="@((bool v) => OnEmployeeCheckboxChanged(u.UserId, v))" />
+                            }
+                        </div>
+                    </ChildContent>
+                </MudMenu>
+            </div>
+        }
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                    Class="reports-filter-btn" OnClick="ApplyFilters">Apply</MudButton>
         <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
@@ -155,12 +189,20 @@
                     <MudTable Items="@taskDetailRows" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm">
                         <HeaderContent>
                             <MudTh>Date</MudTh>
+                            @if (canViewTeamReports)
+                            {
+                                <MudTh>Employee</MudTh>
+                            }
                             <MudTh>Project</MudTh>
                             <MudTh>Details</MudTh>
                             <MudTh>Duration</MudTh>
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd DataLabel="Date">@FormatReportDate(context.StartDate)</MudTd>
+                            @if (canViewTeamReports)
+                            {
+                                <MudTd DataLabel="Employee">@(context.UserName ?? "Unknown")</MudTd>
+                            }
                             <MudTd DataLabel="Project">
                                 <ProjectAffiliationDisplay ProjectName="@context.Project?.Name"
                                                            DisplayName="@context.Project?.DisplayName"
@@ -188,7 +230,7 @@
                         <FooterContent>
                             @if (taskDetailRows.Any())
                             {
-                                <MudTd colspan="3" Style="font-weight:600;">Total</MudTd>
+                                <MudTd colspan="@(canViewTeamReports ? 4 : 3)" Style="font-weight:600;">Total</MudTd>
                                 <MudTd Style="font-weight:600;">@durationTotalFormatted</MudTd>
                             }
                         </FooterContent>

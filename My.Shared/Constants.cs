@@ -88,12 +88,12 @@ namespace My.Shared.Constants
                 Scoped(Admin, Scopes.Intranet),
                 Scoped(Editor, Scopes.Intranet),
                 Scoped(User, Scopes.Intranet),
-                // Organizations scope: applies beyond Tyme (e.g. contacts/departments used by other
-                // modules), so it's independent of Tyme:* roles. Only User (view) and Editor (create/
-                // edit orgs and departments — no archive/delete) are assignable; there is intentionally
-                // no Admin:Organizations. Full control (archive/delete, and everything Editor can do)
-                // is reserved for the unscoped global Admin role, not a scoped variant — see
-                // AuthGates.RequireOrganizations / RequireOrganizationsAdminOnly.
+                // Organizations scope: independent of Tyme. User (view), Editor (create/edit orgs
+                // and departments), Admin (archive/delete/set active, and assign Organizations
+                // roles). Global Admin does not open this module — same as Tyme/Intranet.
+                // There is no Manager:Organizations. See AuthGates.RequireOrganizations /
+                // RequireOrganizationsAdminOnly.
+                Scoped(Admin, Scopes.Organizations),
                 Scoped(Editor, Scopes.Organizations),
                 Scoped(User, Scopes.Organizations),
             };
@@ -233,6 +233,22 @@ namespace My.Shared.Constants
                 return HasRoleInScope(targetRoles, Scopes.Tyme);
             }
 
+            /// <summary>
+            /// Who may load other people's tasks on Reports. <c>Manager:Tyme+</c> always can
+            /// (they already have Management). Other Tyme-scoped users can only when
+            /// <paramref name="allowUsers"/> is true
+            /// (<see cref="SettingKeys.TymeAllowUserTeamReports"/>).
+            /// </summary>
+            public static bool CanViewTymeTeamReports(
+                System.Security.Claims.ClaimsPrincipal principal,
+                bool allowUsers)
+            {
+                if (principal == null) return false;
+                if (HasScopedAccess(principal, Scopes.Tyme, Manager)) return true;
+                if (!HasScopedAccess(principal, Scopes.Tyme, User)) return false;
+                return allowUsers;
+            }
+
             /// <summary>True when the role list includes any role scoped to <paramref name="scope"/>.</summary>
             public static bool HasRoleInScope(IEnumerable<string> roles, string scope)
             {
@@ -322,6 +338,11 @@ namespace My.Shared.Constants
             public const string TymeAllowManagerTimeCorrection = "TymeAllowManagerTimeCorrection";
             /// <summary>When true, Manager:Tyme+ can submit a month on behalf of another user (team scope).</summary>
             public const string TymeAllowManagerSubmitOnBehalf = "TymeAllowManagerSubmitOnBehalf";
+            /// <summary>
+            /// When true, any Tyme user can pick other employees on Reports (read-only).
+            /// Manager:Tyme+ can always do this. Default off until enabled under App Settings → Tyme.
+            /// </summary>
+            public const string TymeAllowUserTeamReports = "TymeAllowUserTeamReports";
             /// <summary>Alias or Direct — workspace uses one mode only.</summary>
             public const string TymeManagerCorrectionMode = "TymeManagerCorrectionMode";
             /// <summary>
@@ -747,14 +768,32 @@ namespace My.Shared.Constants
                 /// <summary>GET — Manager:Tyme+ all users' tasks for Management.</summary>
                 public const string GetAllUsersTrackedTasks = $"{Api}/alluserstasks";
 
-                /// <summary>GET — Manager:Tyme+ list of employees the caller can manage in Tyme.</summary>
+                /// <summary>GET — Tyme employees the caller may include on team Reports / Management.</summary>
                 public const string GetManageableEmployees = $"{Api}/manageableemployees";
+
+                /// <summary>GET — other users' tasks for Reports when team-report viewing is allowed.</summary>
+                public const string GetTeamReports = $"{Api}/teamreports";
 
                 /// <summary>GET — Admin:Tyme entity-centric table extract for Data Extraction.</summary>
                 public const string GetTymeDataExtraction = $"{Api}/dataextraction";
 
                 public static string ConstructUrlForAllUsersTasks(DateTime? from, DateTime? to) =>
                     ConstructUrlWithDateRange(GetAllUsersTrackedTasks, from, to);
+
+                public static string ConstructUrlForTeamReports(
+                    DateTime? from,
+                    DateTime? to,
+                    IEnumerable<string>? userIds = null)
+                {
+                    var url = ConstructUrlWithDateRange(GetTeamReports, from, to);
+                    if (userIds == null) return url;
+                    var ids = userIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct().ToList();
+                    if (ids.Count == 0) return url;
+                    var joined = string.Join(",", ids.Select(Uri.EscapeDataString));
+                    return url.Contains('?', StringComparison.Ordinal)
+                        ? $"{url}&UserIds={joined}"
+                        : $"{url}?UserIds={joined}";
+                }
 
                 public static string ConstructUrlForTymeDataExtraction(
                     IEnumerable<string> entities,

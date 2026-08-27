@@ -300,6 +300,52 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
+    public void BindDayForTaskDetails_empty_details_binds_hours()
+    {
+        // Details is optional — blank-name manuals must bind like named ones, or Week → Day
+        // shows 0h (and the footer undercounts) while List still has the saved hours.
+        var day = new DateTime(2026, 8, 20, 9, 0, 0);
+        var tasks = new[]
+        {
+            Slice("blank", "proj-a", day, TimeSpan.FromHours(2), name: ""),
+            Slice("named", "proj-b", day.AddHours(3), TimeSpan.FromMinutes(45), name: "Sample Task")
+        };
+
+        var blank = WeekEntryGridRules.BindDayForTaskDetails(
+            tasks, "proj-a", "", new DateTime(2026, 8, 20));
+        Assert.Equal(WeekEntryGridRules.DayBindKind.Single, blank.Kind);
+        Assert.Equal("blank", blank.TaskId);
+        Assert.Equal(TimeSpan.FromHours(2), blank.EditableDuration);
+
+        var named = WeekEntryGridRules.BindDayForTaskDetails(
+            tasks, "proj-b", "Sample Task", new DateTime(2026, 8, 20));
+        Assert.Equal(WeekEntryGridRules.DayBindKind.Single, named.Kind);
+        Assert.Equal("named", named.TaskId);
+        Assert.Equal(TimeSpan.FromMinutes(45), named.EditableDuration);
+
+        var blankDoesNotStealNamed = WeekEntryGridRules.BindDayForTaskDetails(
+            tasks, "proj-b", "", new DateTime(2026, 8, 20));
+        Assert.Equal(WeekEntryGridRules.DayBindKind.Empty, blankDoesNotStealNamed.Kind);
+    }
+
+    [Fact]
+    public void BindDayForTaskDetails_two_empty_details_same_project_day_is_multiple()
+    {
+        var day = new DateTime(2026, 8, 20, 9, 0, 0);
+        var tasks = new[]
+        {
+            Slice("1", "p1", day, TimeSpan.FromHours(1), name: ""),
+            Slice("2", "p1", day.AddHours(2), TimeSpan.FromHours(3), name: "")
+        };
+
+        var b = WeekEntryGridRules.BindDayForTaskDetails(
+            tasks, "p1", "", new DateTime(2026, 8, 20));
+        Assert.Equal(WeekEntryGridRules.DayBindKind.Multiple, b.Kind);
+        Assert.Null(b.TaskId);
+        Assert.Equal(TimeSpan.FromHours(4), b.TotalManualDuration);
+    }
+
+    [Fact]
     public void BindDay_ignores_stopwatch_but_binds_allday_readonly()
     {
         var day = new DateTime(2026, 5, 12, 9, 0, 0);

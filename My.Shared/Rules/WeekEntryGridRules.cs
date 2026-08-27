@@ -783,8 +783,9 @@ public static class WeekEntryGridRules
         BindDayForTaskDetails(weekTasks, projectId, taskName: null, day, matchAnyDetails: true);
 
     /// <summary>
-    /// Bind one day for a specific task name under a project. When multiple manuals share the
-    /// same project+name+day, returns <see cref="DayBindKind.Multiple"/> (read-only sum).
+    /// Bind one day for a specific task Details under a project. Empty Details is a real key
+    /// (optional name). When multiple manuals share the same project+details+day, returns
+    /// <see cref="DayBindKind.Multiple"/> (read-only sum).
     /// </summary>
     public static DayBinding BindDayForTaskDetails(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
@@ -796,8 +797,7 @@ public static class WeekEntryGridRules
         if (string.IsNullOrEmpty(projectId))
             return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
 
-        if (!matchAnyDetails && string.IsNullOrWhiteSpace(taskName))
-            return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
+        // Empty Details is a real key (optional) — do not treat blank as "no row".
 
         var dayDate = day.Date;
         var workdayHours = AllDayEntryRules.DefaultWorkdayHours;

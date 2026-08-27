@@ -73,13 +73,12 @@ public static class AuthGates
 
     /// <summary>
     /// Gate for Organizations/Departments/Contacts mutations and the management page.
-    /// Unlike <see cref="RequireScoped"/>, the unscoped global Admin role always passes here
-    /// with no separate Admin:Organizations role needed — there intentionally isn't one (see
-    /// <c>Constants.Roles.Assignable</c>). Everyone else needs an Organizations-scoped role
-    /// at or above <paramref name="minRole"/>. Read-only lookups (GetOrganizations etc.) do
-    /// NOT use this gate — they're open to any authenticated user via
-    /// <see cref="RequireAuthenticated"/>, since Project/Availability pickers outside the
-    /// Organizations scope still need to resolve org names.
+    /// Requires an Organizations-scoped role at or above <paramref name="minRole"/>.
+    /// Global Admin does <b>not</b> pass — same as Tyme/Intranet; they impersonate
+    /// <c>Admin:Organizations</c> (or hold that role). Read-only lookups
+    /// (GetOrganizations etc.) do NOT use this gate — they're open to any authenticated
+    /// user via <see cref="RequireAuthenticated"/>, since Project/Availability pickers
+    /// outside this scope still need to resolve org names.
     /// </summary>
     public static IActionResult? RequireOrganizations(
         ClaimsPrincipal principal,
@@ -89,24 +88,22 @@ public static class AuthGates
         userId = principal.FindFirstValue(Constants.Claims.UserId) ?? string.Empty;
         if (string.IsNullOrEmpty(userId))
             return new UnauthorizedResult();
-        if (Constants.Roles.IsGlobalAdmin(principal))
-            return null;
         if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Organizations, minRole))
             return new StatusCodeResult(403);
         return null;
     }
 
     /// <summary>
-    /// Structural Organizations changes (archive, delete) — global Admin only. There is no
-    /// scoped role that satisfies this, even Editor:Organizations: Editor can create/edit but
-    /// not archive or delete, matching the same split Project's Editor/Manager tiers use.
+    /// Structural Organizations changes (archive, delete, org set-active).
+    /// <c>Admin:Organizations</c> only. Editor:Organizations can create/edit but not
+    /// these. Global Admin does not pass.
     /// </summary>
     public static IActionResult? RequireOrganizationsAdminOnly(ClaimsPrincipal principal, out string userId)
     {
         userId = principal.FindFirstValue(Constants.Claims.UserId) ?? string.Empty;
         if (string.IsNullOrEmpty(userId))
             return new UnauthorizedResult();
-        if (!Constants.Roles.IsGlobalAdmin(principal))
+        if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Organizations, Constants.Roles.Admin))
             return new StatusCodeResult(403);
         return null;
     }

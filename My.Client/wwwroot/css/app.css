@@ -2125,6 +2125,19 @@ tbody .week-entry-col-day {
     margin-top: 0;
 }
 
+.reports-filter-bar .reports-filter-employees {
+    flex: 0 1 14rem;
+    min-width: 12rem;
+}
+
+.reports-filter-bar .reports-filter-employees .mud-input-control {
+    margin-top: 0;
+}
+
+.reports-employees-menu {
+    min-width: 220px;
+}
+
 .reports-filter-bar .reports-filter-btn {
     flex: 0 0 auto;
     align-self: center;
@@ -2142,6 +2155,11 @@ tbody .week-entry-col-day {
     }
 
     .reports-filter-bar .reports-filter-project {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .reports-filter-bar .reports-filter-employees {
         flex: 1 1 100%;
         min-width: 0;
     }

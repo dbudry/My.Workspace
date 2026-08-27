@@ -34,6 +34,7 @@ public class AuthMiddlewareRoleShapeTests
     [InlineData("Editor:Tyme")] // the exact shape that regressed
     [InlineData("User:Tyme")]
     [InlineData("Editor:Intranet")]
+    [InlineData("Admin:Organizations")]
     [InlineData("Admin:Some_Scope_1")]
     public void Scoped_role_with_recognized_base_is_valid(string role)
     {
