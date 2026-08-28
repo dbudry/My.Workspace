@@ -96,13 +96,16 @@
                         </div>
                     }
                 </MudPaper>
-                <MudText Class="mb-1">Put the Client ID in:</MudText>
-                <MudText Typo="Typo.body2">• My.Client/wwwroot/appsettings.json → Authentication:Google:ClientId</MudText>
-                <MudText Typo="Typo.body2" Class="mb-2">• My.AzureFunction/local.settings.json → Google__ClientId</MudText>
+                <MudText Class="mb-1">Easiest: run the local bootstrap script (writes both places):</MudText>
+                <MudText Typo="Typo.body2" Class="mb-2" Style="font-family: monospace;">.\Scripts\Setup-Local.ps1 -GoogleClientId "…" -GoogleClientSecret "…"</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">
+                    Or edit My.Client/wwwroot/appsettings.json (Authentication:Google:ClientId) and
+                    My.AzureFunction/local.settings.json (Google__ClientId) by hand.
+                </MudText>
                 <MudText Class="mb-2">Optional: enable Google Calendar API and Google Drive API in the same project.</MudText>
                 <MudAlert Severity="Severity.Info" Dense="true">
-                    After changing appsettings, restart the Functions host and refresh this page.
-                    See docs/SETUP-GOOGLE-CLOUD.md.
+                    After changing settings, restart the Functions host and refresh this page.
+                    See docs/SETUP-GOOGLE-CLOUD.md and docs/SETUP-FROM-SCRATCH.md.
                 </MudAlert>
             }
             else if (_step == 3)
