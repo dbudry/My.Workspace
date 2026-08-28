@@ -14,10 +14,10 @@ Browser  ──►  Static Web App (Blazor WASM)  ──►  Azure Functions (HT
 
 ## Start here (from scratch)
 
-1. **[docs/SETUP-FROM-SCRATCH.md](docs/SETUP-FROM-SCRATCH.md)** — prerequisites, local Docker SQL, first run  
+1. **[docs/SETUP-FROM-SCRATCH.md](docs/SETUP-FROM-SCRATCH.md)** — golden path (prereqs → local → `/setup`)  
 2. **[docs/SETUP-GOOGLE-CLOUD.md](docs/SETUP-GOOGLE-CLOUD.md)** — OAuth client, redirect URIs, optional Calendar/Drive APIs  
-3. Open the app → **Setup wizard** at `/setup` until your first admin signs in  
-4. Optional production: **[docs/SETUP-AZURE.md](docs/SETUP-AZURE.md)**
+3. `.\Scripts\Setup-Local.ps1` then `.\Scripts\Dev-StartDebugSession.ps1` → **Setup wizard** at `/setup`  
+4. Optional production: **[docs/SETUP-AZURE.md](docs/SETUP-AZURE.md)** (`.\Scripts\Setup-Azure.ps1`)
 
 ## Quick local start
 
@@ -26,8 +26,8 @@ Browser  ──►  Static Web App (Blazor WASM)  ──►  Azure Functions (HT
 git clone https://github.com/dbudry/My.Workspace.git
 cd My.Workspace
 
-copy My.AzureFunction\local.settings.example.json My.AzureFunction\local.settings.json
-# Edit ClientId / secrets in local.settings.json and My.Client\wwwroot\appsettings.json
+# After creating a Google OAuth Web client (docs/SETUP-GOOGLE-CLOUD.md):
+.\Scripts\Setup-Local.ps1 -GoogleClientId "YOUR_ID.apps.googleusercontent.com" -GoogleClientSecret "GOCSPX-..."
 
 .\Scripts\Dev-StartDebugSession.ps1
 ```
@@ -69,9 +69,9 @@ See setup docs for full tables. Never commit real secrets.
 
 | Doc | Contents |
 |-----|----------|
-| [SETUP-FROM-SCRATCH.md](docs/SETUP-FROM-SCRATCH.md) | Primary self-host path |
+| [SETUP-FROM-SCRATCH.md](docs/SETUP-FROM-SCRATCH.md) | Primary self-host path (local) |
 | [SETUP-GOOGLE-CLOUD.md](docs/SETUP-GOOGLE-CLOUD.md) | Google OAuth |
-| [SETUP-AZURE.md](docs/SETUP-AZURE.md) | Azure + GitHub Actions |
+| [SETUP-AZURE.md](docs/SETUP-AZURE.md) | Azure provision script + remaining checklist |
 | [DEVELOPMENT.md](docs/DEVELOPMENT.md) | Day-to-day development |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the pieces fit |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | CI/CD branch flow |

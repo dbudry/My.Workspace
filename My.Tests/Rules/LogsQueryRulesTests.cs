@@ -88,6 +88,20 @@ public class LogsQueryRulesTests
     }
 
     [Fact]
+    public void Build_calendar_topic_filters_google_calendar_messages()
+    {
+        var kql = LogsQueryRules.Build(24, LogsQueryRules.SeverityLevel.Verbose, 50, "calendar");
+        Assert.Contains("Google calendar", kql);
+    }
+
+    [Fact]
+    public void Build_without_topic_does_not_filter_google_calendar()
+    {
+        var kql = LogsQueryRules.Build(24, LogsQueryRules.SeverityLevel.Verbose, 50);
+        Assert.DoesNotContain("| where message has \"Google calendar\"", kql);
+    }
+
+    [Fact]
     public void Build_clamps_oversized_inputs()
     {
         var kql = LogsQueryRules.Build(99999, LogsQueryRules.SeverityLevel.Information, 99999);

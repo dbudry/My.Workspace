@@ -1,5 +1,18 @@
 [
   {
+    "version": "1.4.0",
+    "date": "2026-08-28",
+    "changes": [
+      { "type": "Fixed", "text": "Editing a tagged Google Calendar event updates Tyme live. Import no longer aborts while another import holds the lock." },
+      { "type": "Fixed", "text": "Calendar no longer shows a blank bar when Details is empty — it uses the project name (including Time Off / availability)." },
+      { "type": "Fixed", "text": "Google Calendar watches keep renewing when Google__WebhookUrl is not set, using the Function App host." },
+      { "type": "Fixed", "text": "Time tagged with a project [slug] in Google Calendar shows in Tyme after you save the event, not the next morning." },
+      { "type": "Added", "text": "Admin → Debug → Google Calendar: connection status, import activity, Test import queue, Renew watches." },
+      { "type": "Fixed", "text": "Test import queue no longer fails on a cold start. Admin Pull missed events reports a timeout instead of a false success." },
+      { "type": "Fixed", "text": "Knowledge Base nav no longer double-indents." }
+    ]
+  },
+  {
     "version": "1.3.0",
     "date": "2026-08-27",
     "changes": [

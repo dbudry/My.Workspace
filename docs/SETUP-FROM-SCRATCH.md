@@ -3,6 +3,18 @@
 This guide is for **self-hosters** (including non-developers who can follow a checklist).  
 Goal: empty machine → running My.Workspace → first admin signed in.
 
+## Golden path (local)
+
+| Step | What |
+|------|------|
+| 1 | Install prerequisites (below) |
+| 2 | Create a Google OAuth Web client — [SETUP-GOOGLE-CLOUD.md](SETUP-GOOGLE-CLOUD.md) |
+| 3 | `.\Scripts\Setup-Local.ps1` — writes local config + encryption key |
+| 4 | `.\Scripts\Dev-StartDebugSession.ps1` — SQL, Azurite, API, client |
+| 5 | Browser → `https://localhost:7047` → **`/setup`** wizard → first Admin |
+
+Production later: [SETUP-AZURE.md](SETUP-AZURE.md) (`.\Scripts\Setup-Azure.ps1`).
+
 ## What you need
 
 | Tool | Why |
@@ -13,7 +25,7 @@ Goal: empty machine → running My.Workspace → first admin signed in.
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) | SQL Server without installing SQL |
 | A Google account | OAuth sign-in ([SETUP-GOOGLE-CLOUD.md](SETUP-GOOGLE-CLOUD.md)) |
 
-Optional later: Azure subscription for production ([SETUP-AZURE.md](SETUP-AZURE.md)).
+Optional later: Azure subscription ([SETUP-AZURE.md](SETUP-AZURE.md)).
 
 ## 1. Clone
 
@@ -31,31 +43,31 @@ Local redirect URIs to register:
 - `https://localhost:7047/authentication/login-callback`
 - `https://localhost:7047/settings`
 
-Copy your **Client ID** (and Client secret if you want Calendar/Drive).
+Copy your **Client ID** and **Client secret** (secret required for Calendar/Drive).
 
-## 3. Local config files
+## 3. Local config (one script)
 
 ```powershell
-copy My.AzureFunction\local.settings.example.json My.AzureFunction\local.settings.json
+.\Scripts\Setup-Local.ps1
+# or non-interactive:
+.\Scripts\Setup-Local.ps1 -GoogleClientId "YOUR_ID.apps.googleusercontent.com" -GoogleClientSecret "GOCSPX-..."
 ```
 
-Edit **both**:
+This will:
 
-1. `My.AzureFunction/local.settings.json`  
-   - `Google__ClientId` = your client ID  
-   - `Google__ClientSecret` = client secret (optional for core app; needed for Calendar/Drive)  
-   - `Google__TokenEncryptionKey` = 32 random bytes, base64 (e.g. from `[Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }) -as [byte[]])`)  
-   - Leave `Auth__AllowedEmailDomains` empty — the setup wizard will set domains in the database  
+- Create `My.AzureFunction/local.settings.json` from the example (if missing)
+- Generate `Google__TokenEncryptionKey`
+- Write the Client ID into both the API and `My.Client/wwwroot/appsettings.json`
 
-2. `My.Client/wwwroot/appsettings.json`  
-   - `Authentication:Google:ClientId` = **same** client ID  
+Leave `Auth__AllowedEmailDomains` empty — the **setup wizard** sets domains in the database.
 
-`appsettings.Development.json` already points the client at `https://localhost:7074/api/`.
+Never commit `local.settings.json` or real secrets.
 
 ## 4. Start everything
 
 ```powershell
-# Prefer: right-click Scripts\Dev-StartDebugSession.cmd → Run as administrator (first time)
+# Prefer first time: right-click Scripts\Dev-StartDebugSession.cmd → Run as administrator
+# (admin is for trusting the HTTPS dev certificate, not for Azure)
 .\Scripts\Dev-StartDebugSession.ps1
 ```
 
@@ -90,6 +102,10 @@ After the first successful sign-in, setup is complete. Later users must be creat
 - Optional: Intranet → create a home page and nav item  
 - Invite teammates with matching email domains  
 
+### Google Calendar (optional)
+
+Calendar import uses the Function App storage account (local: **Azurite**). The app creates the `google-calendar-import` queue and lock container automatically — no extra setup. Enable the **Google Calendar API** in Cloud Console, then connect under Settings. Smoke-test locally with `.\Scripts\Dev-TestCalendarWebhook.ps1` when the Functions host is running.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -98,7 +114,8 @@ After the first successful sign-in, setup is complete. Later users must be creat
 | Sign-in fails / 403 | Domain not allowed — re-open `/setup` before first user exists, or set `Auth__AllowedEmailDomains` in `local.settings.json` and restart API |
 | Cert / CORS errors | Run elevated once: `dotnet dev-certs https --trust` |
 | SQL never ready | Docker running? `docker ps`; reset container via script prompt (press R within 10s) |
+| Missing Client ID checks | Re-run `.\Scripts\Setup-Local.ps1 -GoogleClientId "..." -Force` |
 
 ## Production
 
-See [SETUP-AZURE.md](SETUP-AZURE.md) and [DEPLOYMENT.md](DEPLOYMENT.md).
+See [SETUP-AZURE.md](SETUP-AZURE.md) (`Setup-Azure.ps1`) and [DEPLOYMENT.md](DEPLOYMENT.md).

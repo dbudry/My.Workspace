@@ -16,6 +16,11 @@ public static class SidebarNavExpansionRules
         relativePath.Equals("admin", StringComparison.OrdinalIgnoreCase)
         || relativePath.StartsWith("admin/", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Global-Admin Debug tools (Google Calendar import, later probes).</summary>
+    public static bool IsAdminDebugRoute(string relativePath) =>
+        relativePath.Equals("admin/calendar", StringComparison.OrdinalIgnoreCase)
+        || relativePath.StartsWith("admin/debug/", StringComparison.OrdinalIgnoreCase);
+
     public static bool IsIntranetMaintenanceRoute(string relativePath) =>
         relativePath.Equals("intranet/pages", StringComparison.OrdinalIgnoreCase)
         || relativePath.Equals("intranet/navigation", StringComparison.OrdinalIgnoreCase)
