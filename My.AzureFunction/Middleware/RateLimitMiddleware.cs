@@ -41,6 +41,16 @@ public class RateLimitMiddleware : IFunctionsWorkerMiddleware
             return;
         }
 
+        var request = httpContext.Request;
+        var normalizedPath = RateLimitRules.NormalizeApiPath(request.Path.Value);
+        // Google Calendar webhook must not wait on SQL (paused DB / resume). Exempt
+        // before loading App Settings. OPTIONS is the same.
+        if (RateLimitRules.IsExempt(normalizedPath, request.Method))
+        {
+            await next(context);
+            return;
+        }
+
         var configEnabled = _configuration["RateLimit:Enabled"];
         RateLimitSettings settings;
         try
@@ -61,8 +71,6 @@ public class RateLimitMiddleware : IFunctionsWorkerMiddleware
             return;
         }
 
-        var request = httpContext.Request;
-        var normalizedPath = RateLimitRules.NormalizeApiPath(request.Path.Value);
         var hadBearerHeader = request.Headers.Authorization
             .FirstOrDefault()
             ?.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) == true;

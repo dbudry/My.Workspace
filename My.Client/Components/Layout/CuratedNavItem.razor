@@ -182,7 +182,9 @@ else
     private string GetLinkClass()
     {
         var classes = "curated-nav-link";
-        if (IsTopLevel)
+        // Page+children top-level rows put nav-top-level on the HEADER, not this
+        // inner link. A second nav-top-level here stacked another 0.5rem indent.
+        if (IsTopLevel && VisibleChildren.Count == 0)
             classes += " nav-top-level";
         if (!string.IsNullOrWhiteSpace(Item.ExternalUrl) && ActiveCuratedNavItemId == Item.Id)
             classes += " active";

@@ -9,6 +9,7 @@ public class SidebarNavExpansionRulesTests
     [Theory]
     [InlineData("tyme/submit", true)]
     [InlineData("admin/users", true)]
+    [InlineData("admin/calendar", true)]
     [InlineData("intranet/pages", true)]
     [InlineData("intranet/editor/abc", true)]
     [InlineData("intranet/pages/bitlocker", false)]
@@ -19,6 +20,14 @@ public class SidebarNavExpansionRulesTests
             || SidebarNavExpansionRules.IsAdminRoute(path)
             || SidebarNavExpansionRules.IsIntranetMaintenanceRoute(path));
     }
+
+    [Theory]
+    [InlineData("admin/calendar", true)]
+    [InlineData("admin/debug/probe", true)]
+    [InlineData("admin/users", false)]
+    [InlineData("admin/logs", false)]
+    public void IsAdminDebugRoute_is_calendar_and_debug_paths(string path, bool expected) =>
+        Assert.Equal(expected, SidebarNavExpansionRules.IsAdminDebugRoute(path));
 
     [Fact]
     public void TryGetCuratedExpansion_FindsTopAndNestedKeys_ForGrandchildPage()

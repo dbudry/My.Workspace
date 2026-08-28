@@ -30,10 +30,11 @@
     color: var(--mud-palette-text-primary);
 }
 
-/* Top-level built-in groups/links align with Dashboard (not only direct mud-navmenu children). */
+/* Top-level built-in groups/links align with Dashboard (not only direct mud-navmenu children).
+   Do NOT include Knowledge Base's inner MudNavLink here — its header already has this
+   0.5rem side margin. Putting it on the inner link too indents the icon like a child. */
 .nav-scrollable ::deep .mud-nav-item.nav-top-level > .mud-nav-link,
-.nav-scrollable ::deep .mud-nav-group.nav-top-level > .mud-nav-link,
-.nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level .mud-nav-item > .mud-nav-link {
+.nav-scrollable ::deep .mud-nav-group.nav-top-level > .mud-nav-link {
     margin-left: 0.5rem !important;
     margin-right: 0.5rem !important;
     margin-top: 0.125rem !important;
@@ -42,10 +43,8 @@
     padding-left: 16px !important;
 }
 
-/* Knowledge Base header must not pick up nested-menu padding from MudBlazor. Margin here
-   matches the built-in Tyme/Intranet/Admin group buttons' own 0.125rem/0.5rem margin (see
-   CuratedNavItem.razor.css) so the hover highlight overflows/clips at the drawer edge the
-   same way theirs does, instead of sitting flush and reading as a rounded "bubble". */
+/* Knowledge Base (page + children): the HEADER is the row, same 0.5rem inset as Tyme.
+   Inner link must have zero extra horizontal margin. */
 .nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level {
     margin: 0.125rem 0.5rem;
     width: 100%;
@@ -55,6 +54,12 @@
 .nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level .mud-nav-item {
     margin: 0;
     width: 100%;
+}
+
+.nav-scrollable ::deep .curated-nav-group-with-page.nav-top-level > .curated-nav-group-header.nav-top-level .mud-nav-item > .mud-nav-link {
+    margin: 0 !important;
+    padding-inline-start: 16px !important;
+    padding-left: 16px !important;
 }
 
 /* Curated nav icons use MudIcon font syntax (material-icons/name) — same 1.5rem Medium size as Tyme/Admin. */

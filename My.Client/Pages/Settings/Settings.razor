@@ -225,10 +225,10 @@
                 <MudDivider Class="my-4" />
                 <MudText Typo="Typo.subtitle2" Class="mb-1">Pull missed events from Google</MudText>
                 <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                    If a slug-tagged event in your Google Calendar didn't appear in Tyme,
-                    pick a date range and Tyme will re-scan and import anything it missed.
-                    Already-imported events are updated in place; nothing on your timesheet
-                    gets duplicated.
+                    Tagged events normally import when you save them in Google Calendar.
+                    If one did not appear in Tyme, pick a date range and Tyme will re-scan
+                    and import anything it missed. Already-imported events are updated in
+                    place; nothing on your timesheet gets duplicated.
                 </MudText>
                 <div class="d-flex gap-3 flex-wrap mb-2 align-end">
                     <MudDatePicker @bind-Date="pullFromDate" Label="From" Variant="Variant.Outlined"

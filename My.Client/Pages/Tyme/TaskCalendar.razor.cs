@@ -187,9 +187,10 @@ namespace My.Client.Pages.Tyme
                 {
                     if (!tasksById.TryGetValue(group.RepresentativeTaskId, out var sample))
                         continue;
+                    var baseLabel = CalendarChipRules.FormatText(group.Details, sample.Project?.DisplayName);
                     var label = group.SessionCount > 1
-                        ? $"{group.Details} ({group.SessionCount} sessions)"
-                        : group.Details;
+                        ? $"{baseLabel} ({group.SessionCount} sessions)"
+                        : baseLabel;
 
                     calendarItems.Add(new TaskCalendarItem
                     {
@@ -228,7 +229,7 @@ namespace My.Client.Pages.Tyme
                         calendarItems.Add(new TaskCalendarItem
                         {
                             TaskId = task.TaskId,
-                            Text = task.Details,
+                            Text = CalendarChipRules.FormatText(task.Details, task.Project?.DisplayName),
                             Start = start,
                             End = end,
                             AllDay = false,
@@ -299,7 +300,7 @@ namespace My.Client.Pages.Tyme
             return new TaskCalendarItem
             {
                 TaskId = task.TaskId,
-                Text = $"{adj.Details} (adjusted)",
+                Text = $"{CalendarChipRules.FormatText(adj.Details, adj.ProjectName)} (adjusted)",
                 Start = adjStart,
                 End = adjEnd,
                 AllDay = false,
@@ -326,7 +327,7 @@ namespace My.Client.Pages.Tyme
             => new()
             {
                 TaskId = task.TaskId,
-                Text = task.Details,
+                Text = CalendarChipRules.FormatText(task.Details, task.Project?.DisplayName),
                 Start = day,
                 End = day.AddDays(1).AddTicks(-1),
                 AllDay = true,
