@@ -655,8 +655,13 @@ namespace My.Shared.Constants
                 /// Always requests Verbose+ so the table is not pre-filtered. Severity is shown
                 /// per row; Function host write level is configured in Azure, not here.
                 /// </summary>
-                public static string Construct(int hours, int top) =>
-                    $"{Get}?hours={hours}&level=Verbose&top={top}";
+                public static string Construct(int hours, int top, string? topic = null)
+                {
+                    var url = $"{Get}?hours={hours}&level=Verbose&top={top}";
+                    if (!string.IsNullOrWhiteSpace(topic))
+                        url += $"&topic={Uri.EscapeDataString(topic)}";
+                    return url;
+                }
             }
 
             public static class TimeSubmission
@@ -745,6 +750,29 @@ namespace My.Shared.Constants
 
                 /// <summary>POST (called by Google) — push notification from Google Calendar when an event changes.</summary>
                 public const string Webhook = $"{Api}/webhook";
+
+                /// <summary>
+                /// Storage queue the webhook enqueues onto. The queue trigger imports
+                /// after SQL is up. Azure queue names are lowercase + hyphens.
+                /// </summary>
+                public const string ImportQueue = "google-calendar-import";
+
+                /// <summary>
+                /// Blob container on the same storage account for per-user import leases.
+                /// </summary>
+                public const string ImportLockContainer = "google-calendar-import-locks";
+
+                /// <summary>GET — connected users and watch health (global Admin).</summary>
+                public const string SyncStatus = $"{Api}/syncstatus";
+
+                /// <summary>POST — write a test message to the import queue (global Admin).</summary>
+                public const string ProbeQueue = $"{Api}/probequeue";
+
+                /// <summary>POST — re-register due/expired Google push watches (global Admin).</summary>
+                public const string RenewWatches = $"{Api}/renewwatches";
+
+                /// <summary>Channel id used by Admin → Test import queue. Not a real Google watch.</summary>
+                public const string ProbeChannelId = "__admin-probe__";
 
                 /// <summary>
                 /// Builds the URL for <see cref="PullFromGoogle"/> with required from/to and optional

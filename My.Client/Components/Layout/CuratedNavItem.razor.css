@@ -67,10 +67,12 @@
 }
 
 .curated-nav-group-with-page .curated-nav-group-header.nav-top-level ::deep .mud-nav-link {
+    /* Header already has Tyme's 0.5rem side margin. Another 0.5rem here indented
+       Knowledge Base like a nested child (fixed more than once — do not restore). */
     flex: 1;
-    margin: 0.125rem 0.5rem !important;
+    margin: 0 !important;
     min-width: 0;
-    width: calc(100% - 1rem);
+    width: 100%;
     font-weight: 400;
     padding-inline-start: 16px !important;
     padding-left: 16px !important;

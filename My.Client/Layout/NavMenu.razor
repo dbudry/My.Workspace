@@ -118,6 +118,12 @@
                         {
                             <MudNavLink Href="admin/appsettings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">App Settings</MudNavLink>
                             <MudNavLink Href="admin/logs" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Article">Logs</MudNavLink>
+                            <MudNavGroup Title="Debug"
+                                         Icon="@Icons.Material.Filled.BugReport"
+                                         Expanded="@navAccordion.IsNestedChildExpanded(SidebarNavAccordionState.BuiltInAdminKey, SidebarNavAccordionState.BuiltInAdminDebugKey)"
+                                         ExpandedChanged="@(e => OnNestedNavGroupExpanded(SidebarNavAccordionState.BuiltInAdminKey, SidebarNavAccordionState.BuiltInAdminDebugKey, e))">
+                                <MudNavLink Href="admin/calendar" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Event">Google Calendar</MudNavLink>
+                            </MudNavGroup>
                         }
                     </MudNavGroup>
                 }
@@ -426,7 +432,15 @@
         }
         else if (SidebarNavExpansionRules.IsAdminRoute(relativePath))
         {
-            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInAdminKey, null, null);
+            Dictionary<string, string>? nested = null;
+            if (SidebarNavExpansionRules.IsAdminDebugRoute(relativePath))
+            {
+                nested = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [SidebarNavAccordionState.BuiltInAdminKey] = SidebarNavAccordionState.BuiltInAdminDebugKey
+                };
+            }
+            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInAdminKey, null, nested);
         }
         else if (SidebarNavExpansionRules.IsIntranetMaintenanceRoute(relativePath))
         {

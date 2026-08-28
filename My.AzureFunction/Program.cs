@@ -1,5 +1,7 @@
 using Azure.Core;
 using Azure.Identity;
+using Azure.Storage.Blobs;
+using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -82,11 +84,30 @@ var host = new HostBuilder()
         // Google Calendar integration
         services.AddSingleton<GoogleTokenEncryptor>();
         services.AddSingleton<GoogleCalendarService>();
-        // Webhook HTTP trigger enqueues; this worker imports so Google always gets 200.
-        services.AddSingleton<GoogleCalendarWebhookImportQueue>();
-        services.AddHostedService<GoogleCalendarWebhookImportWorker>();
         // Scoped because it depends on the DbContext (per-request).
         services.AddScoped<TeamAvailabilityPublisher>();
+        services.AddSingleton(sp =>
+        {
+            var storage = context.Configuration["AzureWebJobsStorage"]
+                ?? throw new InvalidOperationException("AzureWebJobsStorage is not configured.");
+            return new QueueServiceClient(storage, new QueueClientOptions
+            {
+                MessageEncoding = QueueMessageEncoding.Base64,
+                Retry =
+                {
+                    NetworkTimeout = TimeSpan.FromSeconds(20),
+                    MaxRetries = 3
+                }
+            });
+        });
+        services.AddSingleton(sp =>
+        {
+            var storage = context.Configuration["AzureWebJobsStorage"]
+                ?? throw new InvalidOperationException("AzureWebJobsStorage is not configured.");
+            return new BlobServiceClient(storage);
+        });
+        services.AddSingleton<GoogleCalendarImportQueue>();
+        services.AddTransient<GoogleCalendarWatchRenewer>();
 
         // Google Drive integration for intranet (create/upload docs from page builder)
         services.AddSingleton<GoogleDriveService>();

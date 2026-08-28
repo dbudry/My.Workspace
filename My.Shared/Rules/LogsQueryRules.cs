@@ -52,7 +52,7 @@ public static class LogsQueryRules
     /// KQL that unions <c>traces</c> and <c>exceptions</c>, filters by time + minimum
     /// severity, and projects a flat shape the API endpoint hands to the client.
     /// </summary>
-    public static string Build(int hours, SeverityLevel minLevel, int top)
+    public static string Build(int hours, SeverityLevel minLevel, int top, string? topic = null)
     {
         var clampedHours = ClampHours(hours);
         var clampedTop = ClampTop(top);
@@ -60,6 +60,9 @@ public static class LogsQueryRules
         var hoursStr = clampedHours.ToString(CultureInfo.InvariantCulture);
         var minSevStr = minSev.ToString(CultureInfo.InvariantCulture);
         var topStr = clampedTop.ToString(CultureInfo.InvariantCulture);
+        var topicFilter = GoogleCalendarSyncRules.IsCalendarLogTopic(topic)
+            ? "| where message has \"Google calendar\""
+            : "";
 
         // Column alias is `logKind` rather than `kind`: KQL treats `kind` as a
         // reserved word (it's a query modifier — `union kind=outer`, `find kind=`,
@@ -68,10 +71,12 @@ public static class LogsQueryRules
         return $@"union
     (traces
         | where timestamp > ago({hoursStr}h) and severityLevel >= {minSevStr}
+        {topicFilter}
         | extend logKind = 'trace'
         | project timestamp, severityLevel, logKind, message, operation_Id, cloud_RoleName),
     (exceptions
         | where timestamp > ago({hoursStr}h) and severityLevel >= {minSevStr}
+        {topicFilter}
         | extend logKind = 'exception'
         | project timestamp,
                   severityLevel,

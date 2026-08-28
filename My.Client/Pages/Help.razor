@@ -328,7 +328,9 @@
                 <code>[slug]</code> tag. <strong>Import</strong> brings calendar events you create
                 back into Tyme — but only events you tag with <code>[slug]</code>. Both directions
                 are turned on automatically when you connect; you can disable either one in
-                Settings.
+                Settings. Tagged events import when you save them in Google Calendar
+                (a few seconds later if the app was idle). Edits you make in Google on a
+                Tyme-created event come back into Tyme.
             </MudText>
             <MudText Typo="Typo.subtitle2" Class="mb-1">Self-healing nightly sync</MudText>
             <MudText Typo="Typo.body2" Class="mb-3">
@@ -336,9 +338,9 @@
                 a transient network glitch, an expired watch channel, or you being disconnected at
                 the moment of edit. To make these silent misses self-correcting, Tyme runs a
                 nightly job at 07:00 UTC that re-scans every connected user's calendar over the
-                last 7 days and the next 7 days and ingests anything the webhook missed. So a
-                <code>[vac]</code> event you typed yesterday that didn't appear will typically be
-                there by the next morning — without anyone clicking anything.
+                last 7 days and the next 7 days and ingests anything the webhook missed — a backup
+                behind live import. So a <code>[vac]</code> event you typed yesterday that didn't
+                appear will typically be there by the next morning — without anyone clicking anything.
             </MudText>
             <MudText Typo="Typo.subtitle2" Class="mb-1">Manual pull (surgical recovery)</MudText>
             <MudText Typo="Typo.body2" Class="mb-3">
@@ -739,7 +741,7 @@
             </MudText>
             <MudText Typo="Typo.body2" Class="mb-3">
                 <strong>Important:</strong> Global <code>Admin</code> is for main software setup
-                (Users, App Settings, Logs, etc.). It does <strong>not</strong> automatically give
+                (Users, App Settings, Logs, Debug, etc.). It does <strong>not</strong> automatically give
                 you access to Tyme, Intranet, or Organizations. Module surfaces require an explicit
                 scoped role (e.g. <code>User:Tyme</code>, <code>Editor:Intranet</code>,
                 <code>Admin:Organizations</code>). Global admins use the impersonation dialog when
@@ -871,6 +873,17 @@
                 Scoped admins (e.g. <code>Admin:Tyme</code>) can <em>read</em> these settings
                 but not change them — that keeps workspace-wide policy in the hands of the
                 global admin.
+            </MudText>
+        </MudExpansionPanel>
+
+        <MudExpansionPanel Text="Debug" Icon="@Icons.Material.Filled.BugReport">
+            <MudText Typo="Typo.body2">
+                <strong>Admin → Debug</strong> is global Admin only. <strong>Google Calendar</strong>
+                shows who is connected, whether import can run, and recent import activity in
+                plain language. <strong>Test import queue</strong> writes a message to storage
+                and confirms the worker ran. <strong>Pull missed events</strong> on a person
+                re-scans their Google Calendar. <strong>Renew watches</strong> re-registers
+                Google push channels that are expired or due.
             </MudText>
         </MudExpansionPanel>
 

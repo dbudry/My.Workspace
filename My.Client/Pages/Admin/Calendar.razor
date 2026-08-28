@@ -1,0 +1,171 @@
+@page "/admin/calendar"
+@attribute [Authorize]
+
+@using My.Shared.Dtos.GoogleCalendar
+@using My.Shared.Dtos.Logs
+@using My.Shared.Rules
+
+<PageTitle>Google Calendar</PageTitle>
+
+<PageHeader Title="Google Calendar"
+            Description="Admin → Debug. Who is connected, whether tagged events can import, and what the import worker did recently. Global Admin only." />
+
+<PageLoader IsLoading="@(isLoading && status == null && activity == null)">
+    @if (!isGlobalAdmin)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4">
+            This page is restricted to the global Admin role.
+        </MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">
+            Tagged Google Calendar events (<code>[slug]</code> in the title) should appear in Tyme shortly after they are saved.
+            If every watch is expired, Google is not pushing — use <strong>Renew watches</strong>, then <strong>Pull missed events</strong>
+            for anyone who added tagged time while it was down. You do not need PowerShell or Azure Portal for this.
+        </MudAlert>
+
+        @if (status?.Users.Any(u => u.Status == GoogleCalendarSyncRules.StatusWatchExpired) == true)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3">
+                Live import is down: Google stopped notifying us because these watches expired.
+                <strong>Renew watches</strong> turns push back on. That does not replay missed events —
+                use the cloud icon on each row for tagged time that was saved while expired.
+            </MudAlert>
+        }
+
+        @if (status != null && !status.WebhookUrlReady)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3">
+                No webhook URL. Watches cannot be registered or renewed
+                (<code>Google__WebhookUrl</code> and Function host are both empty).
+            </MudAlert>
+        }
+
+        <div class="d-flex gap-2 flex-wrap mb-1">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Science"
+                       OnClick="ProbeQueueAsync" Disabled="@isProbing">
+                @if (isProbing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Test import queue
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Update"
+                       OnClick="RenewWatchesAsync" Disabled="@(isRenewing || status?.WebhookUrlReady == false)">
+                @if (isRenewing)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Renew watches
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="ReloadAsync" Disabled="@isLoading">
+                Refresh
+            </MudButton>
+        </div>
+        @if (status != null)
+        {
+            <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                Watch URL: @status.WebhookUrlSource
+            </MudText>
+        }
+
+        @if (probeResult != null)
+        {
+            <MudAlert Severity="@(probeResult.Success ? Severity.Success : Severity.Error)"
+                      Variant="Variant.Outlined" Class="mb-3" Dense="true">
+                @probeResult.Message
+            </MudAlert>
+        }
+
+        @if (status != null && !status.StorageConfigured)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3">
+                Function storage is not configured. Import cannot queue.
+            </MudAlert>
+        }
+
+        <SectionCard Title="Connected Google accounts">
+            <MudTable Items="@(status?.Users ?? new())" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
+                      Loading="@isLoading" Striped="true">
+                <HeaderContent>
+                    <MudTh>Name</MudTh>
+                    <MudTh>Email</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Watch expires</MudTh>
+                    <MudTh Style="width:52px;"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">@context.DisplayName</MudTd>
+                    <MudTd DataLabel="Email">@context.Email</MudTd>
+                    <MudTd DataLabel="Status">
+                        <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">@context.Status</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Watch expires">
+                        @(context.WatchExpiresAtUtc == null
+                            ? "—"
+                            : context.WatchExpiresAtUtc.Value.ToLocalTime().ToString("g"))
+                    </MudTd>
+                    <MudTd>
+                        <MudTooltip Text="Pull missed events from Google">
+                            <MudIconButton Icon="@Icons.Material.Filled.CloudSync" Size="Size.Small"
+                                           OnClick="@(() => PullEventsAsync(context))" />
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
+                             Style="color: var(--mud-palette-text-secondary);">
+                        No one has Google Calendar connected.
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </SectionCard>
+
+        <SectionCard Title="Recent import activity" Class="mt-4">
+            <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                From application logs. After Test import queue, wait a few seconds and Refresh.
+            </MudText>
+            @if (activity?.Success == false)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mb-2">
+                    @activity.Error
+                </MudAlert>
+            }
+            <MudTable Items="@(activity?.Entries ?? new())" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm"
+                      Loading="@isLoading" Striped="true">
+                <HeaderContent>
+                    <MudTh Style="width:150px;">When</MudTh>
+                    <MudTh Style="width:80px;">Level</MudTh>
+                    <MudTh>What happened</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="When">
+                        <code style="font-size: 0.8rem;">@FormatWhen(context.Timestamp)</code>
+                    </MudTd>
+                    <MudTd DataLabel="Level">
+                        <MudChip T="string" Size="Size.Small" Color="@LevelColor(context.SeverityLevel)">
+                            @LevelName(context.SeverityLevel)
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="What happened">
+                        <div>@GoogleCalendarSyncRules.ExplainTrace(context.Message)</div>
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary); white-space: pre-wrap;">
+                            @context.Message
+                        </MudText>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
+                             Style="color: var(--mud-palette-text-secondary);">
+                        No calendar import lines in the last 24 hours.
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </SectionCard>
+    }
+</PageLoader>

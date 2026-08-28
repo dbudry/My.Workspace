@@ -1,4 +1,6 @@
 using FluentValidation;
+using Azure.Storage.Blobs;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
@@ -48,7 +50,8 @@ namespace My.Functions
         private readonly GoogleCalendarService google;
         private readonly GoogleTokenEncryptor encryptor;
         private readonly TeamAvailabilityPublisher teamAvailabilityPublisher;
-        private readonly GoogleCalendarWebhookImportQueue webhookImportQueue;
+        private readonly GoogleCalendarImportQueue importQueue;
+        private readonly BlobServiceClient blobService;
         private readonly ILogger<GoogleCalendarFunction> logger;
         private readonly RedirectUriQueryValidator redirectUriValidator;
         private readonly IValidator<GoogleCalendarCallbackDto> callbackValidator;
@@ -60,7 +63,8 @@ namespace My.Functions
             GoogleCalendarService google,
             GoogleTokenEncryptor encryptor,
             TeamAvailabilityPublisher teamAvailabilityPublisher,
-            GoogleCalendarWebhookImportQueue webhookImportQueue,
+            GoogleCalendarImportQueue importQueue,
+            BlobServiceClient blobService,
             ILogger<GoogleCalendarFunction> logger,
             RedirectUriQueryValidator redirectUriValidator,
             IValidator<GoogleCalendarCallbackDto> callbackValidator,
@@ -74,7 +78,8 @@ namespace My.Functions
             this.google = google;
             this.encryptor = encryptor;
             this.teamAvailabilityPublisher = teamAvailabilityPublisher;
-            this.webhookImportQueue = webhookImportQueue;
+            this.importQueue = importQueue;
+            this.blobService = blobService;
             this.logger = logger;
             this.redirectUriValidator = redirectUriValidator;
             this.callbackValidator = callbackValidator;
@@ -378,8 +383,9 @@ namespace My.Functions
             List<Google.Apis.Calendar.v3.Data.Event> events;
             try
             {
+                using var listCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
                 events = await google.ListEventsInRangeAsync(
-                    settings.GoogleRefreshToken, settings.GoogleCalendarId, fromUtc, toUtc, req.FunctionContext.CancellationToken);
+                    settings.GoogleRefreshToken, settings.GoogleCalendarId, fromUtc, toUtc, listCts.Token);
             }
             catch (CalendarRangeTooLargeException ex)
             {
@@ -387,6 +393,12 @@ namespace My.Functions
                 // actionable hint (narrow the range) is more useful than a stack trace.
                 logger.LogWarning(ex, "Pull-from-Google: range too large for user {UserId}.", targetUserId);
                 result.Error = ex.Message;
+                return new OkObjectResult(result);
+            }
+            catch (OperationCanceledException ex)
+            {
+                logger.LogWarning(ex, "Pull-from-Google timed out listing events for user {UserId}.", targetUserId);
+                result.Error = "The pull timed out. The Function App may have been waking up — try again.";
                 return new OkObjectResult(result);
             }
             catch (Exception ex)
@@ -542,8 +554,11 @@ namespace My.Functions
         }
 
         /// <summary>
-        /// Webhook receiver. Google calls this (unauthenticated) whenever the user's primary calendar changes.
-        /// We find the user by channelId (echoed in X-Goog-Channel-Id) and pull the delta.
+        /// Webhook receiver. Google calls this (unauthenticated) whenever the user's
+        /// primary calendar changes. Does not touch SQL: enqueue the channel id via
+        /// QueueClient (explicit send, not an output binding) and return 200 so
+        /// Consumption + paused SQL cannot drop the work or storm the pool.
+        /// Enqueue failure is 500 so Google retries (Storage only).
         /// </summary>
         [Function("GoogleCalendarWebhook")]
         public async Task<IActionResult> WebhookAsync(
@@ -553,84 +568,214 @@ namespace My.Functions
             string? channelToken = HeaderOrNull(req, "X-Goog-Channel-Token");
             string? resourceState = HeaderOrNull(req, "X-Goog-Resource-State");
 
+            logger.LogInformation(
+                GoogleCalendarLogEvents.WebhookReceived,
+                "Google calendar webhook received. ChannelId={ChannelId} ResourceState={ResourceState}",
+                channelId, resourceState);
+
             if (string.IsNullOrEmpty(channelId))
                 return new BadRequestObjectResult("Missing X-Goog-Channel-Id.");
 
-            var settings = (await settingsRepository.Get(s => s.GoogleChannelId == channelId)).FirstOrDefault();
-            if (settings == null)
+            if (!GoogleCalendarWebhookRules.ShouldEnqueue(channelId, resourceState))
             {
-                logger.LogInformation("Google webhook for unknown channel {ChannelId}; ignoring.", channelId);
+                logger.LogInformation(
+                    GoogleCalendarLogEvents.WebhookHandshake,
+                    "Google calendar webhook handshake or skip; not enqueued. ChannelId={ChannelId} ResourceState={ResourceState}",
+                    channelId, resourceState);
                 return new OkResult();
             }
 
-            if (!GoogleCalendarWebhookRules.IsChannelTokenValid(channelToken, settings.GoogleChannelToken))
+            try
             {
-                logger.LogWarning("Google webhook rejected for channel {ChannelId}: invalid or missing channel token.", channelId);
+                await importQueue.EnqueueAsync(
+                    new GoogleCalendarImportQueueMessage
+                    {
+                        ChannelId = channelId,
+                        ChannelToken = channelToken,
+                        ResourceState = resourceState
+                    },
+                    CancellationToken.None);
                 return new OkResult();
             }
-
-            if (!GoogleCalendarWebhookRules.ShouldImport(
-                    resourceState,
-                    settings.ImportFromGoogleCalendar,
-                    settings.GoogleRefreshToken,
-                    settings.GoogleCalendarId))
-                return new OkResult();
-
-            // Acknowledge immediately. Google retries any non-2xx, which used to
-            // turn a single import failure into a SQL-pool storm. The worker
-            // runs ImportChangesAsync; nightly self-heal covers a lost queue item.
-            if (webhookImportQueue.TryEnqueue(settings.UserId))
-                logger.LogInformation("Google webhook queued import for user {UserId}.", settings.UserId);
-            else
-                logger.LogInformation("Google webhook import already queued for user {UserId}.", settings.UserId);
-
-            return new OkResult();
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    GoogleCalendarLogEvents.EnqueueFailed,
+                    ex,
+                    "Failed to enqueue Google calendar import for channel {ChannelId}. {Error}",
+                    channelId, GoogleCalendarImportQueue.DescribeError(ex));
+                return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+            }
         }
 
         /// <summary>
-        /// Incremental import for a queued webhook. Reloads settings so a stale
-        /// snapshot cannot import after the user disconnects.
+        /// Durable import. Storage keeps the message until this succeeds, so a paused
+        /// SQL resume (EF retry) can take as long as the function timeout.
         /// </summary>
-        internal async Task ImportQueuedWebhookAsync(string userId, CancellationToken cancellationToken)
+        [Function("GoogleCalendarImportFromQueue")]
+        public async Task ImportFromQueueAsync(
+            [QueueTrigger(Constants.API.GoogleCalendar.ImportQueue, Connection = "AzureWebJobsStorage")]
+            string raw,
+            int dequeueCount,
+            CancellationToken cancellationToken)
         {
-            var settings = (await settingsRepository.Get(s => s.UserId == userId)).FirstOrDefault();
+            if (GoogleCalendarWebhookRules.IsApproachingPoison(dequeueCount))
+            {
+                logger.LogError(
+                    GoogleCalendarLogEvents.ApproachingPoison,
+                    "Google calendar import is approaching the poison queue. DequeueCount={DequeueCount} MaxBeforePoison=8 Raw={Raw}",
+                    dequeueCount, raw);
+            }
+
+            var message = GoogleCalendarImportQueue.TryParse(raw);
+            if (message == null || string.IsNullOrEmpty(message.ChannelId))
+            {
+                logger.LogError(
+                    GoogleCalendarLogEvents.QueueParseFailed,
+                    "Google calendar import queue message missing ChannelId; dropping. DequeueCount={DequeueCount} Raw={Raw}",
+                    dequeueCount, raw);
+                return;
+            }
+
+            await ProcessQueuedWebhookAsync(message, dequeueCount, cancellationToken);
+        }
+
+        /// <summary>
+        /// Maps a queued channel notification to the user and runs incremental import.
+        /// Reloads settings so a stale snapshot cannot import after disconnect.
+        /// </summary>
+        internal async Task ProcessQueuedWebhookAsync(
+            GoogleCalendarImportQueueMessage message,
+            int dequeueCount,
+            CancellationToken cancellationToken)
+        {
+            if (GoogleCalendarWebhookRules.IsProbeChannel(message.ChannelId))
+            {
+                logger.LogWarning(
+                    GoogleCalendarLogEvents.ProbeOk,
+                    "Google calendar import queue worker is running. DequeueCount={DequeueCount}",
+                    dequeueCount);
+                return;
+            }
+
+            var settings = (await settingsRepository.Get(s => s.GoogleChannelId == message.ChannelId))
+                .FirstOrDefault();
             if (settings == null)
             {
-                logger.LogInformation("Queued Google import skipped; no settings for user {UserId}.", userId);
+                logger.LogWarning(
+                    GoogleCalendarLogEvents.UnknownChannel,
+                    "Google calendar import skipped: unknown channel {ChannelId} DequeueCount={DequeueCount}. Watch may have been renewed.",
+                    message.ChannelId, dequeueCount);
+                return;
+            }
+
+            if (!GoogleCalendarWebhookRules.IsChannelTokenValid(message.ChannelToken, settings.GoogleChannelToken))
+            {
+                logger.LogError(
+                    GoogleCalendarLogEvents.InvalidChannelToken,
+                    "Google calendar import skipped: invalid channel token for {ChannelId} user {UserId} DequeueCount={DequeueCount}.",
+                    message.ChannelId, settings.UserId, dequeueCount);
                 return;
             }
 
             if (!GoogleCalendarWebhookRules.ShouldImport(
-                    GoogleCalendarWebhookRules.ExistsResourceState,
+                    message.ResourceState,
                     settings.ImportFromGoogleCalendar,
                     settings.GoogleRefreshToken,
                     settings.GoogleCalendarId))
             {
-                logger.LogInformation("Queued Google import skipped; import disabled for user {UserId}.", userId);
+                logger.LogInformation(
+                    GoogleCalendarLogEvents.ImportSkipped,
+                    "Google calendar import skipped for user {UserId}. ImportEnabled={ImportEnabled} ResourceState={ResourceState} HasRefreshToken={HasRefreshToken} HasCalendarId={HasCalendarId}",
+                    settings.UserId,
+                    settings.ImportFromGoogleCalendar,
+                    message.ResourceState,
+                    !string.IsNullOrEmpty(settings.GoogleRefreshToken),
+                    !string.IsNullOrEmpty(settings.GoogleCalendarId));
                 return;
             }
 
+            await using var importLock = await GoogleCalendarImportUserLock.AcquireAsync(
+                blobService, settings.UserId, logger, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            await ImportChangesAsync(settings);
+            await ImportChangesAsync(settings, dequeueCount);
         }
 
-        private async Task ImportChangesAsync(UserSettings settings)
+        private async Task ImportChangesAsync(UserSettings settings, int dequeueCount = 0)
         {
             // A missing token means this is a first/reconnect window list (includes
             // ShowDeleted tombstones). Do not treat those as "delete the Tyme row."
-            var incrementalSync = !string.IsNullOrEmpty(settings.GoogleSyncToken);
+            var hadToken = !string.IsNullOrEmpty(settings.GoogleSyncToken);
+            var incrementalSync = hadToken;
+
+            logger.LogInformation(
+                GoogleCalendarLogEvents.ImportStarted,
+                "Google calendar import started for user {UserId}. Incremental={Incremental} DequeueCount={DequeueCount}",
+                settings.UserId, incrementalSync, dequeueCount);
 
             var (events, nextSync) = await google.SyncEventsAsync(
                 settings.GoogleRefreshToken!, settings.GoogleCalendarId!, settings.GoogleSyncToken);
 
+            if (GoogleCalendarWebhookRules.ShouldResyncWithoutToken(hadToken, nextSync))
+            {
+                logger.LogWarning(
+                    GoogleCalendarLogEvents.SyncTokenInvalidated,
+                    "Google sync token invalidated for user {UserId}; re-syncing without token. PriorEventCount={PriorEventCount}",
+                    settings.UserId, events.Count);
+                settings.GoogleSyncToken = null;
+                await settingsRepository.Update(settings);
+                incrementalSync = false;
+                (events, nextSync) = await google.SyncEventsAsync(
+                    settings.GoogleRefreshToken!, settings.GoogleCalendarId!, syncToken: null);
+            }
+
+            var created = 0;
+            var updated = 0;
+            var cancelled = 0;
+            var skippedNoTag = 0;
+            var skippedUnresolved = 0;
+            var failed = 0;
+
             foreach (var ev in events)
-                await TryImportEventAsync(ev, settings, incrementalSync);
+            {
+                try
+                {
+                    var outcome = await TryImportEventAsync(ev, settings, incrementalSync);
+                    switch (outcome)
+                    {
+                        case EventImportOutcome.Created: created++; break;
+                        case EventImportOutcome.Updated: updated++; break;
+                        case EventImportOutcome.Cancelled: cancelled++; break;
+                        case EventImportOutcome.SkippedNoTag: skippedNoTag++; break;
+                        case EventImportOutcome.SkippedUnresolvedTag: skippedUnresolved++; break;
+                        case EventImportOutcome.SkippedOurs:
+                        case EventImportOutcome.SkippedNoDates:
+                        case EventImportOutcome.SkippedDeclinedInvite:
+                        case EventImportOutcome.SkippedMonthSubmitted:
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    logger.LogError(
+                        GoogleCalendarLogEvents.EventImportFailed,
+                        ex,
+                        "Failed to import Google event {EventId} for user {UserId}; continuing.",
+                        ev.Id, settings.UserId);
+                }
+            }
 
             if (!string.IsNullOrEmpty(nextSync) && nextSync != settings.GoogleSyncToken)
             {
                 settings.GoogleSyncToken = nextSync;
                 await settingsRepository.Update(settings);
             }
+
+            logger.LogInformation(
+                GoogleCalendarLogEvents.ImportFinished,
+                "Google calendar import finished for user {UserId}. Scanned={Scanned} Created={Created} Updated={Updated} Cancelled={Cancelled} SkippedNoTag={SkippedNoTag} SkippedUnresolvedTag={SkippedUnresolved} Failed={Failed} Incremental={Incremental}",
+                settings.UserId, events.Count, created, updated, cancelled, skippedNoTag, skippedUnresolved, failed, incrementalSync);
         }
 
         /// <summary>
@@ -971,13 +1116,11 @@ namespace My.Functions
 
         private static string? ResolveWebhookUrl(HttpRequestData req)
         {
-            var configured = Environment.GetEnvironmentVariable("Google__WebhookUrl");
-            if (!string.IsNullOrEmpty(configured))
-                return configured;
-
-            var host = HeaderOrNull(req, "X-Forwarded-Host") ?? req.Url.Host;
-            var scheme = HeaderOrNull(req, "X-Forwarded-Proto") ?? "https";
-            return $"{scheme}://{host}/api/{Constants.API.GoogleCalendar.Webhook}";
+            return GoogleCalendarWebhookUrlRules.ResolveFromHttp(
+                Environment.GetEnvironmentVariable("Google__WebhookUrl"),
+                HeaderOrNull(req, "X-Forwarded-Host") ?? req.Url.Host,
+                HeaderOrNull(req, "X-Forwarded-Proto") ?? "https",
+                Environment.GetEnvironmentVariable("WEBSITE_HOSTNAME"));
         }
 
         private static string? HeaderOrNull(HttpRequestData req, string name)

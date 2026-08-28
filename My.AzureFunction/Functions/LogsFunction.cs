@@ -62,6 +62,7 @@ public class LogsFunction
         var hours = int.TryParse(req.Query["hours"], out var h) ? h : 24;
         var top = int.TryParse(req.Query["top"], out var t) ? t : 200;
         var level = LogsQueryRules.ParseLevel(req.Query["level"]);
+        var topic = req.Query["topic"];
 
         var response = new LogsResponseDto
         {
@@ -77,7 +78,7 @@ public class LogsFunction
             return new OkObjectResult(response);
         }
 
-        var kql = LogsQueryRules.Build(hours, level, top);
+        var kql = LogsQueryRules.Build(hours, level, top, topic);
 
         try
         {
