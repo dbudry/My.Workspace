@@ -72,6 +72,9 @@ The SPA may send Google’s `hd` parameter when **exactly one** domain is config
 - [ ] Consent screen configured  
 - [ ] Web client created  
 - [ ] Redirect URIs for every environment you use  
-- [ ] Client ID in client + API  
-- [ ] Client secret + encryption key on API (if using Calendar/Drive)  
+- [ ] Client ID + secret applied via `.\Scripts\Setup-Local.ps1` (local) or Function App settings / `Setup-Azure.ps1` (production)  
+- [ ] Token encryption key generated (Setup-Local / Setup-Azure do this)  
 - [ ] Calendar/Drive APIs enabled (optional)  
+
+Next: [SETUP-FROM-SCRATCH.md](SETUP-FROM-SCRATCH.md) (local) or [SETUP-AZURE.md](SETUP-AZURE.md) (production).  
+

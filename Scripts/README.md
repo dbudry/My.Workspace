@@ -4,10 +4,28 @@ Helper scripts grouped by prefix:
 
 | Prefix | Group | Scripts |
 |--------|-------|---------|
+| `Setup-` | First-time bootstrap | Local config, Azure resource provision |
 | `Dev-` | Local development environment | Start full debug session, function host only, Docker SQL setup |
 | `EfCore-` | EF Core **schema** migrations | Add migration, apply migrations to local DB |
 
 EF Core migration **code** lives in `My.DAL/Data/Migrations/` — not in this folder. My.Workspace is greenfield-oriented: bake schema into `InitialMigration` for new installs.
+
+## Setup- (first-time)
+
+| Script | Purpose |
+|--------|---------|
+| `Setup-Local.ps1` | **Start here for local.** Creates `local.settings.json`, generates token encryption key, writes Google Client ID into API + client settings. |
+| `Setup-Azure.ps1` | **Production.** Creates resource group, storage, Function App, Static Web App, App Insights, optional SQL. Use `-WhatIf` first. |
+
+```powershell
+.\Scripts\Setup-Local.ps1
+.\Scripts\Setup-Local.ps1 -GoogleClientId "....apps.googleusercontent.com" -GoogleClientSecret "GOCSPX-..."
+
+.\Scripts\Setup-Azure.ps1 -WhatIf
+.\Scripts\Setup-Azure.ps1 -NamePrefix my-workspace -Location eastus
+```
+
+Docs: [SETUP-FROM-SCRATCH.md](../docs/SETUP-FROM-SCRATCH.md), [SETUP-AZURE.md](../docs/SETUP-AZURE.md).
 
 ## Dev- (local development)
 
@@ -17,6 +35,7 @@ EF Core migration **code** lives in `My.DAL/Data/Migrations/` — not in this fo
 | `Dev-StartFunctionHost.ps1` / `.cmd` | Functions API only — calls `Dev-SetupDockerSql.ps1`, then `func start` on 7074. |
 | `Dev-StartClient.ps1` / `.cmd` | **Client only** — restart `dotnet watch` on 7047 (kills stale port, cleans output by default). Use when the full session is already up. |
 | `Dev-SetupDockerSql.ps1` | SQL Server Docker container + updates `local.settings.json`. Called by the Dev-Start* scripts. |
+| `Dev-TestCalendarWebhook.ps1` | POST a fake Google Calendar push to local Functions (enqueue / queue trigger smoke test). |
 
 ```powershell
 .\Scripts\Dev-StartDebugSession.ps1          # full stack (client: clean + watch)
