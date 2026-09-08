@@ -5,7 +5,10 @@
 #
 #   Detect app changes
 #     → Build & Test
-#     → Create GitHub Release v{Version} from My.Client/My.Client.csproj
+#     → Create GitHub Release with the next tag (v1.5.0, v1.6.0, …)
+#
+# In-app <Version> in My.Client stays at 1.0.0 (greenfield for self-hosters).
+# GitHub Release tags increment independently of that app version.
 #
 # Downstream consumers deploy with their own Azure (or other) pipeline.
 
@@ -30,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app_changed: ${{ steps.changes.outputs.app_changed }}
+      product_changed: ${{ steps.changes.outputs.product_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,12 +51,19 @@ jobs:
           CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" || true)
           echo "Changed files:"; echo "$CHANGED"
 
+          # Build when product code or CI changes.
           APP_CHANGED=false
           if grep -E '^(My\.Client/|My\.AzureFunction/|My\.DAL/|My\.Shared/|\.github/workflows/)' <<<"$CHANGED" >/dev/null; then
             APP_CHANGED=true
           fi
+          # GitHub Release tags only when product code changes (not workflow-only).
+          PRODUCT_CHANGED=false
+          if grep -E '^(My\.Client/|My\.AzureFunction/|My\.DAL/|My\.Shared/)' <<<"$CHANGED" >/dev/null; then
+            PRODUCT_CHANGED=true
+          fi
           echo "app_changed=$APP_CHANGED" >> "$GITHUB_OUTPUT"
-          echo "app_changed=$APP_CHANGED"
+          echo "product_changed=$PRODUCT_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "app_changed=$APP_CHANGED product_changed=$PRODUCT_CHANGED"
 
   build:
     name: Build & Test
@@ -65,7 +76,7 @@ jobs:
     needs: [ detect-changes, build ]
     if: >-
       always()
-      && needs.detect-changes.outputs.app_changed == 'true'
+      && needs.detect-changes.outputs.product_changed == 'true'
       && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -75,17 +86,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read version
+      - name: Next GitHub release tag (independent of in-app 1.0.0)
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          V=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ_PATH" | head -n1)
-          if [[ -z "$V" ]]; then
-            echo "::error::Could not parse <Version> from $CSPROJ_PATH"; exit 1
+          APP_V=$(grep -oP '(?<=<Version>)[^<]+' "$CSPROJ_PATH" | head -n1 || true)
+          echo "In-app <Version>: ${APP_V:-<none>} (stays greenfield; not used for the GitHub tag)"
+
+          # Latest semver release tag on the repo (vMAJOR.MINOR.PATCH). Default v0.0.0.
+          LATEST=$(gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's/^v//' \
+            | sort -V \
+            | tail -n1 || true)
+          if [[ -z "$LATEST" ]]; then
+            LATEST="0.0.0"
           fi
-          echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "Release version: $V"
+
+          MAJOR=$(echo "$LATEST" | cut -d. -f1)
+          MINOR=$(echo "$LATEST" | cut -d. -f2)
+          NEXT_MINOR=$((MINOR + 1))
+          NEXT="${MAJOR}.${NEXT_MINOR}.0"
+          TAG="v${NEXT}"
+
+          echo "Latest GitHub release: v${LATEST}"
+          echo "Next GitHub release:   ${TAG}"
+          echo "version=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "app_version=${APP_V:-1.0.0}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release (idempotent)
         env:
@@ -93,12 +124,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          APP_V="${{ steps.version.outputs.app_version }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; skipping creation"
             exit 0
           fi
           gh release create "$TAG" \
             --title "Release $TAG" \
-            --notes "Automated release from master (v${{ steps.version.outputs.version }}). Built and tested on GitHub Actions. Consumers deploy with their own hosting." \
+            --notes "Automated release from master (${TAG}). In-app product version remains ${APP_V}. Built and tested on GitHub Actions. Consumers deploy with their own hosting." \
             --target "${{ github.sha }}"
