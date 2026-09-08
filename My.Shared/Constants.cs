@@ -787,6 +787,17 @@ namespace My.Shared.Constants
                 }
             }
 
+            public static class GoogleDrive
+            {
+                public const string Api = "googledrive";
+
+                /// <summary>GET — OAuth URL for Intranet Drive (browse/attach). Incremental on the Calendar grant.</summary>
+                public const string GetAuthUrl = $"{Api}/authurl";
+
+                /// <summary>POST — exchanges the Drive consent code; does not start Calendar sync.</summary>
+                public const string Callback = $"{Api}/callback";
+            }
+
             public static class Analytics
             {
                 public const string Api = "analytics";

@@ -97,8 +97,12 @@
                 else
                 {
                     <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">
-                        This task is locked and cannot be edited.
+                        @TrackedTaskLockRules.SubmittedMonthMessage
                     </MudAlert>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-2"
+                               OnClick="GoToSubmit">
+                        @TrackedTaskLockRules.OpenSubmitLabel
+                    </MudButton>
                 }
             }
         }

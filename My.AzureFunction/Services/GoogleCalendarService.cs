@@ -5,7 +5,6 @@ using Google.Apis.Auth.OAuth2.Requests;
 using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Calendar.v3;
 using Google.Apis.Calendar.v3.Data;
-using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Microsoft.Extensions.Logging;
 using My.DAL.Models;
@@ -22,14 +21,7 @@ namespace My.Functions.Services
         public const string ExtendedPropSourceValue = "tyme";
         public const string ExtendedPropTymeTaskId = "tymeTaskId";
 
-        private static readonly string[] CalendarScopes = new[]
-        {
-            CalendarService.Scope.Calendar,
-            DriveService.Scope.DriveFile,
-            DriveService.Scope.DriveReadonly,
-            "https://www.googleapis.com/auth/userinfo.email",
-            "openid"
-        };
+        private static readonly string[] CalendarScopes = GoogleCalendarOAuthRules.ConnectScopes;
 
         private readonly GoogleTokenEncryptor encryptor;
         private readonly ILogger<GoogleCalendarService> logger;
@@ -47,17 +39,12 @@ namespace My.Functions.Services
         public bool IsConfigured => !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret);
 
         /// <summary>
-        /// Builds the consent URL the user must visit to authorize calendar access.
-        /// Pass <paramref name="loginHint"/> (the user's email) to skip Google's account chooser
-        /// and force the OAuth to bind to the same account they signed into the app with.
-        /// When a single hosted domain is configured, or the login hint has a domain,
-        /// the <c>hd</c> param is set so Google prefers that workspace.
+        /// Builds the consent URL for Calendar-only access. Does not request Drive and does not
+        /// send <c>login_hint</c> — both were failing Google's consent page with "Backend Error"
+        /// for some Workspace users. Optional <paramref name="hostedDomain"/> sets <c>hd</c> when
+        /// the tenant policy has a single domain hint.
         /// </summary>
-        public string BuildAuthorizationUrl(
-            string redirectUri,
-            string state,
-            string? loginHint = null,
-            string? hostedDomain = null)
+        public string BuildAuthorizationUrl(string redirectUri, string state, string? hostedDomain = null)
         {
             var flow = CreateFlow();
             var req = flow.CreateAuthorizationCodeRequest(redirectUri);
@@ -67,36 +54,19 @@ namespace My.Functions.Services
             {
                 google.AccessType = "offline";
                 google.Prompt = "consent";
+                // Do not set include_granted_scopes. Re-presenting a prior Drive grant
+                // with prompt=consent is what produces Google's "Backend Error" for
+                // some Workspace users. Intranet Drive uses its own consent URL with
+                // include_granted_scopes so Calendar + Drive can share one token.
             }
-            var url = req.Build().ToString();
-
-            // Append login_hint + optional hd. The Google client library doesn't expose
-            // these on the request object, so we tack them on the built URL.
-            var sep = url.Contains('?') ? "&" : "?";
-            var hd = hostedDomain;
-            if (string.IsNullOrWhiteSpace(hd)
-                && !string.IsNullOrWhiteSpace(loginHint)
-                && loginHint.Contains('@'))
-            {
-                var at = loginHint.LastIndexOf('@');
-                if (at >= 0 && at < loginHint.Length - 1)
-                    hd = loginHint[(at + 1)..].Trim();
-            }
-
-            if (!string.IsNullOrWhiteSpace(hd))
-            {
-                url += $"{sep}hd={Uri.EscapeDataString(hd.Trim())}";
-                sep = "&";
-            }
-
-            if (!string.IsNullOrEmpty(loginHint))
-                url += $"{sep}login_hint={Uri.EscapeDataString(loginHint)}";
-
-            return url;
+            return GoogleCalendarOAuthRules.AppendHostedDomainHint(req.Build().ToString(), hostedDomain);
         }
 
-        /// <summary>Exchanges an auth code for tokens. Returns (refreshToken, email).</summary>
-        public async Task<(string refreshToken, string? email)> ExchangeCodeAsync(
+        /// <summary>
+        /// Exchanges an auth code for tokens. Refresh token is null on incremental
+        /// re-consent when Google does not re-issue one — caller must keep the stored token.
+        /// </summary>
+        public async Task<(string? refreshToken, string? email)> ExchangeCodeAsync(
             string code, string redirectUri, CancellationToken ct = default)
         {
             var flow = CreateFlow();
@@ -105,10 +75,6 @@ namespace My.Functions.Services
                 code: code,
                 redirectUri: redirectUri,
                 taskCancellationToken: ct);
-
-            if (string.IsNullOrEmpty(token.RefreshToken))
-                throw new InvalidOperationException(
-                    "Google did not return a refresh_token. The user may have previously authorized without revoking — have them revoke access at myaccount.google.com and try again.");
 
             string? email = null;
             if (!string.IsNullOrEmpty(token.IdToken))

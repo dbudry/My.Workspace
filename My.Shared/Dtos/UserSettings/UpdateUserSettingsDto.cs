@@ -17,6 +17,17 @@ namespace My.Shared.Dtos.UserSettings
         public bool PublishToGoogleCalendar { get; set; }
         public bool ImportFromGoogleCalendar { get; set; }
 
+        /// <summary>
+        /// When true, personal Google import/export only sync Availability projects.
+        /// </summary>
+        public bool GoogleCalendarAvailabilityOnly { get; set; }
+
+        /// <summary>
+        /// When a project stops being eligible for personal Google sync, also delete the
+        /// already-published Google event instead of leaving it. Default off.
+        /// </summary>
+        public bool GoogleCalendarRemoveExcludedEvents { get; set; }
+
         /// <summary>Google color id ("1"-"11") for matched Tyme events. Null = calendar default.</summary>
         public string? TymeEventColorId { get; set; }
         /// <summary>Google color id ("1"-"11") for unmatched Tyme events. Null = calendar default.</summary>

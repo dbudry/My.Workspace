@@ -1766,10 +1766,11 @@ namespace My.Functions
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.UserId == userId);
 
-            if (settings == null || string.IsNullOrEmpty(settings.GoogleRefreshToken))
-                return (string.Empty, new BadRequestObjectResult("Google Drive integration is not active for your account. It is normally set up automatically when you sign in. You can connect or reconnect from Settings."));
+            var hasToken = settings != null && !string.IsNullOrEmpty(settings.GoogleRefreshToken);
+            if (GoogleDriveOAuthRules.NeedsDriveConsent(hasToken, settings?.GoogleDriveGranted ?? false))
+                return (string.Empty, new ObjectResult(GoogleDriveOAuthRules.ConsentRequiredMessage) { StatusCode = 409 });
 
-            return (settings.GoogleRefreshToken, null);
+            return (settings!.GoogleRefreshToken!, null);
         }
 
         private async Task<IntranetMediaPolicy> LoadIntranetMediaPolicyAsync(CancellationToken ct)

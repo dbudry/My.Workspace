@@ -36,6 +36,15 @@
                 a <code>[slug]</code> stay private and are never imported.
             </MudText>
 
+            <MudSwitch T="bool" @bind-Value="availabilityOnly" Color="Color.Primary" Class="mb-0"
+                       Disabled="@(!publishToGoogle && !importFromGoogle)">
+                Only Availability projects (OOO, PTO)
+            </MudSwitch>
+            <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                Limit import and export to projects marked Share availability with team. Work
+                projects stay in Tyme.
+            </MudText>
+
             @if (publishToGoogle)
             {
                 <MudDivider Class="my-2" />
@@ -75,6 +84,7 @@
     // reflect what's about to happen if the user doesn't change anything.
     private bool publishToGoogle = true;
     private bool importFromGoogle = true;
+    private bool availabilityOnly;
 
     private DateTime? fromDate;
     private DateTime? toDate;
@@ -91,11 +101,11 @@
         var range = publishToGoogle && fromDate is not null && toDate is not null
             ? new BackfillRange(fromDate.Value, toDate.Value)
             : null;
-        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, range)));
+        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, availabilityOnly, range)));
     }
 
     private void SkipBackfill() =>
-        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, null)));
+        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, availabilityOnly, null)));
 
     public record BackfillRange(DateTime From, DateTime To);
 
@@ -104,5 +114,5 @@
     /// and, if export stayed on, the optional historical date range to push. Range is null
     /// when publishToGoogle is off (nothing to backfill) or the user chose "Skip backfill".
     /// </summary>
-    public record BackfillChoice(bool PublishToGoogle, bool ImportFromGoogle, BackfillRange? Range);
+    public record BackfillChoice(bool PublishToGoogle, bool ImportFromGoogle, bool AvailabilityOnly, BackfillRange? Range);
 }

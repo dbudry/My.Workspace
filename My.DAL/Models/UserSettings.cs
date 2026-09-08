@@ -20,6 +20,12 @@ namespace My.DAL.Models
         /// <summary>Encrypted Google OAuth refresh token. Null = not connected.</summary>
         public string? GoogleRefreshToken { get; set; }
 
+        /// <summary>
+        /// True after Intranet Drive consent (or a legacy combined Calendar+Drive grant).
+        /// Calendar Connect no longer requests Drive.
+        /// </summary>
+        public bool GoogleDriveGranted { get; set; }
+
         /// <summary>The calendarId of the user's "Tyme" sub-calendar in Google.</summary>
         public string? GoogleCalendarId { get; set; }
 
@@ -31,6 +37,20 @@ namespace My.DAL.Models
 
         /// <summary>If true, slug-tagged events on the user's primary Google calendar are imported as Tyme tasks.</summary>
         public bool ImportFromGoogleCalendar { get; set; } = true;
+
+        /// <summary>
+        /// When true, personal Google import and export only apply to projects with
+        /// <c>IsSharedAvailability</c> (OOO/PTO). Work projects stay in Tyme. Default off.
+        /// </summary>
+        public bool GoogleCalendarAvailabilityOnly { get; set; }
+
+        /// <summary>
+        /// When a project stops being eligible for personal Google sync (Availability-only
+        /// turned on, or the project's Share-availability flag changed), also delete the
+        /// already-published Google event instead of just leaving it and unlinking. Default
+        /// off — the Google event is left alone unless the user opts in.
+        /// </summary>
+        public bool GoogleCalendarRemoveExcludedEvents { get; set; }
 
         /// <summary>Our UUID that identifies this user's push channel on Google's side.</summary>
         public string? GoogleChannelId { get; set; }

@@ -124,9 +124,18 @@ public class CalendarImportRulesTests
 
     [Fact]
     public void Incremental_webhook_still_deletes_tyme_on_google_cancel() =>
-        Assert.True(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(incrementalSync: true));
+        Assert.True(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(
+            incrementalSync: true, stillEligibleForPersonalSync: true));
 
     [Fact]
     public void Initial_or_range_sync_does_not_delete_tyme_on_google_cancel() =>
-        Assert.False(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(incrementalSync: false));
+        Assert.False(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(
+            incrementalSync: false, stillEligibleForPersonalSync: true));
+
+    [Fact]
+    public void Availability_only_excluded_project_never_deletes_tyme_on_google_cancel_even_incremental() =>
+        // A leftover work-project event predating an Availability-only toggle flip must not
+        // wipe Tyme just because someone deleted it directly in Google.
+        Assert.False(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(
+            incrementalSync: true, stillEligibleForPersonalSync: false));
 }

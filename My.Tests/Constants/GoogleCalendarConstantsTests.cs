@@ -18,6 +18,15 @@ public class GoogleCalendarConstantsTests
     }
 
     [Fact]
+    public void Drive_auth_routes_are_not_calendar_routes()
+    {
+        Assert.Equal("googledrive/authurl", Constants.API.GoogleDrive.GetAuthUrl);
+        Assert.Equal("googledrive/callback", Constants.API.GoogleDrive.Callback);
+        Assert.NotEqual(Constants.API.GoogleCalendar.GetAuthUrl, Constants.API.GoogleDrive.GetAuthUrl);
+        Assert.NotEqual(Constants.API.GoogleCalendar.Callback, Constants.API.GoogleDrive.Callback);
+    }
+
+    [Fact]
     public void Construct_includes_from_and_to_in_iso_date_format()
     {
         var url = Constants.API.GoogleCalendar.ConstructPullFromGoogle(

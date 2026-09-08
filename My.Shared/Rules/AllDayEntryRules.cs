@@ -100,6 +100,63 @@ public static class AllDayEntryRules
     public static TimeSpan DurationFor(DateTime start, DateTime? end, double workdayHours) =>
         TimeSpan.FromHours(workdayHours * WorkdaysInSpan(start, end));
 
+    /// <summary>Inclusive last calendar day of the span (start when <paramref name="end"/> is null or inverted).</summary>
+    public static DateTime InclusiveEnd(DateTime start, DateTime? end)
+    {
+        var s = start.Date;
+        var e = (end ?? start).Date;
+        return e < s ? s : e;
+    }
+
+    /// <summary>
+    /// Workdays of an all-day span that fall inside <paramref name="windowStart"/>–
+    /// <paramref name="windowEnd"/> (inclusive). Zero when they do not overlap.
+    /// </summary>
+    public static int OverlapWorkdays(
+        DateTime start, DateTime? end, DateTime windowStart, DateTime windowEnd)
+    {
+        var s = start.Date;
+        var last = InclusiveEnd(start, end);
+        var w0 = windowStart.Date;
+        var w1 = windowEnd.Date;
+        var from = s > w0 ? s : w0;
+        var to = last < w1 ? last : w1;
+        if (to < from) return 0;
+        return WorkdaysInSpan(from, to);
+    }
+
+    /// <summary>
+    /// Slice of <paramref name="fullDuration"/> for the workdays that fall in the window.
+    /// Used so a 9-workday OOO does not dump 72h into the week it starts.
+    /// </summary>
+    public static TimeSpan ProrateDurationForWindow(
+        DateTime start,
+        DateTime? end,
+        DateTime windowStart,
+        DateTime windowEnd,
+        TimeSpan fullDuration)
+    {
+        if (fullDuration <= TimeSpan.Zero) return TimeSpan.Zero;
+        var last = InclusiveEnd(start, end);
+        var fullDays = WorkdaysInSpan(start.Date, last);
+        var partDays = OverlapWorkdays(start, end, windowStart, windowEnd);
+        if (fullDays <= 0 || partDays <= 0) return TimeSpan.Zero;
+        if (partDays == fullDays) return fullDuration;
+        return TimeSpan.FromHours(fullDuration.TotalHours * partDays / fullDays);
+    }
+
+    /// <summary>
+    /// List/date label: one day is <c>09/02/26</c>; a span is <c>09/02/26 – 09/14/26</c>.
+    /// </summary>
+    public static string FormatInclusiveDateRange(DateTime start, DateTime? end, string format)
+    {
+        var s = start.Date;
+        var last = InclusiveEnd(start, end);
+        var a = s.ToString(format);
+        if (last == s) return a;
+        return $"{a} – {last.ToString(format)}";
+    }
+
     /// <summary>
     /// Timed entries use the stored <c>time</c> value (including seconds). All-day
     /// entries always recompute from dates so a 24h vacation is not lost.

@@ -14,6 +14,18 @@ else if (!string.IsNullOrEmpty(loadError))
 {
     <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@loadError</MudAlert>
 }
+else if (rows.Count == 0 || !VisibleRows.Any())
+{
+    @* Full-width, matching WeekEntryPanel's (Project view) empty state — the grid table
+       below is a fixed content-width layout (sized to its day columns), so an empty
+       state placed inside it centers on that narrower width instead of the page. *@
+    <EmptyState Class="tasks-project-empty"
+                Icon="@Icons.Material.Outlined.DateRange"
+                Title="@(rows.Count == 0 ? "No time this week" : "No matching entries")"
+                Message="@(rows.Count == 0
+                    ? "Nothing logged for this week yet. Click New Task to add a row, or use Project view."
+                    : "Nothing in this week matches your search.")" />
+}
 else
 {
     @* Rows scroll; Total sits under the grid (not sticky-over the last day cells). *@
@@ -39,22 +51,6 @@ else
                     <th class="week-entry-col-total">Total</th>
                 </tr>
             </thead>
-            @if (rows.Count == 0 || !VisibleRows.Any())
-            {
-                <tbody>
-                    <tr>
-                        <td colspan="@(1 + visibleDays.Count + 1)" class="week-entry-empty-cell">
-                            <EmptyState Icon="@Icons.Material.Outlined.DateRange"
-                                        Title="@(rows.Count == 0 ? "No time this week" : "No matching entries")"
-                                        Message="@(rows.Count == 0
-                                            ? "Nothing logged for this week yet. Click New Task to add a row, or use Project view."
-                                            : "Nothing in this week matches your search.")" />
-                        </td>
-                    </tr>
-                </tbody>
-            }
-            else
-            {
                 <tbody>
                     @foreach (var row in VisibleRows)
                     {
@@ -169,11 +165,8 @@ else
                         </tr>
                     }
                 </tbody>
-            }
         </table>
     </div>
-    @if (rows.Count > 0 && VisibleRows.Any())
-    {
         <table class="week-entry-grid-table week-entry-totals-table">
             <colgroup>
                 <col class="week-entry-col-task" />
@@ -198,6 +191,5 @@ else
                 </tr>
             </tfoot>
         </table>
-    }
     </div>
 }

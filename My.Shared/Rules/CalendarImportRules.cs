@@ -49,13 +49,16 @@ public static class CalendarImportRules
     }
 
     /// <summary>
-    /// Whether a Google <c>cancelled</c> event should delete the matching Tyme row.
-    /// True only for incremental webhook sync (we already had a sync token).
-    /// Initial connect, reconnect, pull-missed, and nightly range scans must not
-    /// delete — those lists include tombstones from "I disconnected and cleaned
-    /// Google," which is not "delete my Tyme week."
+    /// Whether a Google <c>cancelled</c>/declined event should delete the matching Tyme row.
+    /// Requires incremental webhook sync (we already had a sync token) — initial connect,
+    /// reconnect, pull-missed, and nightly range scans must not delete, since those lists
+    /// include tombstones from "I disconnected and cleaned Google," which is not "delete my
+    /// Tyme week." Also requires the linked task's project to still be eligible for personal
+    /// sync — once Availability-only excludes a project, a leftover event for it disappearing
+    /// on Google must not touch the Tyme row, since that project "stays in Tyme" by design.
     /// </summary>
-    public static bool ShouldDeleteTrackedTaskOnGoogleCancel(bool incrementalSync) => incrementalSync;
+    public static bool ShouldDeleteTrackedTaskOnGoogleCancel(bool incrementalSync, bool stillEligibleForPersonalSync) =>
+        incrementalSync && stillEligibleForPersonalSync;
 
     /// <summary>
     /// Distinguishes a genuine edit made directly in Google Calendar from the

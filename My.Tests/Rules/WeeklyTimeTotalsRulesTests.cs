@@ -71,6 +71,26 @@ public class WeeklyTimeTotalsRulesTests
     }
 
     [Fact]
+    public void All_day_multi_day_is_prorated_to_workdays_in_the_week()
+    {
+        // Jen's Africa OOO: Sep 2–14 (9 × 8h = 72h). Week of Aug 31 only has Wed–Fri.
+        var tasks = new[]
+        {
+            new WeeklyTimeTotalsRules.TaskDurationSlice(
+                new DateTime(2026, 9, 2),
+                TimeSpan.FromHours(72),
+                AdjustedDuration: null,
+                IsAllDay: true,
+                EndDate: new DateTime(2026, 9, 14))
+        };
+
+        var r = WeeklyTimeTotalsRules.Compute(
+            tasks, new DateTime(2026, 8, 31), new DateTime(2026, 9, 6),
+            EmployeeTimeDisplayMode.TheirTime);
+        Assert.Equal(TimeSpan.FromHours(24), r.PrimaryTotal);
+    }
+
+    [Fact]
     public void Outside_week_is_excluded()
     {
         var tasks = new[]
