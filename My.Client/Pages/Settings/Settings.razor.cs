@@ -25,15 +25,22 @@ namespace My.Client.Pages.Settings
         }
 
         private bool isLoading = true;
-        private bool isSaving;
+        private int activeTab;
+        private bool preferencesReady;
+        private int persistGeneration;
+        private CancellationTokenSource? persistCts;
+        private readonly SemaphoreSlim persistLock = new(1, 1);
         private bool use24HourTime;
         private TimeSpan? defaultStartTime = DefaultStartTimeRules.DefaultTimeOfDay;
         private string? selectedTimeZone;
 
         private bool isGoogleConnected;
+        private bool isGoogleLiveSyncActive = true;
         private string? googleEmail;
         private bool publishToGoogle;
         private bool importFromGoogle;
+        private bool availabilityOnlySync;
+        private bool removeExcludedEvents;
         private string? matchedColorId;
         private string? unmatchedColorId;
         private ProjectColorSource projectColorSource;
@@ -104,24 +111,19 @@ namespace My.Client.Pages.Settings
         public void Dispose()
         {
             Theme.Changed -= OnThemeChanged;
+            persistCts?.Cancel();
+            persistCts?.Dispose();
         }
 
         private async Task LoadSettings()
         {
+            preferencesReady = false;
             try
             {
                 SettingsService.InvalidateCache();
                 var settings = await SettingsService.GetSettingsAsync();
-                use24HourTime = settings.Use24HourTime;
-                defaultStartTime = DefaultStartTimeRules.Resolve(settings.DefaultStartTimeMinutes);
-                selectedTimeZone = settings.TimeZone;
-                isGoogleConnected = settings.IsGoogleCalendarConnected;
-                googleEmail = settings.GoogleCalendarEmail;
-                publishToGoogle = settings.PublishToGoogleCalendar;
-                importFromGoogle = settings.ImportFromGoogleCalendar;
-                matchedColorId = settings.TymeEventColorId;
-                unmatchedColorId = settings.TymeUnmatchedEventColorId;
-                projectColorSource = settings.ProjectColorSource;
+                ApplySettingsToUi(settings);
+                preferencesReady = true;
             }
             catch (Exception ex)
             {
@@ -129,30 +131,113 @@ namespace My.Client.Pages.Settings
             }
         }
 
-        private async Task SaveSettings()
+        private void ApplySettingsToUi(UserSettingsDto settings)
         {
-            isSaving = true;
+            use24HourTime = settings.Use24HourTime;
+            defaultStartTime = DefaultStartTimeRules.Resolve(settings.DefaultStartTimeMinutes);
+            selectedTimeZone = settings.TimeZone;
+            isGoogleConnected = settings.IsGoogleCalendarConnected;
+            isGoogleLiveSyncActive = settings.IsGoogleCalendarLiveSyncActive;
+            googleEmail = settings.GoogleCalendarEmail;
+            publishToGoogle = settings.PublishToGoogleCalendar;
+            importFromGoogle = settings.ImportFromGoogleCalendar;
+            availabilityOnlySync = settings.GoogleCalendarAvailabilityOnly;
+            removeExcludedEvents = settings.GoogleCalendarRemoveExcludedEvents;
+            matchedColorId = settings.TymeEventColorId;
+            unmatchedColorId = settings.TymeUnmatchedEventColorId;
+            projectColorSource = settings.ProjectColorSource;
+        }
+
+        private Task PersistNow() => PersistPreferenceAsync(debounce: false);
+
+        private Task PersistDebounced() => PersistPreferenceAsync(debounce: true);
+
+        private Task PersistTimeZone()
+        {
+            if (!IsSelectableTimeZone(selectedTimeZone))
+                return Task.CompletedTask;
+            return PersistPreferenceAsync(debounce: true);
+        }
+
+        private static bool IsSelectableTimeZone(string? timeZone) =>
+            !string.IsNullOrWhiteSpace(timeZone)
+            && AllTimeZones.Contains(timeZone, StringComparer.OrdinalIgnoreCase);
+
+        private async Task PersistPreferenceAsync(bool debounce)
+        {
+            if (!preferencesReady)
+                return;
+
+            var generation = Interlocked.Increment(ref persistGeneration);
+            persistCts?.Cancel();
+            persistCts?.Dispose();
+            persistCts = new CancellationTokenSource();
+            var token = persistCts.Token;
+
+            if (debounce)
+            {
+                try
+                {
+                    await Task.Delay(400, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+
+            await persistLock.WaitAsync();
             try
             {
-                await SettingsService.UpdateSettingsAsync(new UpdateUserSettingsDto
-                {
-                    Use24HourTime = use24HourTime,
-                    DefaultStartTimeMinutes = DefaultStartTimeRules.FromTimeSpan(
-                        defaultStartTime ?? DefaultStartTimeRules.DefaultTimeOfDay),
-                    TimeZone = selectedTimeZone,
-                    PublishToGoogleCalendar = publishToGoogle,
-                    ImportFromGoogleCalendar = importFromGoogle,
-                    TymeEventColorId = matchedColorId,
-                    TymeUnmatchedEventColorId = unmatchedColorId,
-                    ProjectColorSource = projectColorSource
-                });
-                Snackbar.Add("Settings saved.", Severity.Success);
+                if (generation != persistGeneration || token.IsCancellationRequested)
+                    return;
+
+                await SettingsService.UpdateSettingsAsync(BuildUpdateDto());
+            }
+            catch (OperationCanceledException)
+            {
+                // Replaced by a newer change.
             }
             catch (Exception ex)
             {
                 Snackbar.AddApiError(ex, "Couldn't save settings.");
+                try
+                {
+                    ApplySettingsToUi(await SettingsService.GetSettingsAsync());
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch
+                {
+                    // Cache still has the last successful values; UI already reverted if Apply ran.
+                }
             }
-            isSaving = false;
+            finally
+            {
+                persistLock.Release();
+            }
+        }
+
+        private UpdateUserSettingsDto BuildUpdateDto()
+        {
+            var timeZone = IsSelectableTimeZone(selectedTimeZone)
+                ? selectedTimeZone
+                : SettingsService.TimeZone;
+
+            return new UpdateUserSettingsDto
+            {
+                Use24HourTime = use24HourTime,
+                DefaultStartTimeMinutes = DefaultStartTimeRules.FromTimeSpan(
+                    defaultStartTime ?? DefaultStartTimeRules.DefaultTimeOfDay),
+                TimeZone = timeZone,
+                PublishToGoogleCalendar = publishToGoogle,
+                ImportFromGoogleCalendar = importFromGoogle,
+                GoogleCalendarAvailabilityOnly = availabilityOnlySync,
+                GoogleCalendarRemoveExcludedEvents = removeExcludedEvents,
+                TymeEventColorId = matchedColorId,
+                TymeUnmatchedEventColorId = unmatchedColorId,
+                ProjectColorSource = projectColorSource,
+                FavoriteIntranetPageIds = SettingsService.FavoriteIntranetPageIds
+            };
         }
 
         private Task<IEnumerable<string>> SearchTimeZones(string? value, CancellationToken token)
@@ -273,14 +358,41 @@ namespace My.Client.Pages.Settings
         private async Task HandleGoogleRedirectIfPresent()
         {
             var code = GetQueryParam("code");
-            if (string.IsNullOrEmpty(code)) return;
+            if (string.IsNullOrEmpty(code))
+            {
+                var oauthMsg = GoogleCalendarConnectRules.ExplainOauthRedirectError(
+                    GetQueryParam("error"), GetQueryParam("error_description"));
+                if (oauthMsg == null)
+                    return;
+                activeTab = 1;
+                googleError = oauthMsg;
+                try
+                {
+                    await JS.InvokeVoidAsync("sessionStorage.setItem", "googleConnectError", googleError);
+                }
+                catch { /* non-fatal */ }
+                Navigation.NavigateTo($"{Navigation.BaseUri.TrimEnd('/')}/settings", replace: true);
+                return;
+            }
 
+            activeTab = 1;
             bool navigateToSettings = true;
+            var isDrive = false;
+            try
+            {
+                var kind = await JS.InvokeAsync<string?>("localStorage.getItem", GoogleOAuthConnectKindRules.LocalStorageKey);
+                isDrive = GoogleOAuthConnectKindRules.IsDrive(kind);
+                await JS.InvokeVoidAsync("localStorage.removeItem", GoogleOAuthConnectKindRules.LocalStorageKey);
+            }
+            catch { /* prerender / blocked storage — treat as Calendar */ }
 
             try
             {
                 var client = ClientFactory.CreateClient(Constants.API.ClientName);
-                var resp = await client.PostAsJsonAsync(Constants.API.GoogleCalendar.Callback, new
+                var callback = isDrive
+                    ? Constants.API.GoogleDrive.Callback
+                    : Constants.API.GoogleCalendar.Callback;
+                var resp = await client.PostAsJsonAsync(callback, new
                 {
                     code,
                     redirectUri = BuildRedirectUri()
@@ -288,11 +400,42 @@ namespace My.Client.Pages.Settings
 
                 if (resp.IsSuccessStatusCode)
                 {
-                    Snackbar.Add("Google Calendar connected.", Severity.Success);
-                    await RunBackfillIfConfiguredAsync(client);
+                    if (isDrive)
+                    {
+                        Snackbar.Add("Google Drive connected.", Severity.Success);
+                        SettingsService.InvalidateCache();
+                    }
+                    else
+                    {
+                        var result = await resp.Content.ReadFromJsonAsync<GoogleCalendarConnectResultDto>();
+                        SettingsService.InvalidateCache();
+                        var driveReconnectNeeded = result?.DriveReconnectNeeded == true;
+                        var syncNotStarted = result?.SyncNotStarted == true;
+                        if (syncNotStarted)
+                        {
+                            Snackbar.Add(
+                                driveReconnectNeeded
+                                    ? "Google Calendar reconnected, but live sync still isn't working and " +
+                                      "Intranet Drive needs to be reconnected. Try reconnecting Calendar again in a few minutes."
+                                    : "Google Calendar connected, but live sync could not be started. " +
+                                      "Try reconnecting again in a few minutes.",
+                                Severity.Warning);
+                        }
+                        else
+                        {
+                            Snackbar.Add("Google Calendar connected.", Severity.Success);
+                            if (driveReconnectNeeded)
+                            {
+                                Snackbar.Add(
+                                    "Calendar sync is back, but the connection had to be replaced — " +
+                                    "Intranet Drive needs to be reconnected.",
+                                    Severity.Warning);
+                            }
+                        }
+                        await RunBackfillIfConfiguredAsync(client);
+                    }
 
-                    // Route 2: if we were auto-triggered from dashboard/editor/etc., return the user
-                    // to their original destination instead of stranding them on the Settings page.
+                    // Route 2: return to dashboard / Intranet instead of stranding on Settings.
                     try
                     {
                         var returnUrl = await JS.InvokeAsync<string?>("localStorage.getItem", "postGoogleConnectReturnUrl");
@@ -300,7 +443,6 @@ namespace My.Client.Pages.Settings
                         {
                             await JS.InvokeVoidAsync("localStorage.removeItem", "postGoogleConnectReturnUrl");
                             navigateToSettings = false;
-                            // Use replace so the browser history is clean.
                             Navigation.NavigateTo(returnUrl, replace: true);
                         }
                     }
@@ -344,6 +486,7 @@ namespace My.Client.Pages.Settings
                 if (!string.IsNullOrWhiteSpace(stored))
                 {
                     googleError = stored;
+                    activeTab = 1;
                     await JS.InvokeVoidAsync("sessionStorage.removeItem", "googleConnectError");
                 }
             }
@@ -359,8 +502,18 @@ namespace My.Client.Pages.Settings
         private async Task RunBackfillIfConfiguredAsync(HttpClient client)
         {
             SettingsService.InvalidateCache();
-            var userSettings = await SettingsService.GetSettingsAsync();
-            if (userSettings.CalendarBackfillPromptAcknowledged)
+            var acknowledged = false;
+            try
+            {
+                var userSettings = await SettingsService.GetSettingsAsync();
+                acknowledged = userSettings.CalendarBackfillPromptAcknowledged;
+            }
+            catch
+            {
+                // Settings load can fail on Function cold start. The connect already
+                // succeeded — still ask about sync rather than skipping the dialog.
+            }
+            if (acknowledged)
                 return;
 
             int defaultDays = 30;
@@ -403,7 +556,8 @@ namespace My.Client.Pages.Settings
                 // Persist the toggle choice regardless of whether a backfill range follows —
                 // a user who turns off both switches and hits "Save preferences" still needs
                 // that decision saved, not silently discarded.
-                await SettingsService.UpdateGoogleCalendarSyncPreferencesAsync(choice.PublishToGoogle, choice.ImportFromGoogle);
+                await SettingsService.UpdateGoogleCalendarSyncPreferencesAsync(
+                    choice.PublishToGoogle, choice.ImportFromGoogle, choice.AvailabilityOnly);
 
                 if (choice.Range is null)
                 {

@@ -4,7 +4,7 @@
     flex-direction: column;
     background-color: var(--mud-palette-background);
     color: var(--mud-palette-text-primary);
-    min-height: 100vh;
+    min-height: calc(100vh - var(--local-env-banner-height, 0px));
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
@@ -21,8 +21,22 @@
     color: var(--mud-palette-appbar-text);
     border-bottom: 1px solid var(--mud-palette-divider);
     position: sticky;
-    top: 0;
+    top: var(--local-env-banner-height, 0px);
     z-index: 4;
+}
+
+.local-env-pill {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.35rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 0.25rem;
+    background: #f5d000;
+    color: #111;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1.2;
 }
 
 .brand {
@@ -192,7 +206,7 @@ main {
 
     .sidebar {
         position: fixed;
-        top: 3.5rem;
+        top: calc(3.5rem + var(--local-env-banner-height, 0px));
         left: 0;
         bottom: 0;
         width: 260px;
@@ -209,7 +223,7 @@ main {
     .nav-scrim {
         display: block;
         position: fixed;
-        top: 3.5rem;
+        top: calc(3.5rem + var(--local-env-banner-height, 0px));
         left: 0;
         right: 0;
         bottom: 0;
@@ -225,8 +239,8 @@ main {
 @media (min-width: 641px) {
     .sidebar {
         position: sticky;
-        top: 3.5rem;
-        height: calc(100vh - 3.5rem);
+        top: calc(3.5rem + var(--local-env-banner-height, 0px));
+        height: calc(100vh - 3.5rem - var(--local-env-banner-height, 0px));
         overflow-y: auto;
     }
 }

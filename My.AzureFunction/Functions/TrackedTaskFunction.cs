@@ -213,7 +213,7 @@ namespace My.Functions
             try
             {
                 var s = await GetSettingsAsync(task.UserId);
-                if (s == null || !s.PublishToGoogleCalendar
+                if (s == null
                     || string.IsNullOrEmpty(s.GoogleRefreshToken) || string.IsNullOrEmpty(s.GoogleCalendarId))
                 {
                     await TryPushTeamAvailabilityAsync(task, s);
@@ -221,6 +221,12 @@ namespace My.Functions
                 }
 
                 var project = await GetProjectAsync(task.ProjectId);
+                if (!CanPublishPersonal(s, project))
+                {
+                    await TryPushTeamAvailabilityAsync(task, s);
+                    return;
+                }
+
                 var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                 task.GoogleEventId = ev.Id;
                 task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
@@ -248,7 +254,40 @@ namespace My.Functions
                 var project = await GetProjectAsync(task.ProjectId);
                 if (!string.IsNullOrEmpty(task.GoogleEventId))
                 {
-                    if (!s.PublishToGoogleCalendar)
+                    if (ShouldUnlinkPersonal(s, project))
+                    {
+                        // Availability-only sync was turned on (or the project's flag changed)
+                        // after this event was already published — the personal-calendar copy
+                        // is no longer allowed to exist. Always unlink so Tyme stops overwriting
+                        // an event it shouldn't touch anymore; only delete it on Google when the
+                        // user opted in (GoogleCalendarRemoveExcludedEvents) — Settings otherwise
+                        // promises existing events are left alone.
+                        // Export-off is not this path: keep GoogleEventId so turning export
+                        // back on updates the same event instead of creating a duplicate.
+                        if (s.GoogleCalendarRemoveExcludedEvents)
+                        {
+                            try
+                            {
+                                await googleCalendar.DeleteEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId);
+                            }
+                            catch (Google.GoogleApiException ex) when (
+                                ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound ||
+                                ex.HttpStatusCode == System.Net.HttpStatusCode.Gone)
+                            {
+                                // Already gone.
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogWarning(ex, "Failed to remove now-disallowed Google event for TrackedTask {TaskId}.", task.TaskId);
+                            }
+                        }
+                        task.GoogleEventId = null;
+                        task.GoogleEventUpdatedUtc = null;
+                        await taskRepository.Update(task);
+                        await TryPushTeamAvailabilityAsync(task, s);
+                        return;
+                    }
+                    if (!CanPublishPersonal(s, project))
                     {
                         await TryPushTeamAvailabilityAsync(task, s);
                         return;
@@ -275,7 +314,7 @@ namespace My.Functions
                     }
                 }
 
-                if (s.PublishToGoogleCalendar)
+                if (CanPublishPersonal(s, project))
                 {
                     var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                     task.GoogleEventId = ev.Id;
@@ -313,6 +352,18 @@ namespace My.Functions
             // step with each other.
             await teamAvailabilityPublisher.DeleteSisterEventAsync(task, s);
         }
+
+        private static bool CanPublishPersonal(UserSettings s, Project? project) =>
+            GoogleCalendarAvailabilitySyncRules.ShouldPublishToPersonalCalendar(
+                s.PublishToGoogleCalendar,
+                s.GoogleCalendarAvailabilityOnly,
+                project?.IsSharedAvailability == true);
+
+        private static bool ShouldUnlinkPersonal(UserSettings s, Project? project) =>
+            GoogleCalendarAvailabilitySyncRules.ShouldUnlinkPersonalEvent(
+                s.PublishToGoogleCalendar,
+                s.GoogleCalendarAvailabilityOnly,
+                project?.IsSharedAvailability == true);
 
         private Task TryPushTeamAvailabilityAsync(TrackedTask task, UserSettings? settings) =>
             teamAvailabilityPublisher.PublishAsync(task, settings);

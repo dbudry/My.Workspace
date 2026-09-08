@@ -1,3 +1,75 @@
+html {
+    --local-env-banner-height: 0px;
+}
+
+/* Fixed LOCAL bar — overlay, not document flow, so boot UI and 100vh layouts stay aligned. */
+html.local-env {
+    --local-env-banner-height: 2.25rem;
+}
+
+html.local-env body {
+    padding-top: var(--local-env-banner-height);
+}
+
+#local-env-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    box-sizing: border-box;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    height: var(--local-env-banner-height, 2.25rem);
+    padding: 0 1rem;
+    background: #f5d000;
+    color: #111;
+    font: 700 0.8125rem/1.2 system-ui, "Segoe UI", sans-serif;
+    letter-spacing: 0.04em;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+}
+
+#local-env-banner .local-env-banner-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#local-env-banner .local-env-banner-text-short {
+    display: none;
+}
+
+#local-env-banner-hide {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid #111;
+    border-radius: 0.25rem;
+    background: #111;
+    color: #f5d000;
+    font: 700 0.7rem/1.2 system-ui, "Segoe UI", sans-serif;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+}
+
+#local-env-banner-hide:hover,
+#local-env-banner-hide:focus-visible {
+    background: #fff;
+    color: #111;
+}
+
+@media (max-width: 640.98px) {
+    #local-env-banner .local-env-banner-text-full {
+        display: none;
+    }
+
+    #local-env-banner .local-env-banner-text-short {
+        display: inline;
+    }
+}
 html, body {
     font-family: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
     margin: 0;
@@ -2178,4 +2250,12 @@ tbody .week-entry-col-day {
 
 .event-color-select .mud-input-adornment-icon {
     color: var(--event-color-swatch, #9e9e9e) !important;
+}
+
+/* Multi-day all-day: "09/01/26 – 09/14/26" does not fit the single-date track
+   and used to paint over "All day". */
+.tasks-list-date.tasks-list-date-span {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 4.5rem;
 }

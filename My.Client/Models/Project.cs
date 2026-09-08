@@ -9,7 +9,7 @@ namespace My.Client.Models
         public string ProjectId { get; set; } = null!;
 
         [Required]
-        [StringLength(50, MinimumLength = 3, ErrorMessage = "Name can not have less then 3 characters and more then 50.")]
+        [StringLength(100, MinimumLength = 3, ErrorMessage = "Project name must be between 3 and 100 characters.")]
         public string Name { get; set; } = null!;
 
         [StringLength(SlugRules.MaxLength, MinimumLength = SlugRules.MinLength,

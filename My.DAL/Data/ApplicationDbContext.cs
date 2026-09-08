@@ -188,6 +188,11 @@ namespace My.DAL.Data
                 .OnDelete(DeleteBehavior.SetNull);
 
             builder.Entity<Project>()
+                .Property(p => p.Name)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            builder.Entity<Project>()
                 .Property(p => p.Slug)
                 .HasMaxLength(10);
 

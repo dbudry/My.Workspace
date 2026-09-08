@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.JSInterop;
 using MudBlazor;
 using System.Net.Http.Json;
+using System.Text;
 using My.Client.Components.Projects;
 using My.Client.Extensions;
 using My.Client.Models;
@@ -14,6 +16,7 @@ using My.Shared.Dtos.ProjectGroup;
 using My.Shared.Constants;
 using My.Shared.Dtos;
 using My.Shared.Helpers;
+using My.Shared.Rules;
 
 namespace My.Client.Pages.Tyme
 {
@@ -36,6 +39,7 @@ namespace My.Client.Pages.Tyme
         // no delete, archive, set active/inactive, or project-group management. Those stay
         // gated on canManage so the UI never shows an action the API will 403 on.
         bool canEditProjects = false;
+        bool isDownloadingCsv;
 
         private const string GroupByStorageKey = "projects.groupBy";
 
@@ -84,6 +88,9 @@ namespace My.Client.Pages.Tyme
 
         [Inject]
         private UserSettingsService SettingsService { get; set; } = null!;
+
+        [Inject]
+        private IJSRuntime JS { get; set; } = null!;
 
         #endregion
 
@@ -201,6 +208,64 @@ namespace My.Client.Pages.Tyme
         {
             if (table != null)
                 await table.ReloadServerData();
+        }
+
+        /// <summary>
+        /// Full listing of project names and calendar slugs (same active/inactive/archived
+        /// filters as the table). Does not change table paging — one-shot download.
+        /// </summary>
+        private async Task DownloadSlugListingCsvAsync()
+        {
+            isDownloadingCsv = true;
+            try
+            {
+                var rows = new List<ProjectSlugListingRules.Row>();
+                var pageNumber = 1;
+                const int maxPages = 200;
+
+                while (pageNumber <= maxPages)
+                {
+                    var query = new ListQueryParameters
+                    {
+                        PageNumber = pageNumber,
+                        PageSize = ListQueryParameters.MaxPageSize,
+                        SortBy = "Name",
+                        IncludeArchived = showArchived,
+                        IncludeInactive = showInactive
+                    };
+                    var url = ListQueryUrlBuilder.Build(Constants.API.Project.Get, query);
+                    var response = await client.GetFromJsonAsync<PagedResponse<ProjectDto>>(url);
+                    var items = response?.Items?.ToList() ?? new List<ProjectDto>();
+                    foreach (var p in items)
+                    {
+                        rows.Add(new ProjectSlugListingRules.Row(
+                            p.Name, p.Slug, p.OrganizationName));
+                    }
+
+                    if (items.Count == 0 || response?.HasNext != true)
+                        break;
+                    pageNumber++;
+                }
+
+                var csv = ProjectSlugListingRules.ToCsv(rows);
+                var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv)).ToArray();
+                var base64 = Convert.ToBase64String(bytes);
+                var stamp = DateTime.Today.ToString("yyyyMMdd");
+                await JS.InvokeVoidAsync("eval",
+                    $"var a=document.createElement('a');" +
+                    $"a.href='data:text/csv;base64,{base64}';" +
+                    $"a.download='project-slugs-{stamp}.csv';" +
+                    $"document.body.appendChild(a);a.click();document.body.removeChild(a);");
+                Snackbar.Add($"Downloaded {rows.Count} project{(rows.Count == 1 ? "" : "s")}.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't download the project listing.");
+            }
+            finally
+            {
+                isDownloadingCsv = false;
+            }
         }
 
         private async Task OnSearchChanged(string value)

@@ -803,7 +803,8 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("OrganizationId")
                         .HasColumnType("nvarchar(450)");
@@ -1101,11 +1102,17 @@ namespace My.DAL.Data.Migrations
                     b.Property<bool>("GoogleCalendarAutoConnectOptOut")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("GoogleCalendarAvailabilityOnly")
+                        .HasColumnType("bit");
+
                     b.Property<string>("GoogleCalendarEmail")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("GoogleCalendarId")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("GoogleCalendarRemoveExcludedEvents")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime?>("GoogleChannelExpiresAt")
                         .HasColumnType("datetime2");
@@ -1115,6 +1122,9 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<string>("GoogleChannelToken")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("GoogleDriveGranted")
+                        .HasColumnType("bit");
 
                     b.Property<string>("GoogleRefreshToken")
                         .HasColumnType("nvarchar(max)");

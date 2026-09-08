@@ -532,7 +532,7 @@ else
         </MudTd>
         <MudTd DataLabel="@(trackTimeOfDay ? "Date / Start" : "Date")" @onclick:stopPropagation="@stopCellBubble"
                Class="@(isStopwatch ? "tasks-stopwatch-row-cell" : null)">
-            @if (canEdit && task != null && tid != null)
+            @if (canEdit && task != null && tid != null && !IsMultiDayAllDay(context))
             {
                 <div class="tasks-inline-date-time">
                     @if (IsEditing(tid, "date"))
@@ -553,7 +553,7 @@ else
                         <div class="tasks-inline-display tasks-list-date"
                              @onclick="@(() => BeginInlineEdit(tid, "date"))"
                              @ondblclick="@(() => BeginInlineEdit(tid, "date"))">
-                            @FormatShortDate(displayDate)
+                            @(context.IsAllDay ? FormatRowAllDayDate(context) : FormatShortDate(displayDate))
                         </div>
                     }
 
@@ -606,7 +606,7 @@ else
             else if (context.IsAllDay)
             {
                 <div class="tasks-inline-date-time">
-                    <span class="tasks-list-date">@FormatShortDate(displayDate)</span>
+                    <span class="tasks-list-date @(IsMultiDayAllDay(context) ? "tasks-list-date-span" : null)">@FormatRowAllDayDate(context)</span>
                     <span class="tasks-list-time tasks-list-allday">All day</span>
                 </div>
             }
@@ -703,7 +703,7 @@ else
             {
                 @if (context.IsLocked)
                 {
-                    <MudTooltip Text="View submitted details">
+                    <MudTooltip Text="Submitted month — unsubmit from Submit to edit">
                         <MudIconButton Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small"
                                        OnClick="@(() => OpenTaskDialog(context))" />
                     </MudTooltip>

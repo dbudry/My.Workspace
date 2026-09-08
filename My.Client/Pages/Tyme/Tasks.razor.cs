@@ -223,17 +223,45 @@ namespace My.Client.Pages.Tyme
 
         /// <summary>
         /// Prefer live ManualTask values over the immutable list-row snapshot.
-        /// Same H:MM shape for manual and stopwatch so the Duration column lines up.
+        /// Timed rows stay H:MM. All-day rows use workday hours (and this week's
+        /// slice in Week view) so a multi-day OOO is not shown as 23:59.
         /// </summary>
-        private static string FormatRowDuration(TaskListRow row)
+        private string FormatRowDuration(TaskListRow row)
         {
             var duration = row.Kind == TaskListRowKind.Stopwatch
                 ? row.Duration
                 : (row.ManualTask?.Duration ?? row.Duration);
+            if (row.IsAllDay && row.ManualTask != null && viewMode == TasksViewMode.Weekly)
+            {
+                duration = AllDayEntryRules.ProrateDurationForWindow(
+                    row.ManualTask.StartDate,
+                    row.ManualTask.EndDate,
+                    weekStartMonday,
+                    WeekEntryGridRules.GetWeekEndSunday(weekStartMonday),
+                    duration);
+            }
             // Zero still shows as empty for manual drafts; stopwatch shows 00:00 so the cell isn't blank.
             if (duration <= TimeSpan.Zero)
                 return row.Kind == TaskListRowKind.Stopwatch ? "00:00" : WeekEntryGridRules.FormatDayDurationInput(duration);
+            // All-day uses workday hours × days (can exceed 24h). Do not use the
+            // day-cell formatter — it clamps to 23:59 and turned a 72h OOO into 23:59.
+            if (row.IsAllDay)
+                return WeekEntryGridRules.FormatDuration(duration);
             return WeekEntryGridRules.FormatDayDurationInput(duration);
+        }
+
+        private static string FormatRowAllDayDate(TaskListRow row)
+        {
+            var start = row.ManualTask?.StartDate ?? row.DisplayDate;
+            return AllDayEntryRules.FormatInclusiveDateRange(start, row.ManualTask?.EndDate, "MM/dd/yy");
+        }
+
+        private static bool IsMultiDayAllDay(TaskListRow row)
+        {
+            if (!row.IsAllDay) return false;
+            var start = (row.ManualTask?.StartDate ?? row.DisplayDate).Date;
+            var end = AllDayEntryRules.InclusiveEnd(start, row.ManualTask?.EndDate);
+            return end > start;
         }
 
         private static string FormatRowDisplayName(TaskListRow row) =>
@@ -554,7 +582,8 @@ namespace My.Client.Pages.Tyme
                     TimeSpan? adjusted = null;
                     if (t.ManagerAdjustment != null && t.AdjustmentKind is "Alias" or "Direct")
                         adjusted = t.ManagerAdjustment.Duration;
-                    return new WeeklyTimeTotalsRules.TaskDurationSlice(t.StartDate, t.Duration, adjusted);
+                    return new WeeklyTimeTotalsRules.TaskDurationSlice(
+                        t.StartDate, t.Duration, adjusted, t.IsAllDay, t.EndDate);
                 });
             weeklyTotals = WeeklyTimeTotalsRules.Compute(slices, from, to, displayMode);
         }
@@ -924,7 +953,7 @@ namespace My.Client.Pages.Tyme
                     }
 
                     return new WeeklyTimeTotalsRules.TaskDurationSlice(
-                        t.StartDate, t.Duration, adjusted);
+                        t.StartDate, t.Duration, adjusted, t.IsAllDay, t.EndDate);
                 });
                 weeklyTotals = WeeklyTimeTotalsRules.Compute(
                     durationSlices, from, to, displayMode);
@@ -1066,7 +1095,7 @@ namespace My.Client.Pages.Tyme
                 await OpenTaskDialog(row);
         }
 
-        private static string FormatDuration(TaskListRow row) => FormatRowDuration(row);
+        private string FormatDuration(TaskListRow row) => FormatRowDuration(row);
 
         /// <summary>
         /// Opens Sessions for a stopwatch-kind row. Works whether the row came from the All

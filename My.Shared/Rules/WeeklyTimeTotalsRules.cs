@@ -11,7 +11,9 @@ public static class WeeklyTimeTotalsRules
         DateTime StartDate,
         TimeSpan OriginalDuration,
         /// <summary>Null when there is no manager Alias/Direct correction.</summary>
-        TimeSpan? AdjustedDuration);
+        TimeSpan? AdjustedDuration,
+        bool IsAllDay = false,
+        DateTime? EndDate = null);
 
     /// <summary>
     /// <see cref="ShowAdjustedSeparately"/> is true only in <see cref="EmployeeTimeDisplayMode.Both"/>
@@ -25,9 +27,9 @@ public static class WeeklyTimeTotalsRules
         bool ShowAdjustedSeparately);
 
     /// <summary>
-    /// Sums original and adjusted week totals for slices whose start date is in
-    /// [from, to] inclusive. Adjusted total uses the correction when present,
-    /// otherwise the original duration (so uncorrected work still counts).
+    /// Sums original and adjusted week totals. Timed rows count when their start
+    /// date is in [from, to]. All-day rows count the workdays that overlap the
+    /// window (a multi-day OOO is not dumped entirely into the week it starts).
     /// </summary>
     public static Result Compute(
         IEnumerable<TaskDurationSlice> tasks,
@@ -43,22 +45,46 @@ public static class WeeklyTimeTotalsRules
 
         foreach (var t in tasks)
         {
-            var sd = t.StartDate.Date;
-            if (sd < f || sd > end)
-                continue;
-
-            var orig = Normalize(t.OriginalDuration);
-            original += orig;
-
-            if (t.AdjustedDuration.HasValue)
+            TimeSpan orig;
+            TimeSpan adj;
+            if (t.IsAllDay)
             {
-                anyAdjustment = true;
-                adjusted += Normalize(t.AdjustedDuration.Value);
+                orig = Normalize(AllDayEntryRules.ProrateDurationForWindow(
+                    t.StartDate, t.EndDate, f, end, t.OriginalDuration));
+                if (orig <= TimeSpan.Zero)
+                    continue;
+
+                if (t.AdjustedDuration.HasValue)
+                {
+                    anyAdjustment = true;
+                    adj = Normalize(AllDayEntryRules.ProrateDurationForWindow(
+                        t.StartDate, t.EndDate, f, end, t.AdjustedDuration.Value));
+                }
+                else
+                {
+                    adj = orig;
+                }
             }
             else
             {
-                adjusted += orig;
+                var sd = t.StartDate.Date;
+                if (sd < f || sd > end)
+                    continue;
+
+                orig = Normalize(t.OriginalDuration);
+                if (t.AdjustedDuration.HasValue)
+                {
+                    anyAdjustment = true;
+                    adj = Normalize(t.AdjustedDuration.Value);
+                }
+                else
+                {
+                    adj = orig;
+                }
             }
+
+            original += orig;
+            adjusted += adj;
         }
 
         original = Normalize(original);
