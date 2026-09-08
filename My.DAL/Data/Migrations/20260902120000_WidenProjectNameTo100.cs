@@ -6,6 +6,10 @@ using My.DAL.Data;
 
 namespace My.DAL.Data.Migrations
 {
+    /// <summary>
+    /// Project.Name is nvarchar(100) in InitialMigration for greenfield.
+    /// This widens older databases that still have nvarchar(max) or a shorter max.
+    /// </summary>
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260902120000_WidenProjectNameTo100")]
     public partial class WidenProjectNameTo100 : Migration
@@ -13,27 +17,24 @@ namespace My.DAL.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "Projects",
-                type: "nvarchar(100)",
-                maxLength: 100,
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(max)");
+            migrationBuilder.Sql("""
+                IF COL_LENGTH('Projects', 'Name') IS NOT NULL
+                   AND EXISTS (
+                       SELECT 1 FROM sys.columns c
+                       INNER JOIN sys.tables t ON c.object_id = t.object_id
+                       WHERE t.name = 'Projects' AND c.name = 'Name'
+                         AND (c.max_length = -1 OR c.max_length <> 200)
+                   )
+                BEGIN
+                    ALTER TABLE [Projects] ALTER COLUMN [Name] nvarchar(100) NOT NULL;
+                END
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AlterColumn<string>(
-                name: "Name",
-                table: "Projects",
-                type: "nvarchar(max)",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "nvarchar(100)",
-                oldMaxLength: 100);
+            // No-op: do not shrink production names.
         }
     }
 }

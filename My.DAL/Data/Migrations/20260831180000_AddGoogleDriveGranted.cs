@@ -7,8 +7,9 @@ using My.DAL.Data;
 namespace My.DAL.Data.Migrations
 {
     /// <summary>
-    /// Intranet Drive is a separate Google consent from Calendar. Existing
-    /// refresh tokens were issued with Drive on the old combined Connect.
+    /// Intranet Drive is a separate Google consent from Calendar.
+    /// Column is already on UserSettings in InitialMigration for greenfield installs;
+    /// this migration only adds + backfills when upgrading an older database.
     /// </summary>
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260831180000_AddGoogleDriveGranted")]
@@ -17,19 +18,27 @@ namespace My.DAL.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Separate batches: SQL Server compiles a whole Sql() string at once, so
-            // UPDATE in the same batch as ADD would fail with "Invalid column name".
+            // Separate batches: SQL Server compiles a whole Sql() string at once.
             migrationBuilder.Sql("""
-                ALTER TABLE [UserSettings] ADD [GoogleDriveGranted] bit NOT NULL
-                    CONSTRAINT [DF_UserSettings_GoogleDriveGranted] DEFAULT 0;
+                IF COL_LENGTH('UserSettings', 'GoogleDriveGranted') IS NULL
+                BEGIN
+                    ALTER TABLE [UserSettings] ADD [GoogleDriveGranted] bit NOT NULL
+                        CONSTRAINT [DF_UserSettings_GoogleDriveGranted] DEFAULT 0;
+                END
                 """);
             migrationBuilder.Sql("""
-                UPDATE [UserSettings]
-                SET [GoogleDriveGranted] = 1
-                WHERE [GoogleRefreshToken] IS NOT NULL AND [GoogleRefreshToken] <> '';
+                IF COL_LENGTH('UserSettings', 'GoogleDriveGranted') IS NOT NULL
+                   AND COL_LENGTH('UserSettings', 'GoogleRefreshToken') IS NOT NULL
+                BEGIN
+                    UPDATE [UserSettings]
+                    SET [GoogleDriveGranted] = 1
+                    WHERE [GoogleRefreshToken] IS NOT NULL AND [GoogleRefreshToken] <> ''
+                      AND [GoogleDriveGranted] = 0;
+                END
                 """);
             migrationBuilder.Sql("""
-                ALTER TABLE [UserSettings] DROP CONSTRAINT [DF_UserSettings_GoogleDriveGranted];
+                IF OBJECT_ID(N'[DF_UserSettings_GoogleDriveGranted]', N'D') IS NOT NULL
+                    ALTER TABLE [UserSettings] DROP CONSTRAINT [DF_UserSettings_GoogleDriveGranted];
                 """);
         }
 
@@ -37,7 +46,8 @@ namespace My.DAL.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql("""
-                ALTER TABLE [UserSettings] DROP COLUMN [GoogleDriveGranted];
+                IF COL_LENGTH('UserSettings', 'GoogleDriveGranted') IS NOT NULL
+                    ALTER TABLE [UserSettings] DROP COLUMN [GoogleDriveGranted];
                 """);
         }
     }
