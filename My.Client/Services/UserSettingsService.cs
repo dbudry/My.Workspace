@@ -37,6 +37,8 @@ namespace My.Client.Services
 
         public bool IsGoogleCalendarConnected => _cachedSettings?.IsGoogleCalendarConnected ?? false;
 
+        public bool IsGoogleDriveConnected => _cachedSettings?.IsGoogleDriveConnected ?? false;
+
         /// <summary>
         /// True after Settings → Disconnect. Sign-in must not start Calendar OAuth.
         /// </summary>
@@ -52,6 +54,8 @@ namespace My.Client.Services
         public ProjectColorSource ProjectColorSource => _cachedSettings?.ProjectColorSource ?? ProjectColorSource.GroupThenOrganization;
 
         public List<string> FavoriteIntranetPageIds => _cachedSettings?.FavoriteIntranetPageIds ?? new List<string>();
+
+        public bool GoogleCalendarRemoveExcludedEvents => _cachedSettings?.GoogleCalendarRemoveExcludedEvents ?? false;
 
         public async Task<UserSettingsDto> GetSettingsAsync()
         {
@@ -92,6 +96,8 @@ namespace My.Client.Services
                 TimeZone = current.TimeZone,
                 PublishToGoogleCalendar = current.PublishToGoogleCalendar,
                 ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,
+                GoogleCalendarAvailabilityOnly = current.GoogleCalendarAvailabilityOnly,
+                GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
                 TymeEventColorId = current.TymeEventColorId,
                 TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
                 ProjectColorSource = source,
@@ -105,7 +111,8 @@ namespace My.Client.Services
         /// PublishToGoogleCalendar / ImportFromGoogleCalendar (both default true) before
         /// sync ever starts, instead of discovering them later in Settings.
         /// </summary>
-        public async Task UpdateGoogleCalendarSyncPreferencesAsync(bool publishToGoogleCalendar, bool importFromGoogleCalendar)
+        public async Task UpdateGoogleCalendarSyncPreferencesAsync(
+            bool publishToGoogleCalendar, bool importFromGoogleCalendar, bool availabilityOnly = false)
         {
             var current = await GetSettingsAsync();
             await UpdateSettingsAsync(new UpdateUserSettingsDto
@@ -115,6 +122,8 @@ namespace My.Client.Services
                 TimeZone = current.TimeZone,
                 PublishToGoogleCalendar = publishToGoogleCalendar,
                 ImportFromGoogleCalendar = importFromGoogleCalendar,
+                GoogleCalendarAvailabilityOnly = availabilityOnly,
+                GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
                 TymeEventColorId = current.TymeEventColorId,
                 TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
                 ProjectColorSource = current.ProjectColorSource,
@@ -192,9 +201,12 @@ namespace My.Client.Services
                     TimeZone = browserTz.Trim(),
                     PublishToGoogleCalendar = _cachedSettings.PublishToGoogleCalendar,
                     ImportFromGoogleCalendar = _cachedSettings.ImportFromGoogleCalendar,
+                    GoogleCalendarAvailabilityOnly = _cachedSettings.GoogleCalendarAvailabilityOnly,
+                    GoogleCalendarRemoveExcludedEvents = _cachedSettings.GoogleCalendarRemoveExcludedEvents,
                     TymeEventColorId = _cachedSettings.TymeEventColorId,
                     TymeUnmatchedEventColorId = _cachedSettings.TymeUnmatchedEventColorId,
-                    ProjectColorSource = _cachedSettings.ProjectColorSource
+                    ProjectColorSource = _cachedSettings.ProjectColorSource,
+                    FavoriteIntranetPageIds = _cachedSettings.FavoriteIntranetPageIds ?? new List<string>()
                 });
             }
             catch
@@ -231,6 +243,8 @@ namespace My.Client.Services
                 TimeZone = current.TimeZone,
                 PublishToGoogleCalendar = current.PublishToGoogleCalendar,
                 ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,
+                GoogleCalendarAvailabilityOnly = current.GoogleCalendarAvailabilityOnly,
+                GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
                 TymeEventColorId = current.TymeEventColorId,
                 TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
                 ProjectColorSource = current.ProjectColorSource,
@@ -250,14 +264,37 @@ namespace My.Client.Services
         public const string GoogleAutoConnectDisconnectedValue = "disconnected";
 
         /// <summary>
-        /// Starts the Google Calendar + Drive connect flow (the same one used from Settings).
-        /// This is the mechanism that makes the integration "automatic" after OIDC login for route 2.
-        /// Optionally stores a return URL so that after the consent callback + backfill we can
-        /// send the user back to where they were (e.g. dashboard or editor) instead of leaving them on /settings.
-        /// Throws on failure so Settings can show the error (no silent no-op).
+        /// Starts Calendar-only Google consent (Settings and post-login auto-connect).
+        /// Drive is requested separately from Intranet via <see cref="InitiateGoogleDriveConnectAsync"/>.
         /// </summary>
-        public async Task InitiateGoogleConnectAsync(string? returnUrlAfterConnect = null)
+        public Task InitiateGoogleConnectAsync(string? returnUrlAfterConnect = null) =>
+            InitiateGoogleOAuthAsync(
+                Constants.API.GoogleCalendar.GetAuthUrl,
+                GoogleOAuthConnectKindRules.Calendar,
+                "Couldn't start Google Calendar connect",
+                "Server did not return a Google Calendar sign-in URL.",
+                returnUrlAfterConnect);
+
+        /// <summary>
+        /// Starts Drive-only Google consent for Intranet browse/attach. Incremental on
+        /// an existing Calendar grant so Calendar is not dropped.
+        /// </summary>
+        public Task InitiateGoogleDriveConnectAsync(string? returnUrlAfterConnect = null) =>
+            InitiateGoogleOAuthAsync(
+                Constants.API.GoogleDrive.GetAuthUrl,
+                GoogleOAuthConnectKindRules.Drive,
+                "Couldn't start Google Drive connect",
+                "Server did not return a Google Drive sign-in URL.",
+                returnUrlAfterConnect);
+
+        private async Task InitiateGoogleOAuthAsync(
+            string authUrlRoute,
+            string connectKind,
+            string startFailedPrefix,
+            string missingUrlMessage,
+            string? returnUrlAfterConnect)
         {
+            await _js.InvokeVoidAsync("localStorage.setItem", GoogleOAuthConnectKindRules.LocalStorageKey, connectKind);
             if (!string.IsNullOrWhiteSpace(returnUrlAfterConnect))
             {
                 await _js.InvokeVoidAsync("localStorage.setItem", "postGoogleConnectReturnUrl", returnUrlAfterConnect);
@@ -265,8 +302,7 @@ namespace My.Client.Services
 
             var client = _clientFactory.CreateClient(Constants.API.ClientName);
             var settingsRedirect = $"{_navigation.BaseUri.TrimEnd('/')}/settings";
-            var url =
-                $"{Constants.API.GoogleCalendar.GetAuthUrl}?redirectUri={Uri.EscapeDataString(settingsRedirect)}";
+            var url = $"{authUrlRoute}?redirectUri={Uri.EscapeDataString(settingsRedirect)}";
 
             HttpResponseMessage response;
             try
@@ -276,7 +312,7 @@ namespace My.Client.Services
             catch (Exception ex)
             {
                 throw new InvalidOperationException(
-                    "Couldn't reach the server to start Google connect. Try again in a moment.", ex);
+                    $"{startFailedPrefix}. Try again in a moment.", ex);
             }
 
             if (!response.IsSuccessStatusCode)
@@ -284,7 +320,7 @@ namespace My.Client.Services
                 var body = await response.Content.ReadAsStringAsync();
                 var detail = string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase : body.Trim();
                 throw new InvalidOperationException(
-                    $"Couldn't start Google connect ({(int)response.StatusCode}). {detail}".Trim());
+                    $"{startFailedPrefix} ({(int)response.StatusCode}). {detail}".Trim());
             }
 
             AuthUrlResponse? resp;
@@ -299,10 +335,7 @@ namespace My.Client.Services
             }
 
             if (resp == null || string.IsNullOrWhiteSpace(resp.Url))
-            {
-                throw new InvalidOperationException(
-                    "Server did not return a Google sign-in URL. Calendar/Drive may not be configured.");
-            }
+                throw new InvalidOperationException(missingUrlMessage);
 
             _navigation.NavigateTo(resp.Url, forceLoad: true);
         }

@@ -72,14 +72,15 @@ jobs:
             exit 0
           fi
 
+          # My.Workspace is a greenfield product for self-hosters: the app version
+          # stays at 1.0.0 and is not bumped per feature. development → master must
+          # never fail red on version compare (equal, reset to 1.0.0, or unchanged).
+          if [[ "${{ github.head_ref }}" == "development" ]]; then
+            echo "::notice::development → master: version gate soft (HEAD=$HEAD_V, master=$BASE_V). Product stays greenfield; no bump required."
+            exit 0
+          fi
+
           if [[ "$HEAD_V" == "$BASE_V" ]]; then
-            # development → master often re-checks after merge while SHAs still diverge
-            # (merge commit on master vs tip on development) but versions already match.
-            # That must not email as failure. Feature-branch PRs still require a bump.
-            if [[ "${{ github.head_ref }}" == "development" ]]; then
-              echo "::notice::development and master both at v${HEAD_V} (already in sync / promoted). Not failing."
-              exit 0
-            fi
             echo "::error::Version must be bumped (both are $HEAD_V). Edit My.Client/My.Client.csproj <Version>."; exit 1
           fi
 

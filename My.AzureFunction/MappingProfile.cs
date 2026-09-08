@@ -219,9 +219,16 @@ namespace My.Functions
                 TimeZone = settings.TimeZone,
                 IsGoogleCalendarConnected = !string.IsNullOrEmpty(settings.GoogleRefreshToken)
                                             && !string.IsNullOrEmpty(settings.GoogleCalendarId),
+                IsGoogleCalendarLiveSyncActive = GoogleCalendarWatchRules.IsLiveWatchActive(
+                    settings.GoogleChannelId, settings.GoogleChannelExpiresAt, DateTime.UtcNow),
+                GoogleCalendarWatchExpiresAtUtc = settings.GoogleChannelExpiresAt,
+                IsGoogleDriveConnected = !string.IsNullOrEmpty(settings.GoogleRefreshToken)
+                                         && settings.GoogleDriveGranted,
                 GoogleCalendarEmail = settings.GoogleCalendarEmail,
                 PublishToGoogleCalendar = settings.PublishToGoogleCalendar,
                 ImportFromGoogleCalendar = settings.ImportFromGoogleCalendar,
+                GoogleCalendarAvailabilityOnly = settings.GoogleCalendarAvailabilityOnly,
+                GoogleCalendarRemoveExcludedEvents = settings.GoogleCalendarRemoveExcludedEvents,
                 TymeEventColorId = settings.TymeEventColorId,
                 TymeUnmatchedEventColorId = settings.TymeUnmatchedEventColorId,
                 ProjectColorSource = (ProjectColorSource)settings.ProjectColorSource,
@@ -237,6 +244,7 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.UserId))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.User))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleRefreshToken))]
+        [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleDriveGranted))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleCalendarId))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleCalendarEmail))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleChannelId))]

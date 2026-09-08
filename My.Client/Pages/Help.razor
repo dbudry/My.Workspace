@@ -98,46 +98,69 @@
             </MudText>
         </MudExpansionPanel>
 
-        <MudExpansionPanel Text="All-day entries and Team Availability" Icon="@Icons.Material.Filled.BeachAccess">
-            <MudText Typo="Typo.subtitle2" Class="mb-1">All Day toggle</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                On the task dialog, flip <strong>All Day</strong> on for Vacation, OOO, Sick,
-                or any entry that covers full calendar days. The hours/minutes fields collapse
-                into a single <strong>End Date</strong> picker — pick the last day inclusive
-                and Tyme records <em>workday hours × calendar days</em>. A Monday→Friday
-                vacation logs <strong>5 × 8 = 40h</strong>. The workday-hours value is set
-                workspace-wide under <em>App Settings → Tyme → All-Day Entries</em>.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Share availability with team</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                A Tyme manager can flip <strong>Share availability with team</strong> on a
-                project (e.g. <em>Vacation</em>, <em>Wedding</em>, <em>OOO</em>). Any time logged
-                against that project is dual-published to the workspace's shared Google
-                "Team Availability" calendar as a sanitized
-                <code>[&lt;Name&gt;] &lt;Project&gt;</code> event in Sage. The task name,
-                description, and slug never leave Tyme — only your name and the project's name
-                are visible to the team.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                The team-calendar id is set workspace-wide under <em>App Settings → Tyme →
-                Team Availability Calendar</em>. Leaving it blank disables the dual-publish.
-                Flipping the project flag on does <strong>not</strong> back-publish past entries
-                — only entries created or edited after the flag is set go to the team calendar.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Manager: setting up availability categories</MudText>
+        <MudExpansionPanel Text="Availability" Icon="@Icons.Material.Filled.BeachAccess">
             <MudText Typo="Typo.body2" Class="mb-2">
-                The <strong>Availability</strong> page under Tyme is the manager-only home for
-                these projects. Add <em>Vacation</em>, <em>OOO</em>, <em>Sick</em>, <em>Wedding</em>,
-                whatever the team needs — each one is just a project with
-                <strong>Share availability with team</strong> already on. The first category
-                creates a "Time Off" project group automatically so the entries cluster together
-                in Reports and on the dashboard.
+                <strong>Tyme → Availability</strong> lists the categories a manager has set up
+                for this workspace. Tyme does not ship a fixed list — names, slugs, and
+                team-calendar labels are data on that page. A typical workspace will have
+                entries such as Vacation, OOO, or Sick; those are examples, not built-in types.
+                Each category is a project flagged <strong>Share availability with team</strong>.
+                You pick it as the <strong>Project</strong> when logging that kind of time —
+                same as logging work, just a different project.
+            </MudText>
+            <MudText Typo="Typo.subtitle2" Class="mb-1">How to log it</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                On <strong>Tasks</strong> or <strong>Calendar</strong>, add an entry, choose
+                one of those availability projects, and set the dates. Turn on
+                <strong>All Day</strong> for a full-day or multi-day span (inclusive end date;
+                hours are workday hours × those days). A partial day stays a timed entry with
+                start and duration. Submit it with the rest of the month like any other time.
+            </MudText>
+            <MudText Typo="Typo.subtitle2" Class="mb-1">What the team sees</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Logging against an availability project also publishes a sanitized event on the
+                workspace <strong>Team Availability</strong> Google calendar:
+                <code>[Your Name]</code> plus the category's <strong>team calendar name</strong>
+                (for example <code>[Alex Rivera] Vacation</code> if a manager named a category
+                Vacation). Details and notes stay in Tyme. The team calendar is only who is out
+                and which category they used.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                That team copy is separate from <strong>your</strong> Google Calendar.
+                Export still copies the Tyme entry to your personal calendar when that
+                toggle is on. Deleting the Google copy of an availability event also removes
+                the team-calendar copy; the Tyme row stays unless live import is running and
+                the project is still eligible for personal sync.
+            </MudText>
+            <MudText Typo="Typo.subtitle2" Class="mb-1">Your Google Calendar</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                Under <strong>Settings → Tyme → Google Calendar</strong>,
+                <strong>Only Availability projects</strong> limits personal import and export
+                to the categories on Tyme → Availability. Other projects stay in Tyme and are
+                not copied to (or imported from) your calendar. Already-published events on
+                Google for those other projects are left alone unless you also turn on
+                <strong>Also remove existing Google events for projects that stop syncing</strong>.
+                The Team Availability calendar is unchanged by those toggles.
+            </MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                If a category has a <strong>slug</strong>, put that <code>[slug]</code> in a
+                Google event title and Import files it on that category. Open Availability to
+                see the current names and slugs; only managers add or edit them.
+            </MudText>
+            <MudText Typo="Typo.subtitle2" Class="mb-1">For managers</MudText>
+            <MudText Typo="Typo.body2" Class="mb-2">
+                <strong>Add Category</strong> on Tyme → Availability. <strong>Internal name</strong>
+                is what people pick in Tyme. <strong>Team calendar name</strong> is what appears
+                after the person's name on the shared calendar. Optional slug for Google import.
+                You can also flag a regular project <strong>Share availability with team</strong>
+                on the project form. Turning the flag on does not backfill old entries — only
+                new or edited time is published. The workspace calendar id is
+                <strong>Admin → App Settings → Tyme → Team Availability Calendar</strong>;
+                empty disables team publish.
             </MudText>
             <MudText Typo="Typo.body2">
-                Each category has an optional <strong>Team calendar display name</strong> — set it
-                if you want the team calendar to read "Out of Office" while the internal project
-                stays named "Vacation". An optional <strong>slug</strong> lets the project be
-                routed from Google Calendar by typing <code>[vac]</code> in an event title.
+                Availability records what was logged against those categories. It is not leave
+                balances or an approval workflow.
             </MudText>
         </MudExpansionPanel>
 
@@ -307,8 +330,9 @@
         <MudExpansionPanel Text="Google Calendar sync" Icon="@Icons.Material.Filled.Event">
             <MudText Typo="Typo.subtitle2" Class="mb-1">Connecting</MudText>
             <MudText Typo="Typo.body2" Class="mb-3">
-                Google Calendar (and Drive document attachments for the Intranet editor) are normally set up automatically as part of signing in with Google.
-                If you need to manage the connection, change sync preferences, or reconnect after revoking access, go to <strong>Settings → Google Calendar &amp; Drive</strong>.
+                Calendar usually connects when you sign in with Google.
+                Manage the link under <strong>Settings → Tyme → Google Calendar</strong>.
+                Intranet asks for Drive separately the first time you browse or attach a file.
                 Tyme connects to your <strong>primary Google calendar</strong> — no separate
                 sub-calendar is created. Only events with a <code>[slug]</code> tag in the title
                 are imported as tracked tasks; everything else on your calendar stays private and

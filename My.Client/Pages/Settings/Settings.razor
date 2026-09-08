@@ -5,16 +5,13 @@
 
 <PageTitle>Settings</PageTitle>
 
-<PageHeader Title="Settings" Description="Customize how Tyme displays time and integrates with your tools." />
+<PageHeader Title="Settings" Description="General applies everywhere. Tyme is time tracking and Google Calendar." />
 
 <PageLoader IsLoading="@isLoading">
     <div class="settings-stack">
-        @* General settings — apply across the whole app regardless of which scope/feature
-           you're using. Theme and time formatting aren't Tyme-specific. *@
-        <div class="settings-group-heading">
-            <MudText Typo="Typo.overline">General</MudText>
-        </div>
-
+        <MudTabs Outlined="true" Rounded="true" Border="true" ApplyEffectsToContainer="true"
+                 KeepPanelsAlive="true" Class="mb-4" @bind-ActivePanelIndex="activeTab">
+            <MudTabPanel Text="General" Icon="@Icons.Material.Filled.Settings">
         <SectionCard Title="Appearance">
             <MudText Typo="Typo.body2" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
                 Theme
@@ -39,16 +36,16 @@
         </SectionCard>
 
         <SectionCard Title="Display Preferences">
+            <MudSwitch T="bool" @bind-Value="use24HourTime" @bind-Value:after="PersistNow"
+                       Label="Use 24-hour time format"
+                       Color="Color.Primary" Class="mb-1" />
+            <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                Preview: @(use24HourTime ? DateTime.Now.ToString("HH:mm") : DateTime.Now.ToString("h:mm tt"))
+            </MudText>
             <MudGrid Spacing="3">
                 <MudItem xs="12" md="6">
-                    <MudSwitch T="bool" @bind-Value="use24HourTime" Label="Use 24-hour time format"
-                               Color="Color.Primary" Class="mb-2" />
-                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                        Preview: @(use24HourTime ? DateTime.Now.ToString("HH:mm") : DateTime.Now.ToString("h:mm tt"))
-                    </MudText>
-                </MudItem>
-                <MudItem xs="12" md="6">
-                    <MudAutocomplete T="string" @bind-Value="selectedTimeZone" Label="Time Zone"
+                    <MudAutocomplete T="string" @bind-Value="selectedTimeZone" @bind-Value:after="PersistTimeZone"
+                                     Label="Time Zone"
                                      SearchFunc="SearchTimeZones" Variant="Variant.Outlined" Margin="Margin.Dense"
                                      Dense="true" Class="mb-1" MaxItems="50" CoerceText="true"
                                      AdornmentIcon="@Icons.Material.Filled.Schedule" Adornment="Adornment.Start" />
@@ -57,7 +54,7 @@
                     </MudText>
                 </MudItem>
                 <MudItem xs="12" md="6">
-                    <MudTimePicker @bind-Time="defaultStartTime"
+                    <MudTimePicker @bind-Time="defaultStartTime" @bind-Time:after="PersistDebounced"
                                    Label="Default start time"
                                    AmPm="@(!use24HourTime)"
                                    Variant="Variant.Outlined"
@@ -69,25 +66,12 @@
                     </MudText>
                 </MudItem>
             </MudGrid>
-            <MudButton Variant="Variant.Filled" Class="mt-4" Color="Color.Primary" OnClick="SaveSettings"
-                       Disabled="@isSaving">
-                @if (isSaving)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                }
-                Save
-            </MudButton>
         </SectionCard>
-
-        @* Tyme-scoped settings — only meaningful when using the Tyme time-tracking
-           feature. Will get a sibling group heading per scope as new scopes are added. *@
-        <div class="settings-group-heading mt-4">
-            <MudText Typo="Typo.overline">Tyme</MudText>
-        </div>
-
+            </MudTabPanel>
+            <MudTabPanel Text="Tyme" Icon="@Icons.Material.Filled.Schedule">
         <SectionCard Title="Project Colors"
                      Description="How project rows and chart segments pick up a color across the app — affects the project list, calendar, stopwatch, tasks, reports, and the dashboard project mix.">
-            <MudSelect T="ProjectColorSource" @bind-Value="projectColorSource"
+            <MudSelect T="ProjectColorSource" @bind-Value="projectColorSource" @bind-Value:after="PersistNow"
                        Label="Color source" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
                        Style="max-width: 360px;">
                 <MudSelectItem T="ProjectColorSource" Value="ProjectColorSource.GroupThenOrganization">
@@ -106,18 +90,10 @@
             <MudText Typo="Typo.caption" Class="mt-2 mb-1" Style="color: var(--mud-palette-text-secondary);">
                 @ProjectColorSourceCaption(projectColorSource)
             </MudText>
-            <MudButton Variant="Variant.Filled" Class="mt-3" Color="Color.Primary" OnClick="SaveSettings"
-                       Disabled="@isSaving">
-                @if (isSaving)
-                {
-                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                }
-                Save
-            </MudButton>
         </SectionCard>
 
-        <SectionCard Title="Google Calendar &amp; Drive"
-                     Description="Calendar sync and Drive document attachments are normally configured automatically when you sign in with Google. Use the controls below to manage the connection, sync preferences, or reconnect if you previously revoked access.">
+        <SectionCard Title="Google Calendar"
+                     Description="Calendar sync is normally configured when you sign in with Google. Drive for Intranet is requested the first time you browse or attach a file. Use the controls below to manage Calendar, or reconnect if you previously revoked access.">
 
             @if (googleError != null)
             {
@@ -129,8 +105,25 @@
                 <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
                     Connected as <strong>@googleEmail</strong>
                 </MudAlert>
+                @if (!isGoogleLiveSyncActive)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                        Calendar is still connected, but live import from Google has expired.
+                        Resume live import below — this does not disconnect Calendar or Intranet Drive.
+                    </MudAlert>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-3"
+                               StartIcon="@Icons.Material.Filled.Sync"
+                               OnClick="ConnectGoogle" Disabled="@isGoogleBusy">
+                        @if (isGoogleBusy)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                        }
+                        Resume live import
+                    </MudButton>
+                }
 
-                <MudSwitch T="bool" @bind-Value="publishToGoogle" Color="Color.Primary" Class="mb-0">
+                <MudSwitch T="bool" @bind-Value="publishToGoogle" @bind-Value:after="PersistNow"
+                           Color="Color.Primary" Class="mb-0">
                     Export Tyme tasks to Google Calendar
                 </MudSwitch>
                 <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
@@ -139,10 +132,11 @@
                     new tasks; events already on Google stay there.
                 </MudText>
 
-                <MudSwitch T="bool" @bind-Value="importFromGoogle" Color="Color.Primary" Class="mb-0">
+                <MudSwitch T="bool" @bind-Value="importFromGoogle" @bind-Value:after="PersistNow"
+                           Color="Color.Primary" Class="mb-0">
                     Import Google Calendar events into Tyme
                 </MudSwitch>
-                <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
                     By selecting this, Google events whose title includes a project
                     <code>[slug]</code> (for example <code>[itsup] Laptop rebuild</code>) become Tyme
                     tasks on that project. Events without a <code>[slug]</code> stay private and are
@@ -150,9 +144,33 @@
                     in Tyme stay.
                 </MudText>
 
+                <MudSwitch T="bool" @bind-Value="availabilityOnlySync" @bind-Value:after="PersistNow"
+                           Color="Color.Primary" Class="mb-0"
+                           Disabled="@(!publishToGoogle && !importFromGoogle)">
+                    Only Availability projects (OOO, PTO)
+                </MudSwitch>
+                <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                    Import and export on your Google Calendar use only projects marked
+                    Share availability with team. Work projects stay in Tyme. The workspace
+                    Team Availability calendar is unchanged.
+                </MudText>
+
+                @if (availabilityOnlySync)
+                {
+                    <MudSwitch T="bool" @bind-Value="removeExcludedEvents" @bind-Value:after="PersistNow"
+                               Color="Color.Primary" Class="mb-0">
+                        Also remove existing Google events for projects that stop syncing
+                    </MudSwitch>
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        Off (default): a work project's already-published Google event is left alone —
+                        Tyme just stops updating it. On: that Google event is deleted the next time
+                        the task is edited.
+                    </MudText>
+                }
+
                 <MudGrid Spacing="6" Class="mt-2 mb-4">
                     <MudItem xs="12" md="6">
-                        <MudSelect T="string" @bind-Value="matchedColorId"
+                        <MudSelect T="string" @bind-Value="matchedColorId" @bind-Value:after="PersistNow"
                                    Label="Event color (with project)"
                                    Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
                                    ToStringFunc="GoogleEventColors.DisplayName"
@@ -176,7 +194,7 @@
                         </MudText>
                     </MudItem>
                     <MudItem xs="12" md="6">
-                        <MudSelect T="string" @bind-Value="unmatchedColorId"
+                        <MudSelect T="string" @bind-Value="unmatchedColorId" @bind-Value:after="PersistNow"
                                    Label="Event color (no project)"
                                    Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
                                    ToStringFunc="GoogleEventColors.DisplayName"
@@ -200,15 +218,6 @@
                         </MudText>
                     </MudItem>
                 </MudGrid>
-
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings"
-                           Disabled="@isSaving" Class="mb-3">
-                    @if (isSaving)
-                    {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    }
-                    Save Calendar Preferences
-                </MudButton>
 
                 <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined" Class="mb-4">
                     <MudText Typo="Typo.body2">
@@ -311,26 +320,17 @@
                     {
                         <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
                     }
-                    Connect Google Calendar &amp; Drive
+                    Connect Google Calendar
                 </MudButton>
             }
         </SectionCard>
+            </MudTabPanel>
+        </MudTabs>
     </div>
 </PageLoader>
 
 <style>
     .settings-stack {
         max-width: 960px;
-    }
-
-    /* Group heading sits above its SectionCards as a faint, uppercase label so users
-       can see at a glance which settings are app-wide vs. Tyme-specific. Border-bottom
-       gives a subtle seam without the visual weight of a full divider. */
-    .settings-group-heading {
-        padding-bottom: 4px;
-        margin-bottom: 12px;
-        border-bottom: 1px solid var(--mud-palette-table-lines);
-        opacity: 0.7;
-        letter-spacing: 0.08em;
     }
 </style>

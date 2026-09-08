@@ -14,6 +14,9 @@ public static class ApiErrorMessages
     public const string GoogleCalendarConnectFailed =
         "Could not complete Google Calendar connection. Please try again.";
 
+    public const string GoogleDriveConnectFailed =
+        "Could not complete Google Drive connection. Please try again.";
+
     public const string GoogleCalendarListFailed =
         "Could not list events from Google. Try a narrower date range or try again later.";
 

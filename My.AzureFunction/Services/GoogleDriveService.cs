@@ -1,31 +1,26 @@
 using Google.Apis.Auth;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Flows;
+using Google.Apis.Auth.OAuth2.Requests;
 using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Services;
 using Microsoft.Extensions.Logging;
 using My.DAL.Models;
+using My.Shared.Rules;
 
 using DriveFile = Google.Apis.Drive.v3.Data.File;
 
 namespace My.Functions.Services
 {
     /// <summary>
-    /// Handles Google Drive operations (create, upload, metadata) using the user's refresh token
-    /// from the existing Google Calendar connect flow. This enables easy "create Google doc or upload"
-    /// directly from the intranet page builder.
+    /// Handles Google Drive operations (create, upload, metadata) using the user's
+    /// Google refresh token after Intranet Drive consent (incremental on Calendar).
     /// </summary>
     public class GoogleDriveService
     {
-        private static readonly string[] DriveScopes = new[]
-        {
-            DriveService.Scope.DriveFile,
-            DriveService.Scope.DriveReadonly, // Browse/attach existing files in the company shared Drive folder
-            "https://www.googleapis.com/auth/userinfo.email",
-            "openid"
-        };
+        private static readonly string[] DriveScopes = GoogleDriveOAuthRules.ConnectScopes;
 
         private readonly GoogleTokenEncryptor encryptor;
         private readonly ILogger<GoogleDriveService> logger;
@@ -41,6 +36,56 @@ namespace My.Functions.Services
         }
 
         public bool IsConfigured => !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret);
+
+        /// <summary>
+        /// Drive-only consent for Intranet. Uses include_granted_scopes so an existing
+        /// Calendar grant is kept on the same refresh token. No login_hint.
+        /// </summary>
+        public string BuildAuthorizationUrl(string redirectUri, string state, string? hostedDomain = null)
+        {
+            var flow = CreateFlow();
+            var req = flow.CreateAuthorizationCodeRequest(redirectUri);
+            req.State = state;
+            if (req is GoogleAuthorizationCodeRequestUrl google)
+            {
+                google.AccessType = "offline";
+                google.Prompt = "consent";
+                google.IncludeGrantedScopes = "true";
+            }
+            return GoogleCalendarOAuthRules.AppendHostedDomainHint(req.Build().ToString(), hostedDomain);
+        }
+
+        /// <summary>
+        /// Exchanges a Drive consent code. Refresh token may be null on incremental
+        /// auth when Google does not re-issue one.
+        /// </summary>
+        public async Task<(string? refreshToken, string? email)> ExchangeCodeAsync(
+            string code, string redirectUri, CancellationToken ct = default)
+        {
+            var flow = CreateFlow();
+            var token = await flow.ExchangeCodeForTokenAsync(
+                userId: "unused",
+                code: code,
+                redirectUri: redirectUri,
+                taskCancellationToken: ct);
+
+            string? email = null;
+            if (!string.IsNullOrEmpty(token.IdToken))
+            {
+                try
+                {
+                    var payload = await GoogleJsonWebSignature.ValidateAsync(token.IdToken,
+                        new GoogleJsonWebSignature.ValidationSettings { Audience = new[] { clientId } });
+                    email = payload.Email;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Could not validate Google id_token for Drive email extraction.");
+                }
+            }
+
+            return (token.RefreshToken, email);
+        }
 
         /// <summary>
         /// Creates a new Google Drive file (e.g. Google Doc, Sheet, Slide) using the user's token.

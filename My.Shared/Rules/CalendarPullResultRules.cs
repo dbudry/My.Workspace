@@ -35,6 +35,8 @@ public static class CalendarPullResultRules
             lines.Add($"{r.SkippedDeclinedInvite} {(r.SkippedDeclinedInvite == 1 ? "was a meeting" : "were meetings")} you declined.");
         if (r.SkippedUnresolvedTag > 0)
             lines.Add($"{r.SkippedUnresolvedTag} had a [tag] that does not match any project.");
+        if (r.SkippedAvailabilityOnly > 0)
+            lines.Add($"{r.SkippedAvailabilityOnly} {(r.SkippedAvailabilityOnly == 1 ? "was a work project" : "were work projects")} skipped because Availability-only sync is on.");
         if (r.SkippedMonthSubmitted > 0)
             lines.Add($"{r.SkippedMonthSubmitted} fall in a month you already submitted, so {(r.SkippedMonthSubmitted == 1 ? "it was" : "they were")} left alone.");
         if (r.SkippedNoDates > 0)

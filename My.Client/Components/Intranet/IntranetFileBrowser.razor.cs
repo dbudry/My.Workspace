@@ -23,6 +23,7 @@ namespace My.Client.Components.Intranet
         [Inject] private NavigationManager Navigation { get; set; } = null!;
         [Inject] private IDialogService DialogService { get; set; } = null!;
         [Inject] private IntranetMediaPolicyService MediaPolicy { get; set; } = null!;
+        [Inject] private UserSettingsService UserSettings { get; set; } = null!;
 
         private IntranetMediaPolicyDto _mediaPolicy = new();
 
@@ -110,6 +111,19 @@ namespace My.Client.Components.Intranet
             if (!string.IsNullOrWhiteSpace(FixedFileTypeFilter))
                 fileTypeFilter = FixedFileTypeFilter!;
             _mediaPolicy = await MediaPolicy.GetAsync();
+            try { await UserSettings.GetSettingsAsync(); } catch { }
+            if (!UserSettings.IsGoogleDriveConnected)
+            {
+                try
+                {
+                    await UserSettings.InitiateGoogleDriveConnectAsync(Navigation.Uri);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add(ex.Message, Severity.Error);
+                }
+            }
             await LoadFilesAsync();
         }
 
@@ -129,6 +143,12 @@ namespace My.Client.Components.Intranet
                 if (!response.IsSuccessStatusCode)
                 {
                     var err = await response.Content.ReadAsStringAsync();
+                    if ((int)response.StatusCode == 409
+                        || GoogleDriveOAuthRules.IsConsentRequiredMessage(err))
+                    {
+                        await UserSettings.InitiateGoogleDriveConnectAsync(Navigation.Uri);
+                        return;
+                    }
                     Snackbar.Add(FormatDriveBrowseError(err), Severity.Error);
                     files = new();
                     return;

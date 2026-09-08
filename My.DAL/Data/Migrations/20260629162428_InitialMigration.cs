@@ -306,10 +306,16 @@ namespace My.DAL.Data.Migrations
                     DefaultStartTimeMinutes = table.Column<int>(type: "int", nullable: false, defaultValue: 480),
                     TimeZone = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     GoogleRefreshToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    // Intranet Drive is a separate Google consent from Calendar.
+                    GoogleDriveGranted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     GoogleCalendarId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     GoogleCalendarEmail = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     PublishToGoogleCalendar = table.Column<bool>(type: "bit", nullable: false),
                     ImportFromGoogleCalendar = table.Column<bool>(type: "bit", nullable: false),
+                    // Personal Google sync limited to Availability projects. Default off.
+                    GoogleCalendarAvailabilityOnly = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    // Delete leftover personal Google events when a project becomes ineligible. Default off.
+                    GoogleCalendarRemoveExcludedEvents = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     GoogleChannelId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     GoogleResourceId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     GoogleChannelExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -443,7 +449,7 @@ namespace My.DAL.Data.Migrations
                 columns: table => new
                 {
                     ProjectId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     DisplayName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     Slug = table.Column<string>(type: "nvarchar(5)", maxLength: 5, nullable: true),
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: true),

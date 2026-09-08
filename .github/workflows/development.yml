@@ -59,31 +59,23 @@ jobs:
           echo "master <Version>:      ${MASTER_V:-<none>}"
           echo "head_version=${HEAD_V}" >> "$GITHUB_OUTPUT"
 
+          # Greenfield product: app version stays at 1.0.0 and is not a promote gate.
+          # Open development → master when there are commits to promote.
+          AHEAD=$(git rev-list --count "origin/master..HEAD" 2>/dev/null || echo "0")
+          echo "commits ahead of master: ${AHEAD}"
+
           if [[ -z "$HEAD_V" ]]; then
-            echo "::notice::No <Version> in ${CSPROJ_PATH}. No promotion PR."
-            echo "version_ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::notice::No <Version> in ${CSPROJ_PATH} (still allowing promote by commit delta)."
           fi
-          if [[ -z "$MASTER_V" ]]; then
-            echo "::notice::Master has no version yet (bootstrap). Promotion allowed."
+
+          if [[ "$AHEAD" -gt 0 ]]; then
+            echo "::notice::development is ${AHEAD} commit(s) ahead of master — promotion allowed (version HEAD=${HEAD_V:-none}, master=${MASTER_V:-none})."
             echo "version_ready=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ "$HEAD_V" == "$MASTER_V" ]]; then
-            echo "::notice::Version ${HEAD_V} equals master — bump <Version> to promote."
-            echo "version_ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
-          SMALLER=$(printf '%s\n%s\n' "$MASTER_V" "$HEAD_V" | sort -V | head -n1)
-          if [[ "$SMALLER" != "$MASTER_V" ]]; then
-            echo "::notice::Version ${HEAD_V} is behind master ${MASTER_V}."
-            echo "version_ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "OK: v${HEAD_V} is ahead of master v${MASTER_V}."
-          echo "version_ready=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Nothing ahead of master — no promotion PR."
+          echo "version_ready=false" >> "$GITHUB_OUTPUT"
 
       - name: Close stale development >> master PR if version not ready
         if: steps.compare.outputs.version_ready != 'true'
@@ -102,7 +94,7 @@ jobs:
             echo "No open development >> master PR."
             exit 0
           fi
-          if ! gh pr close "$EXISTING" --comment "Closed automatically: development is green, but client <Version> is not ahead of master. A promotion PR opens only after a green development build with a bumped version."; then
+          if ! gh pr close "$EXISTING" --comment "Closed automatically: development is green but has nothing ahead of master (already promoted or tips equal)."; then
             echo "::notice::Could not close PR #$EXISTING (auth/permission). Not failing the workflow."
             exit 0
           fi
@@ -132,18 +124,18 @@ jobs:
           echo "version_ready=${READY}"
           echo "head_version=${VERSION}"
           if [[ "$READY" != "true" ]]; then
-            echo "::notice title=No promotion PR::Client <Version> (${VERSION:-unknown}) is not ahead of master. Bump My.Client/My.Client.csproj <Version> when you want a production promote."
+            echo "::notice title=No promotion PR::development has nothing ahead of master (product version ${VERSION:-unknown})."
             {
               echo "## No promotion PR this run"
-              echo "Build & Test passed. Version is not ahead of master, so no development → master PR was opened."
+              echo "Build & Test passed. No commits ahead of master, so no development → master PR was opened."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "should_create=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "should_create=true" >> "$GITHUB_OUTPUT"
           {
-            echo "## Version ready (v${VERSION})"
-            echo "Opening or keeping the development → master promotion PR."
+            echo "## Promotion ready (app version ${VERSION:-1.0.0})"
+            echo "Opening or keeping the development → master promotion PR (greenfield product — version is not a bump gate)."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/checkout@v4
@@ -195,19 +187,16 @@ jobs:
           if ! gh pr create \
             --base master \
             --head development \
-            --title "development → master (v$VERSION)" \
+            --title "development → master" \
             --body "$(cat <<EOF
-          ## Production promotion (v$VERSION)
+          ## Production promotion
 
-          Opened only after a **green** development Build & Test with \`<Version>\` **ahead** of master.
+          Opened after a **green** development Build & Test with commits ahead of master.
 
-          ### What green checks on this PR mean
-          Version bump + Build & Test passed. **Merge this PR** to deploy production.
+          My.Workspace is a greenfield product — app \`<Version>\` stays at **${VERSION:-1.0.0}** and is not bumped per feature.
 
-          ### After you merge
-          The **Master** workflow runs: Build → Publish Azure → Create GitHub Release \`v$VERSION\`.
-
-          There is no further job on the PR graph — **merge is the next step**.
+          ### Next step
+          **Merge this PR**. The Master workflow builds/tests and may create/update the GitHub Release for \`v${VERSION:-1.0.0}\`.
           EOF
           )"; then
             echo "::notice::gh pr create failed (auth, permissions, or PR already exists). Not failing the workflow."

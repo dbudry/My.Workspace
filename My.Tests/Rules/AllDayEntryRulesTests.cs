@@ -238,6 +238,45 @@ public class AllDayEntryRulesTests
     }
 
     [Fact]
+    public void FormatInclusiveDateRange_single_day_is_one_date()
+    {
+        var start = new DateTime(2026, 9, 2);
+        Assert.Equal("09/02/26", AllDayEntryRules.FormatInclusiveDateRange(start, start, "MM/dd/yy"));
+        Assert.Equal("09/02/26", AllDayEntryRules.FormatInclusiveDateRange(start, null, "MM/dd/yy"));
+    }
+
+    [Fact]
+    public void FormatInclusiveDateRange_span_shows_both_ends()
+    {
+        Assert.Equal(
+            "09/02/26 – 09/14/26",
+            AllDayEntryRules.FormatInclusiveDateRange(
+                new DateTime(2026, 9, 2), new DateTime(2026, 9, 14), "MM/dd/yy"));
+    }
+
+    [Fact]
+    public void ProrateDurationForWindow_africa_trip_first_week_is_three_workdays()
+    {
+        // Sep 2–14 2026 = 9 workdays × 8h = 72h. Week of Aug 31 (Mon) is Wed–Fri only.
+        var start = new DateTime(2026, 9, 2);
+        var end = new DateTime(2026, 9, 14);
+        var weekStart = new DateTime(2026, 8, 31);
+        var weekEnd = new DateTime(2026, 9, 6);
+        Assert.Equal(
+            TimeSpan.FromHours(24),
+            AllDayEntryRules.ProrateDurationForWindow(
+                start, end, weekStart, weekEnd, TimeSpan.FromHours(72)));
+    }
+
+    [Fact]
+    public void OverlapWorkdays_zero_when_outside_window()
+    {
+        Assert.Equal(0, AllDayEntryRules.OverlapWorkdays(
+            new DateTime(2026, 9, 2), new DateTime(2026, 9, 14),
+            new DateTime(2026, 8, 24), new DateTime(2026, 8, 30)));
+    }
+
+    [Fact]
     public void DurationFor_tuesday_through_thursday_is_exactly_24_hours()
     {
         // Jul 28–30 2026 is Tue–Thu. 3 workdays × 8h = 24h. This used to be

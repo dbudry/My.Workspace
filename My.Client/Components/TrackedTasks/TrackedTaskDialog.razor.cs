@@ -52,6 +52,7 @@ namespace My.Client.Components.TrackedTasks
 
         [Inject] private IDialogService DialogService { get; set; } = null!;
         [Inject] private ISnackbar Snackbar { get; set; } = null!;
+        [Inject] private NavigationManager Navigation { get; set; } = null!;
         [Inject] private ProjectsCache ProjectsCache { get; set; } = null!;
         [Inject] private AppSettingsCache AppSettingsCache { get; set; } = null!;
         [Inject] private UserSettingsService SettingsService { get; set; } = null!;
@@ -471,6 +472,12 @@ namespace My.Client.Components.TrackedTasks
                 await DuplicateAsync();
             else if ((e.Key == "Delete" || e.Key == "Backspace") && Mode == TrackedTaskDialogMode.Edit && !isBusy)
                 await DeleteAsync();
+        }
+
+        private void GoToSubmit()
+        {
+            Close();
+            Navigation.NavigateTo(TrackedTaskLockRules.SubmitPagePath);
         }
 
         private string FormatDateTime(DateTime dt)

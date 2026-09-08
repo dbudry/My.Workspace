@@ -11,7 +11,8 @@
 
 <PageHeader Title="Projects" Description="Project groups and projects available for time tracking." />
 
-<MudTable @ref="table" @key="groupBy" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true"
+<MudTable @ref="table" @key="groupBy" ServerData="LoadServerData" Hover="true" Breakpoint="Breakpoint.None" Dense="true"
+          Class="projects-table"
           RowClassFunc="@((ProjectDisplayRow row, int _) => row.IsGroupRow ? "" : "project-child-row")">
     <ToolBarContent>
         @* Add buttons live in the toolbar, matching the Organizations page pattern —
@@ -43,10 +44,16 @@
                        ValueChanged="@OnShowArchivedChanged" />
         }
         <MudSpacer />
+        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Download"
+                   Disabled="@isDownloadingCsv"
+                   OnClick="DownloadSlugListingCsvAsync">
+            Download
+        </MudButton>
         @* No max-width here — matches Organizations' search field so both pages'
            search boxes size and align the same way. *@
         <MudTextField Value="searchString" ValueChanged="@(async (string v) => await OnSearchChanged(v))" Placeholder="Search" Adornment="Adornment.Start"
-                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Margin="Margin.Dense"
+                      AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0 ml-2" Margin="Margin.Dense"
                       Immediate="true" DebounceInterval="300" />
     </ToolBarContent>
     <HeaderContent>
@@ -118,7 +125,7 @@
                 project.OrganizationColor, project.ProjectGroupColor, SettingsService.ProjectColorSource);
             var indicator = resolved ?? "transparent";
             // Tooltip label names the entity (Org/Group) whose color is shown so users
-            // can tell *what* the color represents — "Organization Alpha" vs. "Sample Network" — without
+            // can tell *what* the color represents — "Ball" vs. "Profit Network" — without
             // memorizing a palette. Empty string when no label, so MudTooltip stays silent.
             var indicatorLabel = ProjectColorRules.ResolveLabel(
                 project.OrganizationName, project.ProjectGroupName,

@@ -15,6 +15,7 @@
                 <MudTextField @bind-Value="Model.Name" For="@(() => Model.Name)"
                               Label="Project Name" Required="true"
                               RequiredError="Project name is required"
+                              MaxLength="100"
                               Immediate="true" AutoFocus="true" />
 
                 <MudTextField @bind-Value="Model.Slug" For="@(() => Model.Slug)"

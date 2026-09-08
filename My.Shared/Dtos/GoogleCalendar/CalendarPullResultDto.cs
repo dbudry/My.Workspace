@@ -41,6 +41,9 @@ namespace My.Shared.Dtos.GoogleCalendar
         /// <summary>Events whose TrackedTask falls in an already-submitted month — left untouched.</summary>
         public int SkippedMonthSubmitted { get; set; }
 
+        /// <summary>Matched a work project while the user has Availability-only personal sync on.</summary>
+        public int SkippedAvailabilityOnly { get; set; }
+
         /// <summary>Per-event Google API failures during the scan. Counts log lines, doesn't fail the request.</summary>
         public int Failed { get; set; }
 

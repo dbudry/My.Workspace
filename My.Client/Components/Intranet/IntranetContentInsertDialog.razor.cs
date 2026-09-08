@@ -135,14 +135,14 @@ namespace My.Client.Components.Intranet
 
         private async Task EnsureGoogleConnectedAsync()
         {
-            if (!UserSettings.IsGoogleCalendarConnected)
+            if (!UserSettings.IsGoogleDriveConnected)
             {
                 try { await UserSettings.GetSettingsAsync(); } catch { }
             }
-            if (!UserSettings.IsGoogleCalendarConnected)
+            if (!UserSettings.IsGoogleDriveConnected)
             {
                 await CloseAsync();
-                await UserSettings.InitiateGoogleConnectAsync(Navigation.Uri);
+                await UserSettings.InitiateGoogleDriveConnectAsync(Navigation.Uri);
                 throw new InvalidOperationException("Google not connected");
             }
         }

@@ -5,6 +5,7 @@
 @using My.Client.Services
 @using My.Client.Theme
 @using My.Shared.Constants
+@using My.Shared.Rules
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ThemeService Theme
@@ -28,6 +29,10 @@
         <a href="" class="brand">
             <img src="/img/logo-icon-100.png" alt="" class="brand-logo" />
             <span class="brand-text"><strong>My</strong> Workspace</span>
+            @if (IsLocal)
+            {
+                <span class="local-env-pill" title="This is your machine, not a deployed environment">LOCAL</span>
+            }
         </a>
         @if (!string.IsNullOrEmpty(pageTitle))
         {
@@ -127,6 +132,13 @@
     private bool _initialized;
     private bool _navOpen;
     private bool _hasIntranetAccess;
+
+#if DEBUG
+    private bool IsLocal =>
+        LocalEnvironmentRules.IsLocalDebugClient(new Uri(Navigation.BaseUri));
+#else
+    private bool IsLocal => false;
+#endif
 
     private string pageTitle = string.Empty;
     private Action<string>? _setPageTitle;

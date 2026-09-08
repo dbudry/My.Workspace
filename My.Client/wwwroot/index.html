@@ -4,16 +4,101 @@
 <head>
     <meta charset="utf-8" />
     <script>
-        // Dev-only: discourage browser from caching index.html itself. Without this,
-        // an old index (or service worker) can keep serving stale _framework integrity hashes.
+        // Dev-only: LOCAL bar + no-cache on localhost debug ports only (7047/5047/11256).
         (function () {
-            var local = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-            if (!local) return;
+            var host = (location.hostname || '').toLowerCase();
+            var port = String(location.port || '');
+            if (host.endsWith('.azurestaticapps.net') || host.endsWith('.azurewebsites.net'))
+                return;
+            var loopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+            var localPort = port === '7047' || port === '5047' || port === '11256';
+            if (!(loopback && localPort)) return;
+
+            var hideKey = 'ws.localEnvBannerHiddenUntil';
+            var hideMs = 5 * 60 * 1000;
+            var restoreTimer;
+
+            function hiddenUntil() {
+                try { return parseInt(localStorage.getItem(hideKey) || '0', 10) || 0; }
+                catch (e) { return 0; }
+            }
+            function isHidden() { return hiddenUntil() > Date.now(); }
+
             var meta = document.createElement('meta');
             meta.httpEquiv = 'Cache-Control';
             meta.content = 'no-store, no-cache, must-revalidate';
             document.head.appendChild(meta);
             document.querySelector('link[rel="manifest"]')?.remove();
+            var prefix = '[LOCAL] ';
+            function ensureTitle() {
+                var t = document.title || 'My Workspace';
+                if (t.indexOf(prefix) !== 0)
+                    document.title = prefix + t.replace(/^\[LOCAL\]\s*/, '');
+            }
+            ensureTitle();
+            var titleEl = document.querySelector('title');
+            if (titleEl && typeof MutationObserver !== 'undefined')
+                new MutationObserver(ensureTitle).observe(titleEl, { childList: true, characterData: true, subtree: true });
+
+            function mountBar() {
+                if (document.getElementById('local-env-banner')) return;
+                var bar = document.createElement('div');
+                bar.id = 'local-env-banner';
+                bar.setAttribute('role', 'status');
+                var full = document.createElement('span');
+                full.className = 'local-env-banner-text local-env-banner-text-full';
+                full.textContent = 'LOCAL — not production. This is your machine, not a deployed environment.';
+                var short = document.createElement('span');
+                short.className = 'local-env-banner-text local-env-banner-text-short';
+                short.textContent = 'LOCAL — not production';
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.id = 'local-env-banner-hide';
+                btn.textContent = 'Hide 5 min';
+                btn.setAttribute('aria-label', 'Hide this local banner for 5 minutes');
+                btn.addEventListener('click', hideBar);
+                bar.appendChild(full);
+                bar.appendChild(short);
+                bar.appendChild(btn);
+                document.body.insertBefore(bar, document.body.firstChild);
+            }
+
+            function showBar() {
+                document.documentElement.classList.add('local-env');
+                if (document.body) mountBar();
+            }
+
+            function hideBar() {
+                var until = Date.now() + hideMs;
+                try { localStorage.setItem(hideKey, String(until)); } catch (e) { }
+                document.documentElement.classList.remove('local-env');
+                document.getElementById('local-env-banner')?.remove();
+                scheduleRestore(until);
+            }
+
+            function scheduleRestore(until) {
+                if (restoreTimer) clearTimeout(restoreTimer);
+                var ms = until - Date.now();
+                if (ms <= 0) {
+                    try { localStorage.removeItem(hideKey); } catch (e) { }
+                    showBar();
+                    return;
+                }
+                restoreTimer = setTimeout(function () {
+                    try { localStorage.removeItem(hideKey); } catch (e) { }
+                    showBar();
+                }, ms);
+            }
+
+            function startBar() {
+                if (isHidden())
+                    scheduleRestore(hiddenUntil());
+                else
+                    showBar();
+            }
+
+            if (document.body) startBar();
+            else document.addEventListener('DOMContentLoaded', startBar);
         })();
     </script>
     <meta name="robots" content="noindex, nofollow" />
