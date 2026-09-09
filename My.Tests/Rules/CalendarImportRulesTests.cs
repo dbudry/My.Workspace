@@ -138,4 +138,32 @@ public class CalendarImportRulesTests
         // wipe Tyme just because someone deleted it directly in Google.
         Assert.False(CalendarImportRules.ShouldDeleteTrackedTaskOnGoogleCancel(
             incrementalSync: true, stillEligibleForPersonalSync: false));
+
+    [Fact]
+    public void ShouldImportByStart_allows_today_and_within_lookahead()
+    {
+        var now = new DateTime(2026, 9, 8, 12, 0, 0, DateTimeKind.Utc);
+        Assert.True(CalendarImportRules.ShouldImportByStart(now, now));
+        Assert.True(CalendarImportRules.ShouldImportByStart(now.AddDays(90), now));
+        Assert.False(CalendarImportRules.ShouldImportByStart(now.AddDays(90).AddSeconds(1), now));
+        Assert.True(CalendarImportRules.ShouldImportByStart(now.AddYears(-1), now));
+    }
+
+    [Fact]
+    public void GoogleEventIdMatchesCancel_exact_instance()
+    {
+        const string id = "oeqdo1ee5mlcs077kg8kn3v5ec_20400102T150000Z";
+        Assert.True(CalendarImportRules.GoogleEventIdMatchesCancel(id, id, recurringEventId: null));
+    }
+
+    [Fact]
+    public void GoogleEventIdMatchesCancel_series_master_matches_all_instances()
+    {
+        const string series = "oeqdo1ee5mlcs077kg8kn3v5ec";
+        const string instance = series + "_20400102T150000Z";
+        Assert.True(CalendarImportRules.GoogleEventIdMatchesCancel(instance, series, recurringEventId: null));
+        Assert.True(CalendarImportRules.GoogleEventIdMatchesCancel(instance, cancelledEventId: null, recurringEventId: series));
+        Assert.False(CalendarImportRules.GoogleEventIdMatchesCancel(instance, "other", recurringEventId: null));
+        Assert.False(CalendarImportRules.GoogleEventIdMatchesCancel(null, series, series));
+    }
 }

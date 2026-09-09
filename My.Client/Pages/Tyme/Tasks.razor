@@ -589,7 +589,7 @@ else
                     }
                 </div>
             }
-            else if (isStopwatch)
+            else if (isStopwatch && !context.IsLocked)
             {
                 @* Same date/time tracks as manual rows (no outer tasks-inline-display padding). *@
                 <div class="tasks-inline-date-time tasks-stopwatch-hit"
@@ -653,7 +653,7 @@ else
                     <span class="tasks-list-duration-text">@FormatRowDuration(context)</span>
                 </div>
             }
-            else if (isStopwatch)
+            else if (isStopwatch && !context.IsLocked)
             {
                 @* Total is sum of sessions — open sessions dialog to change duration. *@
                 <div class="tasks-list-duration-hit tasks-stopwatch-hit"
@@ -675,7 +675,14 @@ else
             }
         </MudTd>
         <MudTd DataLabel="Actions" Style="text-align:center;" @onclick:stopPropagation="true">
-            @if (isStopwatch)
+            @if (isStopwatch && context.IsLocked)
+            {
+                <MudTooltip Text="Submitted month — unsubmit from Submit to edit">
+                    <MudIconButton Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small"
+                                   OnClick="@(() => OpenTaskDialog(context))" />
+                </MudTooltip>
+            }
+            else if (isStopwatch)
             {
                 <div class="d-flex justify-center align-center" style="gap: 0;">
                     <MudTooltip Text="Sessions — durations, create duration; name/project when unlocked">

@@ -62,4 +62,15 @@ public class TimeSubmissionRulesTests
 
         Assert.False(TimeSubmissionRules.IsEarlySubmission(2026, 8, utcNow));
     }
+
+    [Fact]
+    public void Submit_lists_past_current_and_next_month_only()
+    {
+        var utcNow = new DateTime(2026, 9, 8, 12, 0, 0, DateTimeKind.Utc);
+        Assert.True(TimeSubmissionRules.IsListedOnSubmitPage(2026, 8, utcNow));
+        Assert.True(TimeSubmissionRules.IsListedOnSubmitPage(2026, 9, utcNow));
+        Assert.True(TimeSubmissionRules.IsListedOnSubmitPage(2026, 10, utcNow));
+        Assert.False(TimeSubmissionRules.IsListedOnSubmitPage(2026, 11, utcNow));
+        Assert.False(TimeSubmissionRules.IsListedOnSubmitPage(2040, 5, utcNow));
+    }
 }
