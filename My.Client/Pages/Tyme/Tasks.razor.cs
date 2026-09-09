@@ -1090,7 +1090,12 @@ namespace My.Client.Pages.Tyme
         private async Task OnRowClickAsync(TaskListRow row)
         {
             if (row.Kind == TaskListRowKind.Stopwatch)
-                await OpenStopwatchSessionsAsync(row);
+            {
+                if (row.IsLocked && row.ManualTask != null)
+                    await OpenTaskDialog(row);
+                else
+                    await OpenStopwatchSessionsAsync(row);
+            }
             else if (row.IsLocked && row.ManualTask != null)
                 await OpenTaskDialog(row);
         }

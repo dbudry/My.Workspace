@@ -600,9 +600,8 @@ namespace My.Functions
 
         /// <summary>
         /// Same shape as <see cref="ComputeOverdueAsync"/> but with no "month must already
-        /// be over" restriction — every month the user has tracked time in and hasn't
-        /// submitted, past, current, or future. <see cref="EligibleMonthDto.IsEarly"/>
-        /// flags the ones that haven't ended yet, purely for UI labeling.
+        /// be over" restriction — unsubmitted months with tracked time through next month
+        /// (early submit). Far-future imported recurring meetings are not listed.
         /// </summary>
         private async Task<List<EligibleMonthDto>> ComputeEligibleForSubmissionAsync(string userId)
         {
@@ -626,7 +625,8 @@ namespace My.Functions
                 .ToHashSet();
 
             return taskMonths
-                .Where(m => !submittedSet.Contains((m.Year, m.Month)))
+                .Where(m => !submittedSet.Contains((m.Year, m.Month))
+                    && TimeSubmissionRules.IsListedOnSubmitPage(m.Year, m.Month, nowUtc))
                 .OrderBy(m => m.Year).ThenBy(m => m.Month)
                 .Select(m => new EligibleMonthDto
                 {

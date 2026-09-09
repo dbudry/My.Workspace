@@ -186,7 +186,7 @@ namespace My.Functions.Services
         // no time bound, so newly-created events come in via the webhook regardless of
         // their start date.
         private static readonly TimeSpan InitialSyncLookback = TimeSpan.FromDays(30);
-        private static readonly TimeSpan InitialSyncLookahead = TimeSpan.FromDays(90);
+        private static readonly TimeSpan InitialSyncLookahead = CalendarImportRules.ImportLookahead;
 
         /// <summary>
         /// Incremental pull of changed events. On first call (no syncToken) Google returns

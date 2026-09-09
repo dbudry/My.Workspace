@@ -494,6 +494,7 @@ namespace My.Functions
                         case EventImportOutcome.SkippedDeclinedInvite: result.SkippedDeclinedInvite++; break;
                         case EventImportOutcome.SkippedMonthSubmitted: result.SkippedMonthSubmitted++; break;
                         case EventImportOutcome.SkippedAvailabilityOnly: result.SkippedAvailabilityOnly++; break;
+                        case EventImportOutcome.SkippedBeyondLookahead: break;
                     }
                 }
                 catch (Exception ex)
@@ -525,9 +526,10 @@ namespace My.Functions
         /// between channel expiry and next renewal is only closed by this pull.
         ///
         /// Window rationale: 7 days back covers webhook drops from missed deliveries
-        /// and watch-channel gaps; 7 days forward catches vacations entered last week
-        /// but starting next week, so the team calendar is populated before the user
-        /// is actually out.
+        /// and watch-channel gaps. Forward uses <see cref="CalendarImportRules.ImportLookahead"/>
+        /// so a weekly tagged series is filled as each instance enters that horizon
+        /// (next month, not 2040). Incremental sync will not re-send unchanged
+        /// instances, so this timer is what creates next month after a cleanup.
         ///
         /// Per-user try/catch is mandatory: one user's revoked refresh token or quota
         /// hit must not break the loop for everyone else.
@@ -536,7 +538,7 @@ namespace My.Functions
         public async Task PullMissedEventsNightlyAsync([TimerTrigger("0 0 7 * * *")] TimerInfo timer)
         {
             var windowFromUtc = DateTime.UtcNow.Date.AddDays(-7);
-            var windowToUtc = DateTime.UtcNow.Date.AddDays(7).AddTicks(-1);
+            var windowToUtc = DateTime.UtcNow.Date.Add(CalendarImportRules.ImportLookahead).AddTicks(-1);
 
             var users = await settingsRepository.Get(s =>
                 !string.IsNullOrEmpty(s.GoogleRefreshToken)
@@ -811,6 +813,7 @@ namespace My.Functions
                         case EventImportOutcome.SkippedDeclinedInvite:
                         case EventImportOutcome.SkippedMonthSubmitted:
                         case EventImportOutcome.SkippedAvailabilityOnly:
+                        case EventImportOutcome.SkippedBeyondLookahead:
                             break;
                     }
                 }
@@ -854,6 +857,7 @@ namespace My.Functions
             SkippedDeclinedInvite,
             SkippedMonthSubmitted,
             SkippedAvailabilityOnly,
+            SkippedBeyondLookahead,
         }
 
         /// <summary>
@@ -880,10 +884,23 @@ namespace My.Functions
             // must not wipe Tyme. Unlink GoogleEventId so a later backfill can republish.
             if (string.Equals(ev.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
             {
-                var linked = (await taskRepository.Get(t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
-                if (linked != null
-                    && !await IsMonthSubmittedAsync(settings.UserId, linked.StartDate.Year, linked.StartDate.Month))
+                var cancelledId = ev.Id;
+                var recurringId = ev.RecurringEventId;
+                var cancelledPrefix = string.IsNullOrEmpty(cancelledId) ? null : cancelledId + "_";
+                var recurringPrefix = string.IsNullOrEmpty(recurringId) ? null : recurringId + "_";
+                var linkedRows = (await taskRepository.Get(t =>
+                    t.UserId == settings.UserId
+                    && t.GoogleEventId != null
+                    && (t.GoogleEventId == cancelledId
+                        || t.GoogleEventId == recurringId
+                        || (cancelledPrefix != null && t.GoogleEventId.StartsWith(cancelledPrefix))
+                        || (recurringPrefix != null && t.GoogleEventId.StartsWith(recurringPrefix))))).ToList();
+
+                foreach (var linked in linkedRows)
                 {
+                    if (await IsMonthSubmittedAsync(settings.UserId, linked.StartDate.Year, linked.StartDate.Month))
+                        continue;
+
                     // Always remove the Team Availability sister when Google cancelled
                     // the primary. Non-incremental scans must not delete the Tyme row
                     // (stale tombstones after disconnect), but the sister event should
@@ -958,6 +975,14 @@ namespace My.Functions
             DateTime startDate = parsed.StartDate;
             DateTime endDate = parsed.EndDate;
             bool isAllDay = parsed.IsAllDay;
+
+            if (!CalendarImportRules.ShouldImportByStart(startDate, DateTime.UtcNow))
+            {
+                logger.LogInformation(
+                    "Skipping Google event {EventId} for user {UserId}: start {Start} is beyond the {Days}-day import lookahead (summary='{Summary}').",
+                    ev.Id, settings.UserId, startDate, (int)CalendarImportRules.ImportLookahead.TotalDays, ev.Summary);
+                return EventImportOutcome.SkippedBeyondLookahead;
+            }
 
             // Timed events arrive as Google's real-UTC truth; dialog-created TrackedTasks
             // store wall-clock-tagged-Kind=Utc (intentional, so GoogleEventTimeRules can
