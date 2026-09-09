@@ -61,6 +61,47 @@ public static class CalendarImportRules
         incrementalSync && stillEligibleForPersonalSync;
 
     /// <summary>
+    /// How far ahead of <c>utcNow</c> a tagged Google event may be imported as Tyme time.
+    /// Matches the first-sync list window. Incremental sync is otherwise unbounded, so a
+    /// weekly <c>[slug]</c> series with no end date would otherwise create a task per week
+    /// for decades (Submit filled through 2040).
+    /// </summary>
+    public static readonly TimeSpan ImportLookahead = TimeSpan.FromDays(90);
+
+    /// <summary>
+    /// Tagged events whose start is after now + <see cref="ImportLookahead"/> are not
+    /// imported (and not updated). Past and near-future events still import.
+    /// </summary>
+    public static bool ShouldImportByStart(DateTime startUtc, DateTime utcNow) =>
+        startUtc <= utcNow + ImportLookahead;
+
+    /// <summary>
+    /// Google instance ids are <c>{seriesId}_{yyyyMMdd}T{HHmmss}Z</c>. Cancelling the
+    /// series often sends the master id (or <c>recurringEventId</c>) without the suffix.
+    /// Exact match still covers a single-instance cancel.
+    /// </summary>
+    public static bool GoogleEventIdMatchesCancel(
+        string? taskGoogleEventId, string? cancelledEventId, string? recurringEventId)
+    {
+        if (string.IsNullOrEmpty(taskGoogleEventId))
+            return false;
+        if (IdsEqualOrInstanceOf(taskGoogleEventId, cancelledEventId))
+            return true;
+        if (IdsEqualOrInstanceOf(taskGoogleEventId, recurringEventId))
+            return true;
+        return false;
+    }
+
+    private static bool IdsEqualOrInstanceOf(string taskGoogleEventId, string? seriesOrInstanceId)
+    {
+        if (string.IsNullOrEmpty(seriesOrInstanceId))
+            return false;
+        if (string.Equals(taskGoogleEventId, seriesOrInstanceId, StringComparison.Ordinal))
+            return true;
+        return taskGoogleEventId.StartsWith(seriesOrInstanceId + "_", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Distinguishes a genuine edit made directly in Google Calendar from the
     /// webhook echo of Tyme's own push, for events tagged <c>source=tyme</c>.
     ///

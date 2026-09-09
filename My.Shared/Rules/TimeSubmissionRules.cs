@@ -21,4 +21,17 @@ public static class TimeSubmissionRules
         var currentMonthStart = new DateTime(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         return requested >= currentMonthStart;
     }
+
+    /// <summary>
+    /// Submit's "Your months" lists unsubmitted months with tracked time through
+    /// <strong>next calendar month</strong> only. Far-future rows (imported weekly
+    /// <c>[slug]</c> series) must not fill the page through 2040.
+    /// </summary>
+    public static bool IsListedOnSubmitPage(int year, int month, DateTime utcNow)
+    {
+        var requested = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var currentMonthStart = new DateTime(utcNow.Year, utcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var lastListable = currentMonthStart.AddMonths(1);
+        return requested <= lastListable;
+    }
 }

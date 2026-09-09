@@ -11,7 +11,11 @@
       { "type": "Added", "text": "Projects Download CSV of names and calendar slugs. Project name max length is 100." },
       { "type": "Added", "text": "LOCAL bar on localhost debug ports only (7047 / 5047 / 11256), with Hide 5 min." },
       { "type": "Added", "text": "Help → Availability covers manager-defined categories and Only Availability personal sync." },
-      { "type": "Changed", "text": "Product version display reset to 1.0.0 for this calendar/settings cluster." }
+      { "type": "Fixed", "text": "A repeating Google Calendar event with a project [slug] no longer imports every week for decades. Tyme only takes tagged events in the next 90 days. Each night it fills the next 90 days." },
+      { "type": "Fixed", "text": "Submit no longer lists far-future months from those repeating events — through next month only." },
+      { "type": "Fixed", "text": "Cancelling a repeating Google series matches every imported week, not only one instance." },
+      { "type": "Fixed", "text": "Week → List shows a lock on stopwatch sessions in a submitted month, same as other tasks." },
+      { "type": "Changed", "text": "Product version display stays at 1.0.0 (greenfield). GitHub release tags increment separately." }
     ]
   }
 ]
