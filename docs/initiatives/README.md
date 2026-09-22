@@ -7,14 +7,15 @@ Tracking docs for in-flight and shipped efforts. Each initiative may have a dedi
 | [Billing Entities](billing-entities.md) | `feature/billing-entities` | Captured, not started |
 | [Personal Calendar Migration](personal-calendar-migration.md) | `feature/personal-calendar-migration` | Captured, not started |
 | [Team Availability](team-availability-slugs.md) | `feature/team-availability-slugs` | Phase 1 shipped 2026-05-19 |
-| [Intranet](intranet.md) | `feature/intranet-favorite-branch` | **Shipped** (v1) — was planned as "Knowledge Base" |
+| [Intranet](intranet.md) | `feature/intranet-favorite-branch` | **Shipped** (v1) - was planned as "Knowledge Base" |
+| [Expenses](expenses.md) | `feature/port-expenses-and-fixes` | Porting expenses + App Drive + related fixes |
 | [Project Color Preference](project-color-preference.md) | `fix/calendar-sync-bounds` | Shipped 2026-05-18 |
 
 ## How these docs work
 
-- **Goal / Scope** — what we're trying to do, in Derek's words.
-- **Open questions** — unresolved decisions. Don't answer these unilaterally; bring back to Derek.
-- **Concerns / risks** — things that could bite us.
-- **Sub-tasks** — work breakdown, filled in once we start.
-- **Decisions log** — append-only record of decisions and *why*.
-- **What was built** — for shipped initiatives, accurate summary of what actually landed (see [Intranet](intranet.md) for the template).
+- **Goal / Scope** - what we're trying to do, in Derek's words.
+- **Open questions** - unresolved decisions. Don't answer these unilaterally; bring back to Derek.
+- **Concerns / risks** - things that could bite us.
+- **Sub-tasks** - work breakdown, filled in once we start.
+- **Decisions log** - append-only record of decisions and *why*.
+- **What was built** - for shipped initiatives, accurate summary of what actually landed (see [Intranet](intranet.md) for the template).

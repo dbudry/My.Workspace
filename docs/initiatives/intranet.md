@@ -4,7 +4,7 @@
 **Implemented as:** Intranet module — `feature/intranet-favorite-branch` and related work merged toward `development`  
 **Status:** Shipped (v1). See `My.Client/Pages/Intranet/*`, `IntranetFunction.cs`, `Intranet*` entities/DTOs, `CuratedNavItem.razor`, `IntranetFileHelper.cs`.
 
-The original initiative doc called this a "knowledge base." The product name in the app is **Intranet** (`User:Intranet`, `Editor:Intranet`, `Admin:Intranet`). The two terms refer to the same module.
+The original initiative doc called this a "knowledge base." The product name in the app is **Intranet** (`User:Intranet`, `Editor:Intranet`, `Navigation:Intranet`, `UserAccess:Intranet`). The two terms refer to the same module.
 
 ---
 
@@ -12,7 +12,7 @@ The original initiative doc called this a "knowledge base." The product name in 
 
 ### Pages and content
 
-- **Page model** (`IntranetPage`): title, optional slug, parent/child hierarchy, `SortOrder`, `IsPublished` (draft vs live), HTML body in `ContentMarkdown` (historical field name), optional `RestrictEditingToOwner` and `Visibility` on the entity for future tightening.
+- **Page model** (`IntranetPage`): title, optional slug, parent/child hierarchy, `SortOrder`, `IsPublished` (draft vs live), HTML body in `ContentMarkdown` (historical field name), optional `RestrictEditingToOwner` (owner-only edit/delete — no Navigation or UserAccess override; `Admin:Intranet` is gone) and `Visibility` on the entity for future tightening.
 - **Viewing** (`/intranet/pages/{id|slug}`): rendered HTML, draft banner for editors, sub-page links, attachment list, star-to-favorite, **Edit this page** for `Editor:Intranet+`.
 - **Editing** (`/intranet/editor`): Quill WYSIWYG (lazy-loaded from `wwwroot/lib/quill/` via `quill-editor.js`). Tabs: **Content**, **Attachments** (used/unused Drive files), **Page Settings** (slug, parent, menu placement).
 - **Editor toolbar**: standard formatting; **image** and **folder** open the Drive insert dialog (upload or library pick); **code** opens full-page HTML view/edit/copy; **link** routes to the insert-link dialog (not Quill's default link tooltip).
@@ -21,7 +21,7 @@ The original initiative doc called this a "knowledge base." The product name in 
 
 ### Navigation (two layers)
 
-1. **Curated menu** (`IntranetNavigationItem`) — what most users see in the sidebar. Built by `Admin:Intranet` on `/intranet/navigation`. Supports internal page links, external URLs, arbitrary depth, reorder, hide (`IsVisible`). Draft-linked items are suppressed for regular users.
+1. **Curated menu** (`IntranetNavigationItem`) — what most users see in the sidebar. Built by `Navigation:Intranet` on `/intranet/navigation`. Supports internal page links, external URLs, arbitrary depth, reorder, hide (`IsVisible`). Draft-linked items are suppressed for regular users.
 2. **Page hierarchy** — parent/child relationships among pages (Manage Pages). A page can exist in the hierarchy without appearing in the curated menu until placed there.
 
 **Sidebar UX** (`NavMenu.razor` + `CuratedNavItem.razor` + `SidebarNavAccordionState`): recursive tree, accordion expand/collapse, active-route highlight, depth indentation. Nav items that link to a page **and** have children: title navigates, chevron toggles sub-pages.
@@ -30,7 +30,8 @@ Creation is **contextual from the navigation tree** (add sub-item, add page unde
 
 ### Documents library (Google Drive)
 
-- Company folder ID in **App Settings → Intranet**.
+- Files live on **App Shared Drive → Intranet** via the App Drive Connect token (same Drive as Expenses). Not employee Drive. Pages stay in SQL.
+- Folder ID is written to **App Settings** when Drive layout is applied (replaces the old pasted IT Resources/Intranet id).
 - **Documents Library** (`/intranet/documents`) for `Editor:Intranet+`: browse, upload, register, edit metadata, delete/purge, "used on" tracking.
 - Editor insert dialog: images, file links, web URLs, upload, create new Google Doc/Sheet/Slides.
 - `IntranetFileHelper` centralizes MIME classification, upload naming, insert HTML, and content-reference detection.
@@ -41,7 +42,7 @@ Creation is **contextual from the navigation tree** (add sub-item, add page unde
 
 ### Search (header)
 
-- **App-bar search** (magnifying glass or `/` shortcut): overlay dialog ported from MyWorkspace.Site.Public pattern — not in the left nav.
+- **App-bar search** (magnifying glass or `/` shortcut): overlay dialog ported from prior public site pattern — not in the left nav.
 - `GET /api/intranet/pages/search?q=…` searches title, slug, and HTML body (AND across terms). Editors see drafts; regular users see published pages only.
 - `IntranetSearchHelper` in `My.Shared` handles scoring and excerpts; `HeaderSearch` + `HeaderSearchDialog` in `My.Client/Components/Search/`.
 
@@ -49,7 +50,8 @@ Creation is **contextual from the navigation tree** (add sub-item, add page unde
 
 - `User:Intranet` — view published pages and curated nav.
 - `Editor:Intranet` — pages, editor, documents library.
-- `Admin:Intranet` — navigation tree + everything editors can do.
+- `Navigation:Intranet` — curated sidebar tree (does not stack over Editor).
+- `UserAccess:Intranet` — assign Intranet roles on Users (does not operate Intranet).
 - Strict module scoping (same model as Tyme). Global `Admin` alone sees no Intranet nav and is denied at `ScopedAuthorizeView ScopedOnly="true"`. Use impersonation to test.
 
 ### Performance choices
@@ -115,7 +117,7 @@ Creation is **contextual from the navigation tree** (add sub-item, add page unde
 
 **Initial scope thinking:** page model, WYSIWYG, versioning, search. Out of scope: external publishing, real-time co-editing.
 
-**Open questions (mostly resolved by v1):** authoring model → Quill HTML; attachments → Google Drive; permissions → scoped module roles; who can author → Editor/Admin:Intranet.
+**Open questions (mostly resolved by v1):** authoring model → Quill HTML; attachments → Google Drive; permissions → scoped module roles; who can author → Editor:Intranet.
 
 **Ideas considered:** Markdown-first storage, server-rendered preview, lazy-loaded editor RCL, Azure AI Search later. v1 chose HTML + client render + JS-lazy Quill.
 

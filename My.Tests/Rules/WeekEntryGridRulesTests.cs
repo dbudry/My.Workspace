@@ -149,7 +149,7 @@ public class WeekEntryGridRulesTests
     [InlineData("Work", true)]
     public void ValidateTaskName_enforces_length(string? name, bool ok)
     {
-        var err = WeekEntryGridRules.ValidateTaskDetails(name);
+        var err = WeekEntryGridRules.ValidateTaskName(name);
         if (ok)
             Assert.Null(err);
         else
@@ -160,7 +160,7 @@ public class WeekEntryGridRulesTests
     public void ValidateTaskName_rejects_over_max()
     {
         var longName = new string('x', WeekEntryGridRules.MaxTaskNameLength + 1);
-        Assert.NotNull(WeekEntryGridRules.ValidateTaskDetails(longName));
+        Assert.NotNull(WeekEntryGridRules.ValidateTaskName(longName));
     }
 
     [Theory]
@@ -170,23 +170,23 @@ public class WeekEntryGridRulesTests
     [InlineData("", "")]
     [InlineData("   ", "")]
     [InlineData("No trim needed", "No trim needed")]
-    public void SanitizeTaskDetails_trims_leading_and_trailing_whitespace(string? input, string expected)
+    public void SanitizeTaskName_trims_leading_and_trailing_whitespace(string? input, string expected)
     {
         // TrackedTaskFunction calls this on create/update before persisting, so leading/
         // trailing whitespace typed by the user (or pasted in) never reaches the database.
-        Assert.Equal(expected, WeekEntryGridRules.SanitizeTaskDetails(input));
+        Assert.Equal(expected, WeekEntryGridRules.SanitizeTaskName(input));
     }
 
     [Fact]
-    public void SanitizeTaskDetails_preserves_internal_whitespace()
+    public void SanitizeTaskName_preserves_internal_whitespace()
     {
-        Assert.Equal("Foo  Bar", WeekEntryGridRules.SanitizeTaskDetails("  Foo  Bar  "));
+        Assert.Equal("Foo  Bar", WeekEntryGridRules.SanitizeTaskName("  Foo  Bar  "));
     }
 
     [Fact]
-    public void SanitizeTaskDetails_preserves_internal_newlines()
+    public void SanitizeTaskName_preserves_internal_newlines()
     {
-        Assert.Equal("Line one\nLine two", WeekEntryGridRules.SanitizeTaskDetails("  Line one\nLine two\n"));
+        Assert.Equal("Line one\nLine two", WeekEntryGridRules.SanitizeTaskName("  Line one\nLine two\n"));
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void BindDayForTaskDetails_separates_names_on_same_day()
+    public void BindDayForTaskName_separates_names_on_same_day()
     {
         var day = new DateTime(2026, 5, 12, 9, 0, 0);
         var tasks = new[]
@@ -248,13 +248,13 @@ public class WeekEntryGridRulesTests
             Slice("2", "p1", day.AddHours(3), TimeSpan.FromHours(1), name: "Expenses")
         };
 
-        var timeEntry = WeekEntryGridRules.BindDayForTaskDetails(
+        var timeEntry = WeekEntryGridRules.BindDayForTaskName(
             tasks, "p1", "Time Entry", new DateTime(2026, 5, 12));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, timeEntry.Kind);
         Assert.Equal("1", timeEntry.TaskId);
         Assert.Equal(TimeSpan.FromHours(2), timeEntry.EditableDuration);
 
-        var expenses = WeekEntryGridRules.BindDayForTaskDetails(
+        var expenses = WeekEntryGridRules.BindDayForTaskName(
             tasks, "p1", "expenses", new DateTime(2026, 5, 12)); // case-insensitive
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, expenses.Kind);
         Assert.Equal("2", expenses.TaskId);
@@ -262,7 +262,7 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void DistinctManualTaskDetails_lists_existing_names_in_range()
+    public void DistinctManualTaskNames_lists_existing_names_in_range()
     {
         var tasks = new[]
         {
@@ -273,7 +273,7 @@ public class WeekEntryGridRulesTests
             Slice("5", "p1", new DateTime(2026, 5, 20), TimeSpan.FromHours(1), name: "Outside week")
         };
 
-        var names = WeekEntryGridRules.DistinctManualTaskDetails(
+        var names = WeekEntryGridRules.DistinctManualTaskNames(
             tasks, "p1", new DateTime(2026, 5, 12), new DateTime(2026, 5, 16));
 
         Assert.Equal(2, names.Count);
@@ -282,7 +282,7 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void DistinctManualTaskDetails_includes_empty_details_row()
+    public void DistinctManualTaskNames_includes_empty_details_row()
     {
         // Details is optional (WeekEntryGridRules.ValidateTaskName) — a task saved
         // with no Details must still surface as a row, not vanish from Project view
@@ -292,7 +292,7 @@ public class WeekEntryGridRulesTests
             Slice("1", "p1", new DateTime(2026, 5, 12), TimeSpan.FromHours(1), name: "")
         };
 
-        var names = WeekEntryGridRules.DistinctManualTaskDetails(
+        var names = WeekEntryGridRules.DistinctManualTaskNames(
             tasks, "p1", new DateTime(2026, 5, 12), new DateTime(2026, 5, 16));
 
         Assert.Single(names);
@@ -300,36 +300,36 @@ public class WeekEntryGridRulesTests
     }
 
     [Fact]
-    public void BindDayForTaskDetails_empty_details_binds_hours()
+    public void BindDayForTaskName_empty_details_binds_hours()
     {
         // Details is optional — blank-name manuals must bind like named ones, or Week → Day
         // shows 0h (and the footer undercounts) while List still has the saved hours.
         var day = new DateTime(2026, 8, 20, 9, 0, 0);
         var tasks = new[]
         {
-            Slice("blank", "proj-a", day, TimeSpan.FromHours(2), name: ""),
-            Slice("named", "proj-b", day.AddHours(3), TimeSpan.FromMinutes(45), name: "Sample Task")
+            Slice("blank", "olipop", day, TimeSpan.FromHours(2), name: ""),
+            Slice("named", "celanese", day.AddHours(3), TimeSpan.FromMinutes(45), name: "Celanese")
         };
 
-        var blank = WeekEntryGridRules.BindDayForTaskDetails(
-            tasks, "proj-a", "", new DateTime(2026, 8, 20));
+        var blank = WeekEntryGridRules.BindDayForTaskName(
+            tasks, "olipop", "", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, blank.Kind);
         Assert.Equal("blank", blank.TaskId);
         Assert.Equal(TimeSpan.FromHours(2), blank.EditableDuration);
 
-        var named = WeekEntryGridRules.BindDayForTaskDetails(
-            tasks, "proj-b", "Sample Task", new DateTime(2026, 8, 20));
+        var named = WeekEntryGridRules.BindDayForTaskName(
+            tasks, "celanese", "Celanese", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, named.Kind);
         Assert.Equal("named", named.TaskId);
         Assert.Equal(TimeSpan.FromMinutes(45), named.EditableDuration);
 
-        var blankDoesNotStealNamed = WeekEntryGridRules.BindDayForTaskDetails(
-            tasks, "proj-b", "", new DateTime(2026, 8, 20));
+        var blankDoesNotStealNamed = WeekEntryGridRules.BindDayForTaskName(
+            tasks, "celanese", "", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Empty, blankDoesNotStealNamed.Kind);
     }
 
     [Fact]
-    public void BindDayForTaskDetails_two_empty_details_same_project_day_is_multiple()
+    public void BindDayForTaskName_two_empty_details_same_project_day_is_multiple()
     {
         var day = new DateTime(2026, 8, 20, 9, 0, 0);
         var tasks = new[]
@@ -338,7 +338,7 @@ public class WeekEntryGridRulesTests
             Slice("2", "p1", day.AddHours(2), TimeSpan.FromHours(3), name: "")
         };
 
-        var b = WeekEntryGridRules.BindDayForTaskDetails(
+        var b = WeekEntryGridRules.BindDayForTaskName(
             tasks, "p1", "", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Multiple, b.Kind);
         Assert.Null(b.TaskId);
@@ -366,10 +366,35 @@ public class WeekEntryGridRulesTests
         var wed = new DateTime(2026, 7, 1);
         var tasks = new[]
         {
-            Slice("ad", "it", wed, TimeSpan.FromHours(8), name: "My.Workspace", isAllDay: true),
+            Slice("ad", "it", wed, TimeSpan.FromHours(8), name: "Knowledge Base", isAllDay: true),
             Slice("tm", "admin", wed.AddHours(10), TimeSpan.FromHours(1), name: "Operations Meeting")
         };
         Assert.Equal(TimeSpan.FromHours(9), WeekEntryGridRules.SumDayDuration(tasks, wed));
+    }
+
+    [Fact]
+    public void SumDayDuration_presence_only_all_day_is_zero()
+    {
+        var mon = new DateTime(2026, 9, 21);
+        var tasks = new[]
+        {
+            Slice("busy", "ta", mon, TimeSpan.FromHours(8), name: "test", isAllDay: true, countsAsTime: false),
+            Slice("work", "p1", mon.AddHours(8), TimeSpan.FromHours(2), name: "Client")
+        };
+        Assert.Equal(TimeSpan.FromHours(2), WeekEntryGridRules.SumDayDuration(tasks, mon));
+    }
+
+    [Fact]
+    public void BindDayForTaskName_presence_only_all_day_has_zero_hours()
+    {
+        var mon = new DateTime(2026, 9, 21);
+        var tasks = new[]
+        {
+            Slice("busy", "ta", mon, TimeSpan.FromHours(8), name: "test", isAllDay: true, countsAsTime: false)
+        };
+        var b = WeekEntryGridRules.BindDayForTaskName(tasks, "ta", "test", mon);
+        Assert.Equal(WeekEntryGridRules.DayBindKind.AllDay, b.Kind);
+        Assert.Equal(TimeSpan.Zero, b.TotalManualDuration);
     }
 
     [Fact]
@@ -399,6 +424,8 @@ public class WeekEntryGridRulesTests
     [InlineData(2, 0, "2h")]
     [InlineData(0, 30, "30m")]
     [InlineData(2, 30, "2h 30m")]
+    [InlineData(24, 0, "24h")]
+    [InlineData(72, 0, "72h")]
     public void FormatDuration_readable(int h, int m, string expected)
     {
         Assert.Equal(expected, WeekEntryGridRules.FormatDuration(new TimeSpan(h, m, 0)));
@@ -540,12 +567,12 @@ public class WeekEntryGridRulesTests
     [InlineData(null, true)]
     [InlineData("", true)]
     [InlineData("   ", true)]
-    [InlineData("sample", true)]
-    [InlineData("SAMPLE", true)]
+    [InlineData("ball", true)]
+    [InlineData("BALL", true)]
     [InlineData("xyz", false)]
     public void MatchesEntrySearch_is_case_insensitive_substring(string? query, bool match)
     {
-        Assert.Equal(match, WeekEntryGridRules.MatchesEntrySearch(query, "Sample Project Support", "Standup"));
+        Assert.Equal(match, WeekEntryGridRules.MatchesEntrySearch(query, "Ball PHC Support", "Standup"));
     }
 
     [Fact]
@@ -617,6 +644,7 @@ public class WeekEntryGridRulesTests
         string name = "Task",
         bool isAllDay = false,
         string? stopwatchItemId = null,
-        DateTime? end = null) =>
-        new(id, name, projectId, start, duration, isAllDay, stopwatchItemId, end);
+        DateTime? end = null,
+        bool countsAsTime = true) =>
+        new(id, name, projectId, start, duration, isAllDay, stopwatchItemId, end, countsAsTime);
 }

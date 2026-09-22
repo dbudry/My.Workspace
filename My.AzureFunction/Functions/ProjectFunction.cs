@@ -181,14 +181,23 @@ namespace My.Functions
             // Editor:Tyme can otherwise create/edit projects. The dialog hides this toggle
             // for Editors, but enforce it here too in case of a direct API call. Rule is
             // pure/testable — see ProjectPermissionRules.
+            var callerIsManager = Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager);
             if (!ProjectPermissionRules.CanSetSharedAvailability(
                     project.IsSharedAvailability,
                     currentIsSharedAvailability: false,
-                    callerHasManagerAccess: Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager)))
+                    callerHasManagerAccess: callerIsManager))
+                return new StatusCodeResult(403);
+
+            if (!ProjectPermissionRules.CanSetCountsAsTime(
+                    project.CountsAsTime,
+                    currentCountsAsTime: true,
+                    callerHasManagerAccess: callerIsManager))
                 return new StatusCodeResult(403);
 
             if (project.IsSharedAvailability)
                 project.IsBillable = false;
+            else
+                project.CountsAsTime = true;
 
             var newProject = mapper.DtoToProject(project);
             await projectRepository.Insert(newProject);
@@ -310,14 +319,23 @@ namespace My.Functions
             // else about a project, but flipping shared-availability on or off is a
             // Manager-only decision (see CreateProject for rationale). Only reject when the
             // Editor is actually trying to change it; leaving it untouched is fine.
+            var callerIsManager = Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager);
             if (!ProjectPermissionRules.CanSetSharedAvailability(
                     project.IsSharedAvailability,
                     currentIsSharedAvailability: foundProject.IsSharedAvailability,
-                    callerHasManagerAccess: Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Tyme, Constants.Roles.Manager)))
+                    callerHasManagerAccess: callerIsManager))
+                return new StatusCodeResult(403);
+
+            if (!ProjectPermissionRules.CanSetCountsAsTime(
+                    project.CountsAsTime,
+                    currentCountsAsTime: foundProject.CountsAsTime,
+                    callerHasManagerAccess: callerIsManager))
                 return new StatusCodeResult(403);
 
             if (project.IsSharedAvailability)
                 project.IsBillable = false;
+            else
+                project.CountsAsTime = true;
 
             var wasBillable = foundProject.IsBillable;
             mapper.UpdateProjectFromDto(project, foundProject);

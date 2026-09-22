@@ -18,9 +18,14 @@
         <div class="profile-menu">
             @if (!string.IsNullOrEmpty(avatarUrl))
             {
-                <img src="@avatarUrl" alt="Profile" class="profile-avatar" referrerpolicy="no-referrer" />
+                <img src="@avatarUrl" alt="Profile" class="profile-avatar" referrerpolicy="no-referrer"
+                     title="Account menu"
+                     @onclick="OpenProfileMenu"
+                     @onclick:stopPropagation="true" />
             }
-            <MudMenu Icon="@Icons.Material.Filled.ArrowDropDown" Dense="true"
+            <MudMenu @bind-Open="_profileMenuOpen"
+                     Icon="@Icons.Material.Filled.ArrowDropDown" Dense="true"
+                     Color="Color.Inherit"
                      AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                 <MudMenuItem Icon="@Icons.Material.Filled.Settings"
                              OnClick="@(() => Navigation.NavigateTo("/settings"))">Settings</MudMenuItem>
@@ -47,6 +52,9 @@
 @code {
     private string? avatarUrl;
     private bool isRealAdmin;
+    private bool _profileMenuOpen;
+
+    private void OpenProfileMenu() => _profileMenuOpen = true;
 
     [CascadingParameter]
     private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
@@ -61,7 +69,7 @@
             : null;
 
         // Real-user check (not the impersonation-filtered principal) — only the *global*
-        // Admin role gates the View as menu, scoped admins like Admin:Tyme do not.
+        // Global Admin gates the View as menu; UserAccess / Manager scoped roles do not.
         var realUser = await ImpersonationAuth.GetRealUserAsync();
         isRealAdmin = realUser.Identity is { IsAuthenticated: true }
                       && realUser.IsInRole(Constants.Roles.Admin);

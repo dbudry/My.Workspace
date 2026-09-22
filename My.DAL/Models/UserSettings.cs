@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace My.DAL.Models
 {
     public class UserSettings
@@ -107,6 +109,19 @@ namespace My.DAL.Models
         /// Google Calendar OAuth. Cleared when the user connects again from Settings.
         /// </summary>
         public bool GoogleCalendarAutoConnectOptOut { get; set; }
+
+        /// <summary>
+        /// Home address for Form 87-43. Street on the first line, city/state/ZIP on the second.
+        /// Copied onto each new expense report as AddressSnapshot.
+        /// </summary>
+        [MaxLength(255)]
+        public string? ExpenseHomeAddress { get; set; }
+
+        /// <summary>PNG/JPEG of the employee's Form 87-43 signature. Reused on every packet.</summary>
+        public byte[]? ExpenseSignature { get; set; }
+
+        [MaxLength(64)]
+        public string? ExpenseSignatureMime { get; set; }
 
         public ApplicationUser User { get; set; } = null!;
     }

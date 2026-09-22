@@ -9,8 +9,9 @@
 <PageHeader Title="App Settings" Description="Workspace-wide configuration. General controls apply everywhere; per-category sections apply to that area only." />
 
 <PageLoader IsLoading="@isLoading">
-    <div style="max-width: 700px;">
-        <MudTabs Outlined="true" Rounded="true" Border="true" ApplyEffectsToContainer="true" Class="mb-4">
+    <div style="max-width: 60rem;">
+        <MudTabs Outlined="true" Rounded="true" Border="true" ApplyEffectsToContainer="true"
+                 MinimumTabWidth="80px" Class="mb-4">
             <MudTabPanel Text="General" Icon="@Icons.Material.Filled.Settings">
                 <SectionCard Title="API protection">
                     <MudSwitch T="bool" Value="rateLimitEnabled" Label="Enable API rate limiting"
@@ -91,6 +92,122 @@
                 </SectionCard>
             </MudTabPanel>
 
+            <MudTabPanel Text="Drive" Icon="@Icons.Material.Filled.FolderShared">
+                <SectionCard Title="Connection">
+                    <MudText Typo="Typo.caption" Class="d-block mb-2" Style="color: var(--mud-palette-text-secondary);">
+                        Workspace Shared Drive
+                        <MudLink Href="@AppDriveLayoutRules.SharedDriveUrl" Target="_blank">@AppDriveLayoutRules.SharedDriveName</MudLink>.
+                        Employees are not members. Upload, view, and download go through this app.
+                    </MudText>
+                    <MudText Typo="Typo.caption" Class="d-block mb-3" Style="color: var(--mud-palette-text-secondary); word-break: break-all;">
+                        <code>@AppDriveLayoutRules.SharedDriveId</code>
+                    </MudText>
+                    @if (!appDriveStatusLoaded)
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block" Style="color: var(--mud-palette-text-secondary);">
+                            Drive status is available to workspace Admins only.
+                        </MudText>
+                    }
+                    else if (appDriveStatus?.Connected == true)
+                    {
+                        <MudText Typo="Typo.body2" Class="d-block mb-2">
+                            Connected as <strong>@(string.IsNullOrWhiteSpace(appDriveStatus.Email) ? "Google" : appDriveStatus.Email)</strong>.
+                        </MudText>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       Disabled="@isAppDriveBusy" OnClick="EnsureAppDriveLayoutAsync">
+                                Apply configuration
+                            </MudButton>
+                            <MudButton Variant="Variant.Text" Color="Color.Error"
+                                       Disabled="@isAppDriveBusy" OnClick="DisconnectAppDriveAsync">
+                                Disconnect
+                            </MudButton>
+                        </div>
+                    }
+                    else
+                    {
+                        <div>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       Disabled="@isAppDriveBusy" OnClick="ConnectAppDriveAsync">
+                                Connect Google
+                            </MudButton>
+                        </div>
+                    }
+                </SectionCard>
+
+                <SectionCard Title="Folders">
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Apply configuration creates these folders if they are missing.
+                        Existing Intranet files are not moved automatically.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-1">
+                        <MudLink Href="@AppDriveLayoutRules.SharedDriveUrl" Target="_blank">@AppDriveLayoutRules.SharedDriveName</MudLink>
+                    </MudText>
+                    <div class="ml-4 mb-2">
+                        <MudText Typo="Typo.body2">
+                            @AppDriveLayoutRules.IntranetFolderName
+                            — @FolderReadyLabel(appDriveStatus?.IntranetFolderId)
+                            @if (!string.IsNullOrWhiteSpace(appDriveStatus?.IntranetFolderId))
+                            {
+                                <MudLink Href="@AppDriveLayoutRules.FolderUrl(appDriveStatus.IntranetFolderId)" Target="_blank" Class="ml-1">open</MudLink>
+                            }
+                        </MudText>
+                        <MudText Typo="Typo.caption" Class="ml-4" Style="color: var(--mud-palette-text-secondary);">
+                            Images, Videos, Documents
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            @AppDriveLayoutRules.ExpensesFolderName
+                            — @FolderReadyLabel(appDriveStatus?.ExpensesFolderId)
+                            @if (!string.IsNullOrWhiteSpace(appDriveStatus?.ExpensesFolderId))
+                            {
+                                <MudLink Href="@AppDriveLayoutRules.FolderUrl(appDriveStatus.ExpensesFolderId)" Target="_blank" Class="ml-1">open</MudLink>
+                            }
+                        </MudText>
+                    </div>
+                </SectionCard>
+
+                <SectionCard Title="Membership">
+                    <ul class="mb-0" style="padding-left: 1.2rem;">
+                        @foreach (var rule in AppDriveLayoutRules.MembershipRules)
+                        {
+                            <li>
+                                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">@rule</MudText>
+                            </li>
+                        }
+                    </ul>
+                </SectionCard>
+
+                <SectionCard Title="Shared Drive settings">
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Required values for <strong>Shared drive settings</strong> in Google Drive.
+                        Apply configuration sets all of these.
+                    </MudText>
+                    @foreach (var setting in AppDriveLayoutRules.GoogleSettings)
+                    {
+                        <div class="mb-3">
+                            <div class="d-flex align-center gap-2 flex-wrap">
+                                <MudText Typo="Typo.body2">@setting.Label</MudText>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                         Color="Color.Default">
+                                    @(setting.CheckboxOn ? "On" : "Off")
+                                </MudChip>
+                                @if (GoogleSettingMatches(setting) == true)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success">Applied</MudChip>
+                                }
+                                else if (GoogleSettingMatches(setting) == false)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning">Not applied</MudChip>
+                                }
+                            </div>
+                            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                                @setting.Why
+                            </MudText>
+                        </div>
+                    }
+                </SectionCard>
+            </MudTabPanel>
+
             <MudTabPanel Text="Intranet" Icon="@Icons.Material.Filled.MenuBook">
                 <SectionCard Title="Intranet Sidebar Menu">
                     <MudNumericField T="int" @bind-Value="intranetNavigationMaxDepth"
@@ -147,22 +264,33 @@
                 </SectionCard>
 
                 <SectionCard Title="Google Drive Storage">
-                    <MudTextField T="string" @bind-Value="intranetDriveParentFolderId"
-                                  Label="Intranet Drive Parent Folder ID" Variant="Variant.Outlined"
-                                  Placeholder="0EXAMPLE__NOT_A_REAL_DRIVE_FOLDER_ID"
-                                  Class="mb-2" />
                     <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                        Google Drive folder ID for the <strong>Intranet root</strong> folder (e.g. <code>IT Resources › Intranet</code>).
-                        Uploads are routed automatically into <code>Images</code>, <code>Videos</code>, and <code>Documents</code> subfolders when those exist.
-                        Do not paste a subfolder ID such as Videos — if you already did, the app will climb to the parent Intranet folder when it can.
-                        Leave blank to upload to each user's own My Drive root.
-                        <br />
-                        To get the ID: open the Intranet folder in Drive and copy the long ID from the URL (after <code>/folders/</code>).
+                        Intranet files live under <strong>App Settings → Drive</strong>
+                        (<code>@AppDriveLayoutRules.IntranetFolderName</code> on
+                        <MudLink Href="@AppDriveLayoutRules.SharedDriveUrl" Target="_blank">@AppDriveLayoutRules.SharedDriveName</MudLink>).
+                        Connect and Apply configuration there. Existing Intranet files are not moved automatically.
                     </MudText>
                 </SectionCard>
             </MudTabPanel>
 
             <MudTabPanel Text="Organizations" Icon="@Icons.Material.Filled.Business">
+                <SectionCard Title="Home company">
+                    <MudSelect T="string" @bind-Value="homeOrganizationId"
+                               Label="Home organization"
+                               Variant="Variant.Outlined"
+                               Clearable="true"
+                               Class="mb-2">
+                        @foreach (var org in homeOrganizationChoices)
+                        {
+                            <MudSelectItem Value="@org.OrganizationId">@org.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        Which Organizations row is <strong>us</strong> (home company). Workspace Admins set this
+                        once. Anything that needs the home company — including expense reimbursements — uses this row.
+                    </MudText>
+                </SectionCard>
+
                 <SectionCard Title="Contact Types">
                     <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
                         Types available when adding or editing organization and department contacts.
@@ -351,7 +479,12 @@
                         Google calendar id of the workspace-shared "Team Availability" calendar.
                         Time logged against any project flagged <b>Share availability with team</b>
                         is dual-published here as a sanitized <code>[&lt;Name&gt;] &lt;Project&gt;</code>
-                        event. Empty disables the feature.
+                        event. Staff only need view access. Empty disables the feature.
+                        Writes use Function App settings
+                        <code>Google__TeamAvailabilityServiceAccountJson</code> (service-account key)
+                        and <code>Google__TeamAvailabilityImpersonateUser</code> (workspace user who
+                        can Make changes to events on this calendar, via domain-wide delegation).
+                        Without those, this id does nothing.
                     </MudText>
                 </SectionCard>
             </MudTabPanel>

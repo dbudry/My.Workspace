@@ -1,0 +1,125 @@
+@using My.Client.Extensions
+@using My.Shared.Constants
+@inject IHttpClientFactory ClientFactory
+@inject IJSRuntime Js
+@inject ISnackbar Snackbar
+
+@if (busy)
+{
+    <MudTooltip Text="@busyLabel">
+        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mx-1" />
+    </MudTooltip>
+}
+else if (IconOnly)
+{
+    <MudMenu Icon="@Icons.Material.Filled.PictureAsPdf" Size="Size.Small" Dense="true"
+             Color="@Color" Disabled="@Disabled"
+             AriaLabel="PDF"
+             AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        @MenuItems
+    </MudMenu>
+}
+else
+{
+    <MudMenu Dense="true" Disabled="@Disabled"
+             AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+        <ActivatorContent>
+            <MudButton Variant="@Variant" Color="@Color" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                       Disabled="@Disabled">
+                PDF
+            </MudButton>
+        </ActivatorContent>
+        <ChildContent>
+            @MenuItems
+        </ChildContent>
+    </MudMenu>
+}
+
+@code {
+    [Parameter] public string ReportId { get; set; } = "";
+    [Parameter] public string FileName { get; set; } = "Expenses.pdf";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool IconOnly { get; set; }
+    [Parameter] public Variant Variant { get; set; } = Variant.Outlined;
+    [Parameter] public Color Color { get; set; } = Color.Default;
+
+    private bool busy;
+    private string busyLabel = "Preparing PDF…";
+
+    private RenderFragment MenuItems => __builder =>
+    {
+        <MudMenuItem Icon="@Icons.Material.Filled.OpenInNew" Disabled="@busy" OnClick="OpenAsync">
+            Open PDF
+        </MudMenuItem>
+        <MudMenuItem Icon="@Icons.Material.Filled.History" Disabled="@busy" OnClick="OpenLegacyAsync">
+            Open legacy PDF
+        </MudMenuItem>
+        <MudMenuItem Icon="@Icons.Material.Filled.Download" Disabled="@busy" OnClick="DownloadAsync">
+            Download
+        </MudMenuItem>
+        <MudMenuItem Icon="@Icons.Material.Filled.Download" Disabled="@busy" OnClick="DownloadLegacyAsync">
+            Download legacy PDF
+        </MudMenuItem>
+    };
+
+    private Task OpenAsync() => RunAsync(open: true, legacy: false);
+    private Task OpenLegacyAsync() => RunAsync(open: true, legacy: true);
+    private Task DownloadAsync() => RunAsync(open: false, legacy: false);
+    private Task DownloadLegacyAsync() => RunAsync(open: false, legacy: true);
+
+    private async Task RunAsync(bool open, bool legacy)
+    {
+        if (string.IsNullOrWhiteSpace(ReportId) || busy)
+            return;
+
+        busy = true;
+        busyLabel = legacy ? "Preparing the legacy form…" : "Preparing PDF…";
+        Snackbar.Add(busyLabel, Severity.Info);
+        var tabId = "";
+        if (open)
+            tabId = await Js.InvokeAsync<string>("fileSave.beginOpen") ?? "";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var client = ClientFactory.CreateClient(Constants.API.ClientName);
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            using var response = await client.GetAsync(Constants.API.Expenses.Pdf(ReportId, legacy), cts.Token);
+            response.EnsureSuccessStatusCode();
+            var bytes = await response.Content.ReadAsByteArrayAsync(cts.Token);
+            var b64 = Convert.ToBase64String(bytes);
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/pdf";
+            var isWorkbook = contentType.Contains("spreadsheet", StringComparison.OrdinalIgnoreCase)
+                || (FileName ?? "").EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)
+                || contentType.Contains("excel", StringComparison.OrdinalIgnoreCase);
+            if (isWorkbook)
+            {
+                if (!string.IsNullOrEmpty(tabId))
+                    await Js.InvokeVoidAsync("fileSave.cancelOpen", tabId);
+                var xlsxName = Path.ChangeExtension(string.IsNullOrWhiteSpace(FileName) ? "Expenses.xlsx" : FileName, ".xlsx");
+                await Js.InvokeVoidAsync("fileSave.download", b64, contentType, xlsxName);
+                Snackbar.Add("Excel wasn't available to print the form, so the workbook was downloaded. Open it and print to PDF.", Severity.Warning);
+            }
+            else if (open)
+            {
+                var opened = await Js.InvokeAsync<bool>("fileSave.completeOpen", tabId, b64, "application/pdf");
+                if (!opened)
+                    await Js.InvokeVoidAsync("fileSave.download", b64, "application/pdf", FileName);
+            }
+            else
+            {
+                await Js.InvokeVoidAsync("fileSave.download", b64, "application/pdf", FileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!string.IsNullOrEmpty(tabId))
+                await Js.InvokeVoidAsync("fileSave.cancelOpen", tabId);
+            Snackbar.AddApiError(ex, open ? "Couldn't open the PDF." : "Couldn't download the PDF.");
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

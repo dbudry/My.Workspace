@@ -49,6 +49,24 @@ public static class GoogleCalendarWebhookUrlRules
         return SourceMissing;
     }
 
+    /// <summary>
+    /// Google will not POST to localhost. Asking it to watch a loopback URL
+    /// fails the whole Connect with a misleading error.
+    /// </summary>
+    public static bool IsReachableByGoogle(string? webhookUrl)
+    {
+        if (string.IsNullOrWhiteSpace(webhookUrl)
+            || !Uri.TryCreate(webhookUrl, UriKind.Absolute, out var uri)
+            || !uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var host = uri.Host;
+        return !host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            && !host.Equals("127.0.0.1", StringComparison.Ordinal)
+            && !host.Equals("::1", StringComparison.Ordinal)
+            && !host.EndsWith(".local", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string? FromHost(string? host, string scheme)
     {
         if (string.IsNullOrWhiteSpace(host))

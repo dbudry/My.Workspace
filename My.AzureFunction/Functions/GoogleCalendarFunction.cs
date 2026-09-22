@@ -150,41 +150,46 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
+            string? refresh;
+            string? email;
             try
             {
-                var (refresh, email) = await google.ExchangeCodeAsync(body!.Code!, body.RedirectUri!);
+                (refresh, email) = await google.ExchangeCodeAsync(body!.Code!, body.RedirectUri!);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Google Calendar code exchange failed for {UserId}.", userId);
+                return new BadRequestObjectResult(ApiErrorMessages.GoogleCalendarConnectFailed);
+            }
 
-                var settings = (await settingsRepository.Get(s => s.UserId == userId)).FirstOrDefault()
-                               ?? await InsertNewSettingsAsync(userId);
+            var settings = (await settingsRepository.Get(s => s.UserId == userId)).FirstOrDefault()
+                           ?? await InsertNewSettingsAsync(userId);
 
-                var hadExistingToken = !string.IsNullOrEmpty(settings.GoogleRefreshToken);
-                var keptExistingToken = !GoogleCalendarOAuthRules.ShouldOverwriteCalendarRefreshToken(
-                    incomingRefreshToken: refresh,
-                    hasExistingToken: hadExistingToken,
-                    driveGranted: settings.GoogleDriveGranted);
+            var hadExistingToken = !string.IsNullOrEmpty(settings.GoogleRefreshToken);
+            if (!GoogleCalendarOAuthRules.CanCompleteConnect(refresh, hadExistingToken))
+                return new BadRequestObjectResult(ApiErrorMessages.GoogleCalendarConnectFailed);
 
-                if (!keptExistingToken)
-                    settings.GoogleRefreshToken = encryptor.Encrypt(refresh!);
-                else if (!hadExistingToken)
-                    return new BadRequestObjectResult(ApiErrorMessages.GoogleCalendarConnectFailed);
+            var keptExistingToken = !GoogleCalendarOAuthRules.ShouldOverwriteCalendarRefreshToken(
+                incomingRefreshToken: refresh,
+                hasExistingToken: hadExistingToken,
+                driveGranted: settings.GoogleDriveGranted);
 
-                settings.GoogleCalendarId = PrimaryCalendarId;
+            if (!keptExistingToken)
+                settings.GoogleRefreshToken = encryptor.Encrypt(refresh!);
+
+            settings.GoogleCalendarId = PrimaryCalendarId;
+            if (!string.IsNullOrEmpty(email))
                 settings.GoogleCalendarEmail = email;
-                // Connecting implies "I want sync." Enable both directions so the very next
-                // task edit flows out to the calendar, instead of silently no-op'ing because
-                // an old toggle was still off. Users can still flip these off in /settings
-                // afterwards if they want one-way sync only.
-                settings.PublishToGoogleCalendar = true;
-                settings.ImportFromGoogleCalendar = true;
-                settings.GoogleCalendarAutoConnectOptOut = false;
-                await settingsRepository.Update(settings);
+            settings.PublishToGoogleCalendar = true;
+            settings.ImportFromGoogleCalendar = true;
+            settings.GoogleCalendarAutoConnectOptOut = false;
+            await settingsRepository.Update(settings);
 
-                var watchOutcome = await TryStartWatchAsync(settings, req);
-
-                // Google confirmed rejecting the kept token (not a network blip) → fall back to
-                // the Calendar-only token from this reconnect so the user isn't stuck. Drive
-                // needs a separate reconnect since the fallback token never had that scope.
-                var driveReconnectNeeded = false;
+            var watchOutcome = WatchStartOutcome.Failed;
+            var driveReconnectNeeded = false;
+            try
+            {
+                watchOutcome = await TryStartWatchAsync(settings, req);
                 if (GoogleCalendarOAuthRules.ShouldRetryWatchWithFreshToken(
                         watchStartFailed: watchOutcome == WatchStartOutcome.TokenInvalid,
                         keptExistingToken: keptExistingToken,
@@ -200,23 +205,21 @@ namespace My.Functions
                     watchOutcome = await TryStartWatchAsync(settings, req);
                     driveReconnectNeeded = true;
                 }
-
-                // Reflects the last attempt (including the retry above, if one happened).
-                // TokenInvalid/Failed both mean inbound sync is not actually running yet.
-                var syncNotStarted = watchOutcome is WatchStartOutcome.TokenInvalid or WatchStartOutcome.Failed;
-                return new OkObjectResult(new GoogleCalendarConnectResultDto
-                {
-                    Connected = true,
-                    Email = email,
-                    DriveReconnectNeeded = driveReconnectNeeded,
-                    SyncNotStarted = syncNotStarted
-                });
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Google Calendar callback failed for {UserId}.", userId);
-                return new BadRequestObjectResult(ApiErrorMessages.GoogleCalendarConnectFailed);
+                logger.LogError(ex, "Google Calendar watch start failed after connect for {UserId}.", userId);
+                watchOutcome = WatchStartOutcome.Failed;
             }
+
+            var syncNotStarted = watchOutcome is WatchStartOutcome.TokenInvalid or WatchStartOutcome.Failed;
+            return new OkObjectResult(new GoogleCalendarConnectResultDto
+            {
+                Connected = true,
+                Email = settings.GoogleCalendarEmail ?? email,
+                DriveReconnectNeeded = driveReconnectNeeded,
+                SyncNotStarted = syncNotStarted
+            });
         }
 
         [Function("DisconnectGoogleCalendar")]
@@ -248,14 +251,10 @@ namespace My.Functions
             // sign-in and the calendar OAuth flow under the same client_id). Revoking here
             // killed the user's session ~5 min later (after the AuthMiddleware tokeninfo cache
             // expired) and produced a redirect-loop they couldn't escape.
-            // If Intranet Drive is still granted, keep the token so Calendar disconnect
-            // does not strand Drive. Otherwise drop it; users who want a full grant
-            // revocation can do it at myaccount.google.com → Connections.
-            if (!settings.GoogleDriveGranted)
-            {
-                settings.GoogleRefreshToken = null;
-                settings.GoogleCalendarEmail = null;
-            }
+            // Keep the refresh token. Google often will not issue a new one on
+            // reconnect even with prompt=consent. Clearing CalendarId is enough to
+            // stop sync; Connect reuses the stored token. Full revoke is still
+            // myaccount.google.com → Connections.
             settings.GoogleCalendarId = null;
             settings.GoogleChannelId = null;
             settings.GoogleChannelToken = null;
@@ -951,9 +950,6 @@ namespace My.Functions
             var existing = (await taskRepository.Get(
                 t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
             var googleUpdated = ev.UpdatedDateTimeOffset?.UtcDateTime;
-            if (isOurs && existing != null
-                && !CalendarImportRules.IsGenuineExternalEdit(googleUpdated, existing.GoogleEventUpdatedUtc))
-                return EventImportOutcome.SkippedOurs;
 
             // Parse start/end via the pure CalendarEventDateRules helper so the logic
             // can be unit-tested without the Google SDK. Returns null when neither shape
@@ -996,7 +992,7 @@ namespace My.Functions
             }
 
             var rawSummary = ev.Summary ?? string.Empty;
-            var (matchedProjectId, cleanSummary, tagHandling, isSharedAvailability) =
+            var (matchedProjectId, cleanSummary, tagHandling, isSharedAvailability, countsAsTime) =
                 await ResolveSlugTagAsync(rawSummary, settings.UserId);
 
             // Primary-calendar rules (see docs/initiatives/personal-calendar-migration.md):
@@ -1029,6 +1025,16 @@ namespace My.Functions
                     ev.Id, settings.UserId, rawSummary);
                 return EventImportOutcome.SkippedAvailabilityOnly;
             }
+
+            existing ??= await FindRelinkCandidateAsync(
+                settings.UserId, ev, startDate, isAllDay, matchedProjectId, cleanSummary);
+
+            if (CalendarImportRules.ShouldSkipUnlinkedTymeExport(isOurs, existing != null))
+                return EventImportOutcome.SkippedOurs;
+
+            if (isOurs && existing != null
+                && !CalendarImportRules.IsGenuineExternalEdit(googleUpdated, existing.GoogleEventUpdatedUtc))
+                return EventImportOutcome.SkippedOurs;
 
             // Invite policy lives in CalendarImportRules.EvaluateInvite — pure helper
             // so it can be unit-tested without the Google SDK. Google marks the calendar
@@ -1077,7 +1083,9 @@ namespace My.Functions
             // a manual save through TrackedTaskFunction produces, so reports look the same
             // whether the entry came from the in-app dialog or from a Google event.
             var derivedDuration = isAllDay
-                ? AllDayEntryRules.DurationFor(startDate, endDate, await GetWorkdayHoursAsync())
+                ? (TeamAvailabilityHoursRules.CountsTowardTyme(countsAsTime)
+                    ? AllDayEntryRules.DurationFor(startDate, endDate, await GetWorkdayHoursAsync())
+                    : TimeSpan.Zero)
                 : endDate - startDate;
 
             TrackedTask saved;
@@ -1093,6 +1101,7 @@ namespace My.Functions
                 existing.IsAllDay = isAllDay;
                 existing.ProjectId = matchedProjectId;
                 existing.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, matchedProjectId);
+                existing.GoogleEventId = ev.Id;
                 existing.GoogleEventUpdatedUtc = googleUpdated;
                 await taskRepository.Update(existing);
                 saved = existing;
@@ -1100,8 +1109,7 @@ namespace My.Functions
             }
             else
             {
-                saved = new TrackedTask
-                {
+                saved = new TrackedTask {
                     UserId = settings.UserId,
                     Details = finalName,
                     StartDate = startDate,
@@ -1125,6 +1133,55 @@ namespace My.Functions
             return outcome;
         }
 
+        /// <summary>
+        /// Organizer updates often cancel an instance and create a new Google id.
+        /// Pull-missed leaves the old Tyme row unlinked; without this we'd insert a
+        /// second task on the same day (e.g. stacked PN5 Check-In).
+        /// </summary>
+        private async Task<TrackedTask?> FindRelinkCandidateAsync(
+            string userId,
+            Google.Apis.Calendar.v3.Data.Event ev,
+            DateTime startDate,
+            bool isAllDay,
+            string? projectId,
+            string googleCleanName)
+        {
+            string? tymeTaskId = null;
+            ev.ExtendedProperties?.Private__?.TryGetValue(GoogleCalendarService.ExtendedPropTymeTaskId, out tymeTaskId);
+            if (!string.IsNullOrEmpty(tymeTaskId))
+            {
+                var byTyme = await taskRepository.GetById(tymeTaskId);
+                if (byTyme != null && byTyme.UserId == userId)
+                    return byTyme;
+            }
+
+            if (!string.IsNullOrEmpty(ev.RecurringEventId))
+            {
+                var series = ev.RecurringEventId;
+                var inSeries = (await taskRepository.Get(t =>
+                    t.UserId == userId
+                    && t.GoogleEventId != null
+                    && (t.GoogleEventId == series || t.GoogleEventId.StartsWith(series + "_")))).ToList();
+                var seriesHit = inSeries.FirstOrDefault(t =>
+                    CalendarImportRules.IsSameOccurrence(t.StartDate, startDate, isAllDay));
+                if (seriesHit != null)
+                    return seriesHit;
+            }
+
+            if (string.IsNullOrEmpty(projectId) || string.IsNullOrEmpty(ev.RecurringEventId))
+                return null;
+
+            var sameProject = (await taskRepository.Get(t =>
+                t.UserId == userId && t.ProjectId == projectId)).ToList();
+            return sameProject.FirstOrDefault(t =>
+                CalendarImportRules.IsSameOccurrence(t.StartDate, startDate, isAllDay)
+                && CalendarImportRules.CanRelinkUnlinkedSeriesInstance(
+                    isRecurringInstance: true,
+                    unlinkedGoogleEventId: t.GoogleEventId,
+                    taskName: t.Details,
+                    googleCleanName: googleCleanName));
+        }
+
         private enum TagHandling { NoTag, MatchedTag, UnresolvedTag }
 
         /// <summary>
@@ -1140,11 +1197,11 @@ namespace My.Functions
         /// label placed before the real tag silently kills the import as "unresolved"
         /// even though a valid tag is right next to it.
         /// </summary>
-        private async Task<(string? projectId, string cleanedSummary, TagHandling handling, bool isSharedAvailability)> ResolveSlugTagAsync(string summary, string userId)
+        private async Task<(string? projectId, string cleanedSummary, TagHandling handling, bool isSharedAvailability, bool countsAsTime)> ResolveSlugTagAsync(string summary, string userId)
         {
             var matches = SlugTagPattern.Matches(summary);
             if (matches.Count == 0)
-                return (null, summary.Trim(), TagHandling.NoTag, false);
+                return (null, summary.Trim(), TagHandling.NoTag, false, true);
 
             foreach (Match match in matches)
             {
@@ -1159,12 +1216,12 @@ namespace My.Functions
                 if (project != null)
                 {
                     var cleaned = SlugTagPattern.Replace(summary, string.Empty).Trim();
-                    return (project.ProjectId, cleaned, TagHandling.MatchedTag, project.IsSharedAvailability);
+                    return (project.ProjectId, cleaned, TagHandling.MatchedTag, project.IsSharedAvailability, project.CountsAsTime);
                 }
             }
 
             // None of the bracketed tokens resolved to an active project.
-            return (null, summary.Trim(), TagHandling.UnresolvedTag, false);
+            return (null, summary.Trim(), TagHandling.UnresolvedTag, false, true);
         }
 
         /// <summary>
@@ -1185,9 +1242,12 @@ namespace My.Functions
                 return WatchStartOutcome.NotConfigured;
 
             var webhookUrl = ResolveWebhookUrl(req);
-            if (string.IsNullOrEmpty(webhookUrl))
+            if (string.IsNullOrEmpty(webhookUrl)
+                || !GoogleCalendarWebhookUrlRules.IsReachableByGoogle(webhookUrl))
             {
-                logger.LogWarning("No webhook URL available; push channel will not be registered.");
+                logger.LogWarning(
+                    "No public webhook URL (got '{WebhookUrl}'); push channel will not be registered.",
+                    webhookUrl);
                 return WatchStartOutcome.NoWebhookConfigured;
             }
 

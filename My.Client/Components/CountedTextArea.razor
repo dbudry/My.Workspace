@@ -1,0 +1,89 @@
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+
+<div @ref="_root"
+     class="@ClassName"
+     data-max-length="@MaxLength"
+     data-placeholder="@Placeholder">
+    <div @ref="_editor"
+         class="counted-textarea__surface"
+         role="textbox"
+         aria-multiline="true"
+         aria-label="@AriaLabel"
+         data-placeholder="@Placeholder"
+         contenteditable="@(Disabled ? "false" : "true")"></div>
+</div>
+
+@code {
+    private ElementReference _root;
+    private ElementReference _editor;
+    private DotNetObjectReference<CountedTextArea>? _self;
+    private bool _attached;
+    private string? _lastPushed;
+
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public int MaxLength { get; set; } = 200;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Error { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+
+    private string ClassName
+    {
+        get
+        {
+            var cls = "counted-textarea";
+            if (Disabled) cls += " counted-textarea--disabled";
+            if (Error) cls += " counted-textarea--error";
+            if (!string.IsNullOrEmpty(Class)) cls += " " + Class;
+            return cls;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (!_attached)
+            {
+                _self ??= DotNetObjectReference.Create(this);
+                _attached = await Js.InvokeAsync<bool>("countedTextArea.attach", _root, _self);
+                if (_attached)
+                    await Js.InvokeVoidAsync("countedTextArea.setText", _root, Value ?? "");
+                _lastPushed = Value;
+                return;
+            }
+
+            if (!string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            {
+                await Js.InvokeVoidAsync("countedTextArea.setText", _root, Value ?? "");
+                _lastPushed = Value;
+            }
+            else
+            {
+                await Js.InvokeVoidAsync("countedTextArea.layout", _root);
+            }
+        }
+        catch (JSException)
+        {
+            // bUnit / script not loaded.
+        }
+    }
+
+    [JSInvokable]
+    public async Task NotifyInput(string text)
+    {
+        _lastPushed = text;
+        if (!string.Equals(Value, text, StringComparison.Ordinal))
+            await ValueChanged.InvokeAsync(text);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _self?.Dispose();
+        _self = null;
+        await ValueTask.CompletedTask;
+    }
+}

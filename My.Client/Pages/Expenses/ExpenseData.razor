@@ -1,0 +1,167 @@
+@page "/expenses/data"
+@attribute [Authorize(Policy = "Expenses:Manager:Scoped")]
+
+@using My.Shared.Dtos.Expenses
+@using My.Shared.Rules
+
+<PageTitle>Expense data</PageTitle>
+
+<PageHeader Title="Expense data" />
+
+<PageLoader IsLoading="@isLoading">
+    <MudPaper Class="pa-4 mb-3" Elevation="0" Outlined="true">
+        <MudGrid Spacing="4">
+            <MudItem xs="12" md="5">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Datasets</MudText>
+                @foreach (var entity in entityChoices)
+                {
+                    <MudCheckBox T="bool" Value="@selectedEntities.Contains(entity.Key)" Label="@entity.Label" Dense="true"
+                                 ValueChanged="@((bool v) => ToggleEntity(entity.Key, v))" />
+                }
+
+            </MudItem>
+            <MudItem xs="12" md="7">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Filters</MudText>
+                <MudStack Spacing="2" Style="max-width: 22rem;">
+                    <MudSelect T="int?" @bind-Value="yearFilter" Label="Year" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Dense="true">
+                        <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
+                        @foreach (var y in yearOptions)
+                        {
+                            <MudSelectItem T="int?" Value="@y">@y</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="int?" @bind-Value="monthFilter" Label="Month" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Dense="true">
+                        <MudSelectItem T="int?" Value="@((int?)null)">All months</MudSelectItem>
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            var month = m;
+                            <MudSelectItem T="int?" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudSelect T="string" @bind-Value="statusFilter" Label="Status" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Dense="true">
+                        <MudSelectItem Value="@ExpenseDataExtractionRules.StatusSubmitted">Submitted</MudSelectItem>
+                        <MudSelectItem Value="@ExpenseDataExtractionRules.StatusReimbursed">Reimbursed</MudSelectItem>
+                        <MudSelectItem Value="@ExpenseDataExtractionRules.StatusDraft">Draft</MudSelectItem>
+                        <MudSelectItem Value="@ExpenseDataExtractionRules.StatusAll">All</MudSelectItem>
+                    </MudSelect>
+                    <MudSelect T="string" @bind-Value="userFilter" Label="Employee" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Dense="true">
+                        <MudSelectItem T="string" Value="@((string?)null)">All employees</MudSelectItem>
+                        @foreach (var u in employeeOptions)
+                        {
+                            <MudSelectItem T="string" Value="@u.UserId">@u.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.PlayArrow"
+                               Disabled="@isPreviewing"
+                               OnClick="LoadPreviewAsync">
+                        Get data
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.TableView"
+                               Disabled="@(isExporting || isPreviewing || !previewLoaded || previewIsEmpty)"
+                               OnClick="ExportExcelAsync">
+                        Export Excel
+                    </MudButton>
+                    @if (previewLoaded && !isPreviewing)
+                    {
+                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">@previewSummary</MudText>
+                    }
+                    @if (!string.IsNullOrEmpty(validationMessage))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Warning">@validationMessage</MudText>
+                    }
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (isPreviewing)
+    {
+        <MudProgressLinear Indeterminate="true" Class="mb-3" />
+    }
+    else if (previewLoaded)
+    {
+        @if (previewIsEmpty)
+        {
+            <EmptyState Icon="@Icons.Material.Outlined.TableChart"
+                        Title="No matching rows"
+                        Message="Nothing matches these filters." />
+        }
+        else
+        {
+            @if (selectedEntities.Contains(ExpenseDataExtractionRules.Reports))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Reports</MudText>
+                <MudTable Items="@previewReports" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" Class="mb-4">
+                    <HeaderContent>
+                        <MudTh>Employee</MudTh>
+                        <MudTh>Month</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh Style="text-align:right;">Lines</MudTh>
+                        <MudTh Style="text-align:right;">Total</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Employee">@context.EmployeeName</MudTd>
+                        <MudTd DataLabel="Month">@MonthLabel(context.Year, context.Month)</MudTd>
+                        <MudTd DataLabel="Status"><ExpenseStatusChip Status="@context.Status" /></MudTd>
+                        <MudTd DataLabel="Lines" Style="text-align:right;">@context.LineCount</MudTd>
+                        <MudTd DataLabel="Total" Style="text-align:right;">@context.TotalAmount.ToString("C")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            @if (selectedEntities.Contains(ExpenseDataExtractionRules.Lines))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Line items</MudText>
+                @foreach (var group in groupedLines)
+                {
+                    var groupTotal = group.Sum(l => l.Amount);
+                    <MudText Typo="Typo.subtitle1" Class="mb-1">@group.Key</MudText>
+                    <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
+                        @group.Count() line@(group.Count() == 1 ? "" : "s") · @groupTotal.ToString("C")
+                    </MudText>
+                    <MudTable Items="@group.ToList()" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" Class="mb-4">
+                        <HeaderContent>
+                            <MudTh>Date</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh>Category</MudTh>
+                            <MudTh Style="text-align:right;">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Date">@context.Date.ToString("MM/dd/yyyy")</MudTd>
+                            <MudTd DataLabel="Description">@context.Description</MudTd>
+                            <MudTd DataLabel="Category">@context.Category</MudTd>
+                            <MudTd DataLabel="Amount" Style="text-align:right;">@context.Amount.ToString("C")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+            @if (selectedEntities.Contains(ExpenseDataExtractionRules.Receipts))
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Receipts</MudText>
+                @foreach (var group in groupedReceipts)
+                {
+                    <MudText Typo="Typo.subtitle1" Class="mb-1">@group.Key</MudText>
+                    <MudTable Items="@group.ToList()" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" Class="mb-4">
+                        <HeaderContent>
+                            <MudTh>File</MudTh>
+                            <MudTh Style="text-align:right;">Size</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="File">@context.OriginalFileName</MudTd>
+                            <MudTd DataLabel="Size" Style="text-align:right;">@FileSizeLabel(context.SizeBytes)</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            }
+        }
+    }
+</PageLoader>

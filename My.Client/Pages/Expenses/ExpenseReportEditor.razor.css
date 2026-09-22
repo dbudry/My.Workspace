@@ -1,0 +1,123 @@
+.expense-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.expense-line {
+    display: grid;
+    grid-template-columns: 10.5rem minmax(10rem, 1fr) minmax(12rem, 15rem) 7.5rem 2.25rem 2.25rem;
+    grid-template-areas:
+        "date desc cat amt attach del"
+        ". files files files files files";
+    column-gap: 0.5rem;
+    row-gap: 0.35rem;
+    align-items: center;
+    min-width: 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    font-size: 0.8125rem;
+}
+
+.expense-line--head {
+    grid-template-areas: "date desc cat amt attach del";
+    grid-template-rows: auto;
+    row-gap: 0;
+    padding-bottom: 0.15rem;
+    border-bottom: none;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--mud-palette-text-secondary);
+}
+
+.expense-line-date { grid-area: date; min-width: 0; }
+.expense-line-desc { grid-area: desc; min-width: 0; position: relative; }
+.expense-line-cat { grid-area: cat; min-width: 0; }
+.expense-line-amt { grid-area: amt; min-width: 0; }
+.expense-line-attach { grid-area: attach; display: flex; justify-content: center; align-items: center; }
+.expense-line-del { grid-area: del; display: flex; justify-content: center; align-items: center; }
+.expense-line-details { grid-area: extra; min-width: 0; max-width: 14rem; }
+
+.expense-line:has(.expense-line-details) {
+    grid-template-columns: 10.5rem minmax(8rem, 1fr) minmax(11rem, 14rem) minmax(8rem, 12rem) 7.5rem 2.25rem 2.25rem;
+    grid-template-areas:
+        "date desc cat extra amt attach del"
+        ". files files files files files files";
+}
+
+.expense-line-files {
+    grid-area: files;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    min-width: 0;
+    justify-content: flex-start;
+    align-self: start;
+}
+
+.expense-line--head .expense-line-amt { text-align: right; }
+
+.expense-line ::deep .mud-input-control,
+.expense-line ::deep .mud-picker {
+    margin: 0 !important;
+}
+
+.expense-line ::deep .mud-input-control-helper-container,
+.expense-line ::deep .mud-input-helper-text {
+    display: none !important;
+    height: 0;
+    margin: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.expense-line-date ::deep .mud-picker,
+.expense-line-date ::deep .mud-input-control,
+.expense-line-cat ::deep .mud-input-control,
+.expense-line-amt ::deep .mud-input-control {
+    width: 100% !important;
+    max-width: 100%;
+}
+
+.expense-line-files ::deep .mud-chip {
+    max-width: 16rem;
+    overflow: visible;
+}
+
+.expense-line-files ::deep .mud-chip-content {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.expense-line-files ::deep .mud-chip .mud-chip-close-button,
+.expense-line-files ::deep .mud-chip .mud-icon-button {
+    flex: 0 0 auto;
+    overflow: visible;
+}
+
+@media (max-width: 960px) {
+    .expense-line {
+        grid-template-columns: 10.5rem minmax(0, 1fr) 7.5rem 2.25rem 2.25rem;
+        grid-template-areas:
+            "date cat amt attach del"
+            "desc desc desc desc desc"
+            ". files files files files";
+    }
+
+    .expense-line:has(.expense-line-details) {
+        grid-template-columns: 10.5rem minmax(0, 1fr) minmax(8rem, 12rem) 7.5rem 2.25rem 2.25rem;
+        grid-template-areas:
+            "date cat extra amt attach"
+            "desc desc desc desc del"
+            ". files files files files";
+    }
+
+    .expense-line--head {
+        display: none;
+    }
+}

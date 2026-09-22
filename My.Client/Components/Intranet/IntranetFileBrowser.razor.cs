@@ -112,18 +112,6 @@ namespace My.Client.Components.Intranet
                 fileTypeFilter = FixedFileTypeFilter!;
             _mediaPolicy = await MediaPolicy.GetAsync();
             try { await UserSettings.GetSettingsAsync(); } catch { }
-            if (!UserSettings.IsGoogleDriveConnected)
-            {
-                try
-                {
-                    await UserSettings.InitiateGoogleDriveConnectAsync(Navigation.Uri);
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Snackbar.Add(ex.Message, Severity.Error);
-                }
-            }
             await LoadFilesAsync();
         }
 
@@ -144,9 +132,10 @@ namespace My.Client.Components.Intranet
                 {
                     var err = await response.Content.ReadAsStringAsync();
                     if ((int)response.StatusCode == 409
-                        || GoogleDriveOAuthRules.IsConsentRequiredMessage(err))
+                        || GoogleDriveOAuthRules.IsConsentRequiredMessage(err)
+                        || AppDriveLayoutRules.IsNotConnectedMessage(err))
                     {
-                        await UserSettings.InitiateGoogleDriveConnectAsync(Navigation.Uri);
+                        Snackbar.Add(AppDriveLayoutRules.NotConnectedMessage, Severity.Warning);
                         return;
                     }
                     Snackbar.Add(FormatDriveBrowseError(err), Severity.Error);
@@ -182,8 +171,8 @@ namespace My.Client.Components.Intranet
                 || message.Contains("File not found", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("notFound", StringComparison.OrdinalIgnoreCase))
             {
-                return "The Intranet Drive folder in App Settings was not found or you no longer have access. " +
-                       "Set Intranet Drive Parent Folder ID to the root Intranet folder you can open in Drive.";
+                return "The Intranet folder on App Drive was not found or the app cannot access it. " +
+                       "A workspace Admin should open App Settings → Drive and click Apply configuration.";
             }
 
             if (message.StartsWith("Failed to browse Drive folder:", StringComparison.OrdinalIgnoreCase))

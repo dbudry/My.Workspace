@@ -5,9 +5,12 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using My.Shared.Constants;
+using My.Shared.Dtos.Expenses;
 using My.Shared.Dtos.UserSettings;
+using My.Shared.Rules;
 using My.DAL.Models;
 using My.DAL.Repository;
+using My.Functions.Authorization;
 using My.Functions.Helpers;
 
 namespace My.Functions
@@ -15,6 +18,7 @@ namespace My.Functions
     public class UserSettingsFunctions
     {
         private readonly IRepository<UserSettings> settingsRepository;
+        private readonly IRepository<ExpenseReport> reportsRepository;
         private readonly AppMapper mapper;
         private readonly IValidator<UpdateUserSettingsDto> updateValidator;
 
@@ -26,6 +30,7 @@ namespace My.Functions
             this.mapper = mapper;
             this.updateValidator = updateValidator;
             settingsRepository = repositoryFactory.GetRepository<UserSettings>();
+            reportsRepository = repositoryFactory.GetRepository<ExpenseReport>();
         }
 
         [Function("GetUserSettings")]
@@ -103,7 +108,106 @@ namespace My.Functions
                 : System.Text.Json.JsonSerializer.Serialize(dto.FavoriteIntranetPageIds);
 
             await settingsRepository.Update(settings);
+            await SyncDraftExpenseAddressesAsync(userId, settings.ExpenseHomeAddress);
 
+            return new OkObjectResult(mapper.UserSettingsToDto(settings));
+        }
+
+        private async Task SyncDraftExpenseAddressesAsync(string userId, string? address)
+        {
+            var drafts = await reportsRepository.Get(r =>
+                r.UserId == userId && r.Status == ExpenseStatusRules.Draft);
+            foreach (var report in drafts)
+            {
+                report.AddressSnapshot = address;
+                await reportsRepository.Update(report);
+            }
+        }
+
+        [Function("GetExpenseSignatureMedia")]
+        public async Task<IActionResult> GetExpenseSignatureMediaAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "expenses/signature/media")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedExpenses(principal, out var userId) is IActionResult unauth)
+                return unauth;
+
+            var results = await settingsRepository.Get(s => s.UserId == userId);
+            var settings = results.FirstOrDefault();
+            if (settings?.ExpenseSignature == null || settings.ExpenseSignature.Length == 0)
+                return new NotFoundObjectResult("No signature.");
+
+            return new FileContentResult(
+                settings.ExpenseSignature,
+                string.IsNullOrWhiteSpace(settings.ExpenseSignatureMime) ? "image/png" : settings.ExpenseSignatureMime);
+        }
+
+        [Function("PutExpenseSignature")]
+        public async Task<IActionResult> PutExpenseSignatureAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "expenses/signature")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedExpenses(principal, out var userId) is IActionResult unauth)
+                return unauth;
+
+            UploadExpenseSignatureDto? body;
+            try
+            {
+                body = await System.Text.Json.JsonSerializer.DeserializeAsync<UploadExpenseSignatureDto>(
+                    req.Body, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch
+            {
+                return new BadRequestObjectResult("Invalid signature payload.");
+            }
+
+            if (body == null || string.IsNullOrWhiteSpace(body.ContentBase64))
+                return new BadRequestObjectResult("Signature image is required.");
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(body.ContentBase64);
+            }
+            catch
+            {
+                return new BadRequestObjectResult("Signature is not valid base64.");
+            }
+
+            var mime = ExpenseSignatureRules.NormalizeMime(body.MimeType, body.FileName);
+            if (!ExpenseSignatureRules.TryValidate(body.FileName, mime, bytes.Length, out var error))
+                return new BadRequestObjectResult(error);
+
+            var results = await settingsRepository.Get(s => s.UserId == userId);
+            var settings = results.FirstOrDefault();
+            if (settings == null)
+            {
+                settings = new UserSettings { UserId = userId };
+                await settingsRepository.Insert(settings);
+            }
+
+            settings.ExpenseSignature = bytes;
+            settings.ExpenseSignatureMime = mime;
+            await settingsRepository.Update(settings);
+            return new OkObjectResult(mapper.UserSettingsToDto(settings));
+        }
+
+        [Function("DeleteExpenseSignature")]
+        public async Task<IActionResult> DeleteExpenseSignatureAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "expenses/signature")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedExpenses(principal, out var userId) is IActionResult unauth)
+                return unauth;
+
+            var results = await settingsRepository.Get(s => s.UserId == userId);
+            var settings = results.FirstOrDefault();
+            if (settings == null)
+                return new OkResult();
+
+            settings.ExpenseSignature = null;
+            settings.ExpenseSignatureMime = null;
+            await settingsRepository.Update(settings);
             return new OkObjectResult(mapper.UserSettingsToDto(settings));
         }
     }

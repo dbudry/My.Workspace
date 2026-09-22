@@ -1,957 +1,963 @@
 @page "/help"
 @attribute [Authorize]
+@using Microsoft.AspNetCore.Components.Authorization
+@using My.Shared.Constants
 
-<PageTitle>Help — My.Workspace</PageTitle>
+<PageTitle>Help — My Workspace</PageTitle>
 
-<PageHeader Title="Help & How To"
-            Description="@("Guides for Tyme (time tracking) and the Intranet (company pages). Sign in with your @example.com Google account.")" />
+<PageHeader Title="Help"
+            Description="Pick a topic area, then open a guide. You only see areas you can use." />
 
-<MudContainer MaxWidth="MaxWidth.Medium" Class="pb-6">
+<div class="help-layout">
+    <MudPaper Class="help-nav pa-2" Elevation="0" Outlined="true">
+        <MudNavMenu Color="Color.Primary" Bordered="false">
+            <MudNavLink OnClick="@(() => SelectScope(HelpScope.Overview))"
+                        Icon="@Icons.Material.Filled.Home"
+                        Class="@(selectedScope == HelpScope.Overview ? "mud-nav-link-active active" : null)">
+                Overview
+            </MudNavLink>
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Time tracking</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="Tracking time" Icon="@Icons.Material.Filled.Timer" Expanded="true">
-            <MudText Typo="Typo.subtitle2" Class="mb-1">The Stopwatch page</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Type a task name, optionally pick a project, and click <strong>Start</strong>.
-                Use <strong>Pause</strong> to stop the clock without finishing — your accumulated
-                time stays put until you resume. <strong>Complete</strong> finalizes the entry
-                and rounds short entries up to the next whole minute (so a 10-second click still
-                records as 00:01, not 00:00).
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Mini pop-out</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                The <strong>Mini Pop Out</strong> button opens a slim, always-visible window so
-                you can keep the timer running while working in other apps. Mini Pop Out keeps
-                table columns if you shrink the window (scroll sideways if needed).
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Manual entry</MudText>
-            <MudText Typo="Typo.body2">
-                Use the <strong>Tasks</strong> page to add or edit completed entries directly —
-                useful for back-filling time you forgot to log.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mt-2 mb-2">
-                <strong>Tasks</strong> has three modes (toggle at the top):
-            </MudText>
-            <ul class="mb-2" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>All</strong> — stopwatch work items and manual entries in a searchable,
-                    paged list (50 rows at a time). Use <strong>New Task</strong> to add a completed entry.
-                    Filter by task or project name, click a column header to sort; list work is done
-                    on the server so it stays fast.
-                </li>
-                <li class="mb-1">
-                    <strong>Week</strong> — all time for one week. Defaults to the current week;
-                    use the arrows or the date picker (Week of) to move weeks. The footer total
-                    follows App Settings for original vs adjusted time: one total when there are
-                    no corrections (or only one view is enabled); both <em>Your time</em> and
-                    <em>Adjusted</em> when the setting is Both and corrections exist.
-                </li>
-                <li class="mb-1">
-                    <strong>Project</strong> — choose project, week, and business/full week. Existing
-                    tasks for that project this week appear as rows (Details left, day durations across).
-                    Stopwatch time for that project is a read-only row (timer icon); open Sessions to edit.
-                    <strong>New Task</strong> adds a row; Details is optional, then enter duration
-                    (H:MM) per day. Use the edit icon next to a day to open that day's full entry
-                    dialog. Footer shows this project's day totals and an <em>All projects</em> row,
-                    lined up under the day boxes. Changes save automatically.
-                </li>
-            </ul>
-            <MudText Typo="Typo.body2">
-                Your last view (All / Week / Project), week, business/full week, project, and search
-                are remembered in this browser.
-            </MudText>
-        </MudExpansionPanel>
+            @if (hasTyme)
+            {
+                <MudNavLink OnClick="@(() => SelectScope(HelpScope.Tyme))"
+                            Icon="@Icons.Material.Filled.AccessTime"
+                            Class="@(selectedScope == HelpScope.Tyme ? "mud-nav-link-active active" : null)">
+                    Tyme
+                </MudNavLink>
+            }
 
-        <MudExpansionPanel Text="Editing past tasks" Icon="@Icons.Material.Filled.Edit">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                In All or Week, click a row to edit Details, project, start, or duration, or delete when unlocked.
-                Duration accepts 02:30, :15, or 15m. <strong>Enter</strong> finishes the field.
-                On All, Week → List, and Stopwatch, use <strong>Org</strong> / <strong>Group</strong> next to the Project
-                column header to choose which color the bar next to each project uses. Hover the color or
-                name to see the org or group name. Week → Day does not use that control.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                On the <strong>Stopwatch</strong> list, the X removes a work item from the list only —
-                logged time stays in Tasks and Reports. Stop the timer first. Open
-                <strong>Sessions</strong> to edit details/project when unlocked, change session
-                durations, or <strong>Delete work item</strong> (and all of its sessions). The
-                installed app opens on the mini stopwatch. Mini Pop Out keeps table columns if you shrink the
-                window (scroll sideways if needed).
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Next to Project, <strong>Org</strong> / <strong>Group</strong> chooses which color
-                the bar uses (same saved choice as Tasks → All). Hover the bar for the org or group name.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                On Week → Day, day totals at the bottom include all-day hours (usually 8 hours)
-                and line up under the duration boxes. The Total bar sits under the grid so it
-                does not cover the last rows. Stopwatch time appears as read-only rows (timer
-                icon); click a day to open Sessions. Overnight sessions stay on the start date
-                (same as All, List, Reports, and Calendar) — they are not split at midnight.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                Tasks marked with a <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
-                lock icon belong to a month you've already submitted, and cannot be modified.
-                The dialog opens in read-only mode for these. Managers can unsubmit your month
-                from the Submit page if you need to correct an entry.
-            </MudText>
-        </MudExpansionPanel>
+            @if (hasIntranet)
+            {
+                <MudNavLink OnClick="@(() => SelectScope(HelpScope.Intranet))"
+                            Icon="@Icons.Material.Filled.MenuBook"
+                            Class="@(selectedScope == HelpScope.Intranet ? "mud-nav-link-active active" : null)">
+                    Intranet
+                </MudNavLink>
+            }
 
-        <MudExpansionPanel Text="Availability" Icon="@Icons.Material.Filled.BeachAccess">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Tyme → Availability</strong> lists the categories a manager has set up
-                for this workspace. Tyme does not ship a fixed list — names, slugs, and
-                team-calendar labels are data on that page. A typical workspace will have
-                entries such as Vacation, OOO, or Sick; those are examples, not built-in types.
-                Each category is a project flagged <strong>Share availability with team</strong>.
-                You pick it as the <strong>Project</strong> when logging that kind of time —
-                same as logging work, just a different project.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">How to log it</MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                On <strong>Tasks</strong> or <strong>Calendar</strong>, add an entry, choose
-                one of those availability projects, and set the dates. Turn on
-                <strong>All Day</strong> for a full-day or multi-day span (inclusive end date;
-                hours are workday hours × those days). A partial day stays a timed entry with
-                start and duration. Submit it with the rest of the month like any other time.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">What the team sees</MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Logging against an availability project also publishes a sanitized event on the
-                workspace <strong>Team Availability</strong> Google calendar:
-                <code>[Your Name]</code> plus the category's <strong>team calendar name</strong>
-                (for example <code>[Alex Rivera] Vacation</code> if a manager named a category
-                Vacation). Details and notes stay in Tyme. The team calendar is only who is out
-                and which category they used.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                That team copy is separate from <strong>your</strong> Google Calendar.
-                Export still copies the Tyme entry to your personal calendar when that
-                toggle is on. Deleting the Google copy of an availability event also removes
-                the team-calendar copy; the Tyme row stays unless live import is running and
-                the project is still eligible for personal sync.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Your Google Calendar</MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Under <strong>Settings → Tyme → Google Calendar</strong>,
-                <strong>Only Availability projects</strong> limits personal import and export
-                to the categories on Tyme → Availability. Other projects stay in Tyme and are
-                not copied to (or imported from) your calendar. Already-published events on
-                Google for those other projects are left alone unless you also turn on
-                <strong>Also remove existing Google events for projects that stop syncing</strong>.
-                The Team Availability calendar is unchanged by those toggles.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                If a category has a <strong>slug</strong>, put that <code>[slug]</code> in a
-                Google event title and Import files it on that category. Open Availability to
-                see the current names and slugs; only managers add or edit them.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">For managers</MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Add Category</strong> on Tyme → Availability. <strong>Internal name</strong>
-                is what people pick in Tyme. <strong>Team calendar name</strong> is what appears
-                after the person's name on the shared calendar. Optional slug for Google import.
-                You can also flag a regular project <strong>Share availability with team</strong>
-                on the project form. Turning the flag on does not backfill old entries — only
-                new or edited time is published. The workspace calendar id is
-                <strong>Admin → App Settings → Tyme → Team Availability Calendar</strong>;
-                empty disables team publish.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                Availability records what was logged against those categories. It is not leave
-                balances or an approval workflow.
-            </MudText>
-        </MudExpansionPanel>
+            @if (hasOrganizations)
+            {
+                <MudNavLink OnClick="@(() => SelectScope(HelpScope.Organizations))"
+                            Icon="@Icons.Material.Filled.Business"
+                            Class="@(selectedScope == HelpScope.Organizations ? "mud-nav-link-active active" : null)">
+                    Organizations
+                </MudNavLink>
+            }
 
-        <MudExpansionPanel Text="Original and adjusted time" Icon="@Icons.Material.Filled.CompareArrows">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                When submitted time has been corrected for billing, what you see on
-                <strong>Tasks</strong>, <strong>Calendar</strong>, and <strong>Reports</strong>
-                is controlled by App Settings (admins), not a per-page choice:
-            </MudText>
-            <ul class="mb-2" style="padding-left: 1.2rem;">
-                <li class="mb-1"><strong>Original</strong> — values you originally logged</li>
-                <li class="mb-1"><strong>Adjusted</strong> — corrected values when a correction exists (orange label)</li>
-                <li class="mb-1"><strong>Both</strong> — original row plus an <strong>Adjusted</strong> overlay</li>
-            </ul>
-            <MudText Typo="Typo.body2">
-                Open an Adjusted row for a side-by-side table (original on the left, adjusted on the right).
-                Overlay rows are read-only.
-            </MudText>
-        </MudExpansionPanel>
+            @if (hasExpenses)
+            {
+                <MudNavLink OnClick="@(() => SelectScope(HelpScope.Expenses))"
+                            Icon="@Icons.Material.Filled.ReceiptLong"
+                            Class="@(selectedScope == HelpScope.Expenses ? "mud-nav-link-active active" : null)">
+                    Expenses
+                </MudNavLink>
+            }
 
-        <MudExpansionPanel Text="Task Calendar" Icon="@Icons.Material.Filled.CalendarMonth">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                The <strong>Calendar</strong> page is a visual layout of your tracked tasks
-                — day, week, or month view. It's purely a different lens on the same data
-                you see in the Tasks list; nothing is stored separately.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Click an existing task to edit it. Click an empty cell to create a new entry
-                pre-filled with that date and a 30-minute default duration. Right-click a task
-                for quick <strong>Edit</strong>, <strong>Duplicate</strong>, and
-                <strong>Delete</strong> actions.
-            </MudText>
-            <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
-                Don't confuse the Task Calendar with Google Calendar sync. The Calendar page
-                lives entirely inside Tyme. Google Calendar sync (in its own section below)
-                mirrors your tasks to and from your real Google account.
-            </MudAlert>
-        </MudExpansionPanel>
+            <MudNavLink OnClick="@(() => SelectScope(HelpScope.Settings))"
+                        Icon="@Icons.Material.Filled.Settings"
+                        Class="@(selectedScope == HelpScope.Settings ? "mud-nav-link-active active" : null)">
+                Settings
+            </MudNavLink>
 
-        <MudExpansionPanel Text="Reports" Icon="@Icons.Material.Filled.Assessment">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                The <strong>Reports</strong> page is a filterable list of your tracked tasks —
-                useful for invoicing, weekly summaries, or just seeing where your time went.
-                Filter by date range, project, or project group; sort and search the result set.
-                When App Settings allows it (or you are a Tyme manager/admin), an Employees
-                picker lets you include other people's time — read-only, including unsubmitted months.
-                Corrections stay on Management.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Management</strong> (Manager-and-up only) shows the same view
-                across all users in your scope, so you can see what the team has been working on.
-                Each row carries a <strong>Submitted</strong> or <strong>Unsubmitted</strong>
-                chip so you can tell at a glance which entries belong to a closed period.
-                The submission toggle (All / Submitted / Unsubmitted) filters the list
-                accordingly.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                The three-dot menu on each row lets a manager <strong>Alter</strong> a time
-                entry for billing — start date, duration, or project — without touching the
-                employee's original entry. Altering creates a shadow record only managers see;
-                the original is preserved and can be restored by deleting the alias. Alter is
-                disabled until the employee has submitted that month (managers correct
-                <em>after</em> submission, never during).
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mt-2">
-                <strong>Data Extraction</strong> (Admin:Tyme only) exports selected database
-                tables to a multi-sheet Excel workbook. Reference tables (organizations, projects,
-                users) can be exported without a date range; time-based tables (tracked tasks,
-                aliases, correction audits, submissions) require a from/to range. Scope filters
-                (organization, project, employees) are all optional — you can export all
-                organizations without picking an employee first.
-            </MudText>
-        </MudExpansionPanel>
+            <MudNavLink OnClick="@(() => SelectScope(HelpScope.Security))"
+                        Icon="@Icons.Material.Filled.Shield"
+                        Class="@(selectedScope == HelpScope.Security ? "mud-nav-link-active active" : null)">
+                Security
+            </MudNavLink>
 
-        <MudExpansionPanel Text="Submitting time (and unsubmitting for managers)" Icon="@Icons.Material.Filled.Send">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                The <strong>Submit</strong> page has two sections:
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Your months</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Lists unsubmitted months you have tracked time in, through next month (so you can
-                submit early), plus submitted ones with a green chip. Submitting locks every task
-                in that month from edits. Far-future months from long Google Calendar series are
-                not listed.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Team submissions <em>(Manager and up only)</em></MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                A second section listing every (employee × month) you can manage in your scope.
-                Filter by status, employee, or month. <strong>Defaults to the current year</strong>
-                so the table stays manageable as the workspace accumulates history; switch the
-                Year dropdown to "All years" or a prior year to widen the view.
-                <strong>Unsubmit</strong> on any submitted row reopens that employee's month so
-                they can correct an entry. It does NOT undo their submission for the rest of the
-                team — unsubmit is strictly per-employee, per-month.
-            </MudText>
-            <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
-                Scope rules: a Manager:Tyme sees only employees with at least one role in the
-                Tyme scope. They cannot see or unsubmit users whose roles live entirely in
-                another scope, or users with global roles — those require a global Admin.
-            </MudAlert>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+            @if (isGlobalAdmin)
+            {
+                <MudNavLink OnClick="@(() => SelectScope(HelpScope.Admin))"
+                            Icon="@Icons.Material.Filled.AdminPanelSettings"
+                            Class="@(selectedScope == HelpScope.Admin ? "mud-nav-link-active active" : null)">
+                    Admin
+                </MudNavLink>
+            }
+        </MudNavMenu>
+    </MudPaper>
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Projects & organizations</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="Projects, groups, and slugs" Icon="@Icons.Material.Filled.Folder">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                A <strong>Project</strong> is the unit of work you track time against
-                (e.g. <em>Worker</em>). Each project has an optional <strong>Slug</strong> —
-                a short lowercase code (2–5 chars, letters and digits only) used to route
-                Google Calendar events to that project automatically.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                A <strong>Project Group</strong> (e.g. <em>Client Network</em>) is a visual
-                bucket for organizing related projects in lists and reports. Groups have a
-                name and a color — no slug; the slug always belongs to the project itself.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                Slugs are <strong>workspace-wide unique</strong> — the same slug can't be used
-                by two projects, since slugs route calendar events. Projects and groups are
-                shared across the team: anyone with the right role manages the same list.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">Project colors</MudText>
-            <MudText Typo="Typo.body2">
-                Each <strong>Organization</strong> and each <strong>Project Group</strong> can
-                carry a color, and the rest of the app — the project list, calendar, stopwatch,
-                tasks list, reports, and dashboard chart — picks one of those to display next to
-                each project. The choice is yours, on the <strong>Settings</strong> page under
-                <em>Project Colors</em>: use the group's color (with a fallback to the org's
-                color), the organization's color only, the group's color only, or none at all
-                if you find the indicators distracting.
-            </MudText>
-        </MudExpansionPanel>
+    <div class="help-content">
+        @if (selectedScope == HelpScope.Overview)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Overview</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="What this app is" Icon="@Icons.Material.Filled.Home" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>My Workspace</strong> is Your organization's internal workspace. Sign in with your
+                        <code>your allowed domain</code> Google account.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Use the menu on the left to open a help area. Areas match what you can open in the app
+                        (for example Tyme, Intranet, Organizations, or Expenses).
+                    </MudText>
+                    <ul class="mb-0" style="padding-left: 1.2rem;">
+                        <li class="mb-1"><strong>Tyme</strong> — time tracking, calendar, availability, reports, submit</li>
+                        <li class="mb-1"><strong>Intranet</strong> — company pages and documents</li>
+                        <li class="mb-1"><strong>Organizations</strong> — customers, departments, and contacts</li>
+                        @if (hasExpenses)
+                        {
+                            <li class="mb-1"><strong>Expenses</strong> — reimbursable costs against the home company (not Tyme or client work)</li>
+                        }
+                        <li class="mb-1"><strong>Settings</strong> — General (theme, time zone) and Tyme (project colors, Google Calendar)</li>
+                        <li class="mb-1"><strong>Security</strong> — how access is enforced</li>
+                        @if (isGlobalAdmin)
+                        {
+                            <li><strong>Admin</strong> — users, app settings, logs, debug</li>
+                        }
+                    </ul>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="New versions" Icon="@Icons.Material.Filled.SystemUpdate">
+                    <MudText Typo="Typo.body2">
+                        After we publish an update, this tab reloads on its own the next time you come
+                        back to the app (or about every 15 minutes while it stays open). The version
+                        number at the bottom of the left menu matches what you are running. Click it
+                        to see what changed.
+                    </MudText>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="Access levels" Icon="@Icons.Material.Filled.Badge">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Access is scoped by module. A role looks like <code>Manager:Tyme</code>,
+                        <code>Editor:Intranet</code>, or <code>Manager:Organizations</code>. Bare
+                        <code>Admin</code> is workspace setup only (Users, App Settings, Logs, Debug) —
+                        it does not by itself open Tyme, Intranet, Organizations, or Expenses menus.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        If a menu item is missing, you do not have access to that feature. Ask someone who
+                        manages accounts to assign the right module role.
+                    </MudText>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Tyme)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Tyme</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="Stopwatch" Icon="@Icons.Material.Filled.Timer" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Pick a <strong>Project</strong>, describe the work in <strong>Details</strong>
+                        ("What are you working on"), then click <strong>Start</strong>.
+                        Stopwatch work items need Details. On Tasks (manual, week, and calendar entries)
+                        Details is optional. <strong>Enter</strong> starts the timer;
+                        <strong>Shift+Enter</strong> adds a new line in Details (up to 500 characters).
+                        A running work item shows a green timer icon; a stopped one is blue.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Mini Pop Out</strong> opens a slim always-on-top window so the timer can run
+                        while you work in other apps.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        On the Stopwatch list, switch <strong>List</strong> / <strong>Week</strong>
+                        (same idea as Tasks). List is one row per timer (all sessions totaled).
+                        Week shows that week by day; pick the week with the same week-of control as Tasks.
+                        The small tab under a row (down / up chevron) expands start, stop,
+                        and duration — open <strong>Sessions</strong> to edit those times.
+                        The X removes a work item from the list only — logged time stays
+                        in Tasks and Reports. Stop the timer first. Open <strong>Sessions</strong> to edit
+                        name/project when unlocked, change session durations, or
+                        <strong>Delete work item</strong> (and all of its sessions). The installed app
+                        opens on the mini stopwatch with the same List / Week switch and row tab.
+                        Mini Pop Out keeps table columns if you shrink the
+                        window (scroll sideways if needed).
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Next to Project, <strong>Org</strong> / <strong>Group</strong> chooses which color
+                        the bar uses (same saved choice as Tasks → All). Hover the bar for the org or group name.
+                    </MudText>
+                </MudExpansionPanel>
 
-        <MudExpansionPanel Text="Organizations and departments" Icon="@Icons.Material.Filled.Business">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Organizations</strong> are the companies, clients, or internal teams
-                your projects are done for. Each organization can have one or more
-                <strong>Departments</strong> (Engineering, Operations, etc.) and any number of
-                <strong>Contacts</strong> attached to either the organization or a specific
-                department.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                When you create a Project, you can associate it with an organization (and
-                optionally a department). That association flows through to reports and
-                makes it easier to see how much time has gone into work for each client.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Organizations is its own module scope. <code>User:Organizations</code> can view.
-                <code>Editor:Organizations</code> can create and edit organizations and departments.
-                <code>Admin:Organizations</code> can archive, unarchive, set active/inactive, and
-                delete (when enabled), and can assign Organizations roles on Users.
-                Workspace <code>Admin</code> does not open this menu. A Tyme Manager does not
-                get it unless they also have an Organizations role.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                Archiving an organization also archives its departments and projects. Unarchiving
-                restores the organization and its departments; if you also have Manager:Tyme (or
-                Admin:Tyme), you are asked whether to unarchive its projects too. Regular Tyme
-                users pick from the existing project list when tracking time.
-            </MudText>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+                <MudExpansionPanel Text="Tasks" Icon="@Icons.Material.Filled.Checklist">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Tasks</strong> has three modes (toggle at the top):
+                    </MudText>
+                    <ul class="mb-2" style="padding-left: 1.2rem;">
+                        <li class="mb-1">
+                            <strong>All</strong> — stopwatch work items and manual entries in a searchable,
+                            paged list (Project, then Details). A timer on the left marks stopwatch rows
+                            (green while running). Use <strong>New Task</strong> to add a completed entry.
+                        </li>
+                        <li class="mb-1">
+                            <strong>Week</strong> — all time for one week. Defaults to the current week;
+                            use the arrows or the date picker (Week of) to move weeks. The footer total
+                            follows App Settings for original vs adjusted time: one total when there are
+                            no corrections (or only one view is enabled); both <em>Your time</em> and
+                            <em>Adjusted</em> when the setting is Both and corrections exist.
+                        </li>
+                        <li class="mb-1">
+                            <strong>Project</strong> — choose project, week, and business/full week. Existing
+                            tasks for that project this week appear as rows (Details left, day durations across).
+                            Stopwatch time for that project is a read-only row (timer icon); open Sessions to edit.
+                            <strong>New Task</strong> adds a row; Details is optional, then enter duration
+                            (H:MM) per day. Use the edit icon next to a day to open that day's full entry
+                            dialog. Footer shows this project's day totals and an <em>All projects</em> row,
+                            lined up under the day boxes. Changes save automatically.
+                        </li>
+                    </ul>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Column headers stay visible when the list is longer than the page (All, Week List,
+                        Week Day, and Project). The Total row on All stays visible while you scroll.
+                        On All and Week → List you can sort by Project, Details,
+                        Date, or Duration. If two timed entries share the same Project, Details, and
+                        day, Week → Day shows <strong>Multiple</strong> — hover for how to edit them
+                        one at a time (Calendar or All). That is not an error.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        On Week → Day, day totals at the bottom include all-day hours (usually 8 hours)
+                        and line up under the duration boxes. The Total bar sits under the grid so it
+                        does not cover the last rows. Stopwatch time appears as read-only rows (timer
+                        icon); click a day to open Sessions. Overnight sessions stay on the start date
+                        (same as All, List, Reports, and Calendar) — they are not split at midnight.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Search sits under the page description with All / Week / Project on the same control.
+                        On Week, List / Day attach to the right of that bar. Business week / Full week stay
+                        on the far right of the row.
+                        On All it searches your full history. On Week (List or Day) it filters this
+                        week's entries. On Project it filters rows for the open project.
+                        Your last view and the week you were on are kept if you leave Tasks and come back
+                        in the same session. Left and right arrow keys move to the previous or next week
+                        (or the previous or next page on tables) unless you are typing or a dialog is open.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        In All or Week, click a row to edit Details, project, start, or duration, or delete when unlocked.
+                        Duration accepts 02:30, :15, or 15m. <strong>Enter</strong> finishes the field.
+                        On All, Week → List, and Stopwatch, use <strong>Org</strong> / <strong>Group</strong> next to the Project
+                        column header to choose which color the bar next to each project uses. Hover the color or
+                        name to see the org or group name. Week → Day does not use that control.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        A <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /> lock means that
+                        month is submitted — the entry opens read-only. Unsubmit (from Submit, when available)
+                        reopens the month for edits.
+                    </MudText>
+                </MudExpansionPanel>
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Google Calendar &amp; sync</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="Google Calendar sync" Icon="@Icons.Material.Filled.Event">
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Connecting</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Calendar usually connects when you sign in with Google.
-                Manage the link under <strong>Settings → Tyme → Google Calendar</strong>.
-                Intranet asks for Drive separately the first time you browse or attach a file.
-                Tyme connects to your <strong>primary Google calendar</strong> — no separate
-                sub-calendar is created. Only events with a <code>[slug]</code> tag in the title
-                are imported as tracked tasks; everything else on your calendar stays private and
-                is never persisted by Tyme.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Backfilling your existing tasks</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Right after a successful connect, Tyme offers to push your existing tracked tasks
-                from a date range onto your primary calendar so you can see where your tracked
-                time fell. The default lookback comes from a workspace setting (<em>see App
-                Settings → Google Calendar Backfill</em>). Tasks already linked to a calendar
-                event are skipped automatically.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Two-way sync</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                <strong>Publish</strong> mirrors your Tyme tasks out to Google with a
-                <code>[slug]</code> tag. <strong>Import</strong> brings calendar events you create
-                back into Tyme — but only events you tag with <code>[slug]</code>. Both directions
-                are turned on automatically when you connect; you can disable either one in
-                Settings. Tagged events import when you save them in Google Calendar
-                (a few seconds later if the app was idle). Edits you make in Google on a
-                Tyme-created event come back into Tyme.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Self-healing nightly sync</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Occasionally Google's push notification for a calendar change doesn't reach Tyme —
-                a transient network glitch, an expired watch channel, or you being disconnected at
-                the moment of edit. To make these silent misses self-correcting, Tyme runs a
-                nightly job at 07:00 UTC that re-scans every connected user's calendar over the
-                last 7 days and the next 7 days and ingests anything the webhook missed — a backup
-                behind live import. So a <code>[vac]</code> event you typed yesterday that didn't
-                appear will typically be there by the next morning — without anyone clicking anything.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Manual pull (surgical recovery)</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                If you can't wait until the nightly run, or you need to recover events outside the
-                ±7-day window the nightly covers, use
-                <strong>Settings → Google Calendar → Pull missed events from Google</strong>, pick
-                the date range, and Tyme re-scans your calendar and imports anything it missed. The
-                pull is idempotent — events already linked to a tracked task are updated in place,
-                nothing duplicates.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                <em>Global Admin</em>: you can run the same pull on someone else's behalf from
-                <strong>Admin → Users</strong>: each row has a cloud-sync icon that opens the
-                date-range dialog and pulls events for that user. Useful when a colleague reports
-                a sync issue while you're already in the admin area.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Event colors</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Under <strong>Settings → Google Calendar</strong> you can pick the color Tyme
-                applies to its published events. <strong>Event color (with project)</strong>
-                covers normal tagged events — leave it on <em>Calendar default</em> if you'd
-                rather Google use your usual color theme. <strong>Event color (no project)</strong>
-                is the flag color for tasks that pushed without a project (defaults to
-                <em>Tomato</em>) — these stand out so you can spot the ones that still need a
-                project assignment. Color changes apply to new and updated events; existing
-                events keep their color until you next touch the task.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">The slug tag</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                To get an event from your calendar into Tyme, include the project's slug in
-                square brackets in the event title. The slug routes the event to that project
-                automatically.
-            </MudText>
-            <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background-color: var(--mud-palette-background-gray);">
-                <MudText Typo="Typo.body2" Style="font-family: monospace;">
-                    [wrkr] Fixed login bug
-                </MudText>
-            </MudPaper>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Slugs are case-insensitive and the tag is stripped from the saved task name.
-                Events <em>without</em> a slug are skipped entirely — Tyme will never quietly
-                pull personal entries from your calendar. If you put a slug in but the slug
-                doesn't match any project, the event is also skipped (we log it so you can
-                spot typos in the Function App logs).
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Calendar invites and recurring events</MudText>
-            <MudText Typo="Typo.body2">
-                When someone sends you a meeting invite with a <code>[slug]</code> in the title,
-                Tyme only imports it if you've <strong>accepted</strong> or marked yourself
-                <strong>tentative</strong>. Invites you haven't responded to or have declined
-                are skipped, and if you accept-then-decline later, the entry is removed on the
-                next sync (unless that month is already submitted). Meetings you created
-                yourself import as soon as the slug matches a project — no acceptance step
-                applies to your own events. When a recurring meeting is cancelled, past
-                occurrences stay in Tyme (they represent work that actually happened) and
-                future occurrences are removed.
-            </MudText>
-        </MudExpansionPanel>
+                <MudExpansionPanel Text="Original and adjusted time" Icon="@Icons.Material.Filled.CompareArrows">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        When submitted time has been corrected for billing, what you see on
+                        <strong>Tasks</strong>, <strong>Calendar</strong>, and <strong>Reports</strong>
+                        is controlled by App Settings (admins), not a per-page choice:
+                    </MudText>
+                    <ul class="mb-2" style="padding-left: 1.2rem;">
+                        <li class="mb-1"><strong>Original</strong> — values you originally logged</li>
+                        <li class="mb-1"><strong>Adjusted</strong> — corrected values when a correction exists</li>
+                        <li class="mb-1"><strong>Both</strong> — original row plus an <strong>Adjusted</strong> overlay row</li>
+                    </ul>
+                    <MudText Typo="Typo.body2">
+                        Open an Adjusted row for a side-by-side table (original on the left, adjusted on the right).
+                        Overlay rows are read-only.
+                    </MudText>
+                </MudExpansionPanel>
 
-        <MudExpansionPanel Text="Outlook &amp; other calendar apps" Icon="@Icons.Material.Filled.Sync">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Because Tyme now syncs with your <strong>primary</strong> Google calendar, any
-                calendar client that mirrors your primary Google calendar (Outlook, Apple
-                Calendar, etc.) will see the events Tyme publishes — and any event you create
-                in that client lands on the primary calendar and flows back into Tyme on the
-                next sync.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                Same slug rule applies: only events whose title contains a project
-                <code>[slug]</code> are imported as tracked tasks. Personal events stay
-                private and are never persisted by Tyme.
-            </MudText>
-        </MudExpansionPanel>
+                <MudExpansionPanel Text="Calendar" Icon="@Icons.Material.Filled.CalendarMonth">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Calendar</strong> is another view of the same tracked tasks (day, week, month).
+                        Click a chip for details; click empty space to create. Right-click for edit, duplicate,
+                        or delete when the entry is not locked.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Each day with time shows a hours total next to the day number in month view,
+                        and under the day name in week, work week, and day view. Empty days stay blank.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        This is not Google Calendar. Sync with Google is under Settings (and Google Calendar below).
+                    </MudText>
+                </MudExpansionPanel>
 
-        <MudExpansionPanel Text="Disconnecting Google Calendar" Icon="@Icons.Material.Filled.LinkOff">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                In <strong>Settings</strong>, click <strong>Disconnect</strong>.
-                Disconnecting stops two-way sync. Events that Tyme already pushed to your
-                primary calendar stay where they are — we don't delete them. Your Tyme
-                tracked tasks also stay; only the link between them and the calendar is
-                severed.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                You can reconnect any time, and you'll be offered the chance to backfill
-                recent tasks onto your calendar again.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                <strong>Note:</strong> disconnecting does NOT remove My Workspace from your
-                Google account's connected apps. To revoke that connection entirely, visit
-                <a href="https://myaccount.google.com/connections" target="_blank">myaccount.google.com → Connections</a>.
-            </MudText>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+                <MudExpansionPanel Text="Reports" Icon="@Icons.Material.Filled.Assessment">
+                    <MudText Typo="Typo.body2">
+                        <strong>Reports</strong> filters your time by date and project for summaries and charts.
+                        It uses the same original / adjusted / both toggle as Tasks.
+                        Time by Project and Daily Hours can group by organization or project group
+                        and show percent or hours, same idea as the dashboard chart.
+                        When App Settings allows it (or you are a Tyme manager/admin), an Employees
+                        picker lets you include other people's time — read-only, including unsubmitted months.
+                        Corrections stay on Management.
+                    </MudText>
+                </MudExpansionPanel>
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Intranet</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="Intranet (company pages)" Icon="@Icons.Material.Filled.MenuBook">
-            <MudText Typo="Typo.body2" Class="mb-3">
-                The <strong>Intranet</strong> is the company's internal mini-site — pages,
-                sidebar navigation, and a shared documents library. It appears under the
-                <strong>Intranet</strong> nav group when you have <code>User:Intranet</code>,
-                <code>Editor:Intranet</code>, or <code>Admin:Intranet</code>.
-            </MudText>
+                <MudExpansionPanel Text="Submit" Icon="@Icons.Material.Filled.Send">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Your months</strong> lists unsubmitted months you have tracked time in,
+                        through next month (so you can submit early). Submitting locks every task in that month.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        You're not limited to completed months — if you've already entered time for the
+                        current month or a future one (for example, vacation you set up ahead of time), an
+                        <strong>Early</strong> tag lets you submit it before it ends.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        After submit, entries cannot be edited until the month is unsubmitted.
+                    </MudText>
+                </MudExpansionPanel>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Sidebar navigation</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                <code>Admin:Intranet</code> builds the curated menu under
-                <strong>Intranet → Navigation</strong>. That tree is what most people see in
-                the sidebar — links to internal pages or external URLs, nested as deep as needed.
-                Click a section title to open its page; use the chevron to expand or collapse
-                sub-pages. Only <strong>published</strong> pages are visible to regular users;
-                editors see draft banners when previewing unpublished content.
-            </MudText>
+                <MudExpansionPanel Text="All-day entries" Icon="@Icons.Material.Filled.DateRange">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        On the task dialog, turn on <strong>All Day</strong> for a full-day or multi-day span.
+                        Pick an inclusive end date; duration is workday hours × workdays
+                        (workspace default is usually 8 hours).
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Availability entries often use All Day — see Availability below.
+                    </MudText>
+                </MudExpansionPanel>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Search</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Use the <strong>search</strong> icon in the top app bar (or press <kbd>/</kbd>) to find
-                pages by title or body text. Results open the page in view mode. Editors also see
-                unpublished drafts in search results.
-            </MudText>
+                <MudExpansionPanel Text="Projects and organizations" Icon="@Icons.Material.Filled.Folder">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        A <strong>Project</strong> is what you log against. Optional <strong>slug</strong>
+                        (2–10 lowercase letters/digits, unique in the workspace) routes Google Calendar events
+                        with <code>[slug]</code> in the title.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Project Groups</strong> organize lists and colors.
+                        Color preference is under <strong>Settings → Tyme → Project Colors</strong>.
+                        Customers and departments live under the top-level <strong>Organizations</strong>
+                        menu (its own role — see Organizations in this Help). A Tyme Manager or
+                        Manager:Tyme role does not by itself let you manage organizations.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Active projects appear in pickers when logging time. A project is required
+                        when you log time; Details left blank are stored empty. Creating and editing the project
+                        catalog is under Tyme → Projects when you have that access.
+                        <strong>Download</strong> on that page saves names and slugs as a reference for
+                        <code>[slug]</code> tags in Google Calendar.
+                        When adding or editing a project, Organization is a search box like Project:
+                        type a name, scroll, or load more. Department works the same after you pick an org.
+                    </MudText>
+                </MudExpansionPanel>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Viewing pages and favorites</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Open any page from the sidebar or a link. Use the <strong>star</strong> on a
-                page to add it to your <strong>Favorite pages</strong> list on the dashboard
-                for quick access. Sub-pages linked under the current page appear at the bottom
-                of the view.
-            </MudText>
+                <MudExpansionPanel Text="Availability" Icon="@Icons.Material.Filled.BeachAccess">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        The shared <strong>Team Availability</strong> calendar is how the team sees who is
+                        out. You do not add events on that calendar yourself. You log the time in Tyme
+                        against an availability category (Vacation, OOO, Sick, Unavailable, or whatever
+                        your workspace uses). Tyme then puts a short, public event on Team Availability.
+                    </MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">Put yourself on Team Availability</MudText>
+                    <ol class="mb-3 pl-4">
+                        <li class="mb-1">
+                            Open <strong>Tyme → Availability</strong> if you need the exact names.
+                            Those are the categories you can pick. You cannot create them unless you are
+                            a Tyme manager.
+                        </li>
+                        <li class="mb-1">
+                            Open <strong>Tyme → Tasks</strong> or <strong>Tyme → Calendar</strong> and
+                            add a task (same as logging work).
+                        </li>
+                        <li class="mb-1">
+                            Set <strong>Project</strong> to the availability category (for example Vacation).
+                        </li>
+                        <li class="mb-1">
+                            Set the dates. Turn on <strong>All Day</strong> for a full day or a date range
+                            (end date is included). For a few hours, leave All Day off and enter start
+                            and duration.
+                        </li>
+                        <li class="mb-1">
+                            Save. Time-off categories (Vacation, Sick) are submitted with the month
+                            like any other time. Busy-only categories (Unavailable) appear on the
+                            team calendar and do not add hours or create a month to submit.
+                        </li>
+                    </ol>
+                    <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined" Class="mb-3">
+                        After you save, the shared calendar shows something like
+                        <code>[Your Name] Vacation</code> — your name plus the category's
+                        <strong>team calendar name</strong>. Notes and details stay in Tyme; the team
+                        calendar only shows that you are out and which category you used.
+                    </MudAlert>
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">If the category is missing</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Ask a Tyme manager to add it on <strong>Tyme → Availability</strong>. Until it
+                        exists as a category, you cannot put that kind of time on the shared calendar.
+                    </MudText>
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">Your own Google Calendar (optional)</MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Team Availability is not your personal calendar. Export can still copy the Tyme
+                        entry to your Google Calendar when that toggle is on under
+                        <strong>Settings → Tyme → Google Calendar</strong>.
+                        If a category has a <strong>slug</strong>, you can also create a Google event whose
+                        title includes <code>[slug]</code> and use <strong>Import</strong> so Tyme files it
+                        on that category — then the shared calendar gets the team copy as well.
+                    </MudText>
+                    @if (hasTymeManager)
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">For managers — add a category</MudText>
+                        <ol class="mb-3 pl-4">
+                            <li class="mb-1">
+                                Open <strong>Tyme → Availability</strong> and click <strong>Add Category</strong>.
+                            </li>
+                            <li class="mb-1">
+                                <strong>Internal name</strong> is what people pick as the project in Tyme.
+                            </li>
+                            <li class="mb-1">
+                                <strong>Team calendar name</strong> is what appears after their name on
+                                Team Availability (for example Vacation). If you leave it blank, the
+                                internal name is used.
+                            </li>
+                            <li class="mb-1">
+                                Optional <strong>slug</strong> for Google import titles like <code>[vac]</code>.
+                            </li>
+                            <li class="mb-1">
+                                <strong>Counts as Tyme hours</strong> stays on for Vacation and Sick.
+                                Turn it off for Unavailable or Busy so the team calendar still shows
+                                the person as out, without adding hours.
+                            </li>
+                        </ol>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            You can also flag a regular project <strong>Share availability with team</strong>
+                            on the project form. That does not backfill old entries — only new or edited
+                            time is published. The workspace calendar id is
+                            <strong>Admin → App Settings → Tyme → Team Availability Calendar</strong>;
+                            empty disables team publish. Staff only need view access on that calendar.
+                            Writes do not use each person's Google Calendar token.
+                        </MudText>
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Service account and delegate (required for writes)</MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Tyme updates Team Availability as a Google <strong>service account</strong>
+                            that impersonates a workspace <strong>delegate user</strong> (domain-wide
+                            delegation). Both must be set on the Function App, not in App Settings:
+                            <code>Google__TeamAvailabilityServiceAccountJson</code> (the SA JSON key)
+                            and <code>Google__TeamAvailabilityImpersonateUser</code> (a user who can
+                            already <strong>Make changes to events</strong> on that calendar — production
+                            uses the workspace calendar owner). In Google Workspace Admin, grant the
+                            service account domain-wide delegation for
+                            <code>https://www.googleapis.com/auth/calendar</code>.
+                            Empty JSON disables team-calendar writes. Empty impersonate user tries to
+                            write as the service account itself, which only works if the calendar is
+                            shared with the SA as Make changes to events.
+                        </MudText>
+                    }
+                    <MudText Typo="Typo.body2">
+                        This is not leave balances or an approval workflow. It only records time logged
+                        against those categories and mirrors a short event to the shared calendar.
+                    </MudText>
+                </MudExpansionPanel>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Editing pages (Editor+)</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                On a page, click <strong>Edit this page</strong> to open the editor. When you
-                are done, use <strong>View page</strong> to return without saving,
-                <strong>Save</strong> to stay in the editor, or <strong>Save &amp; view</strong>
-                to save and return to read-only view. Toggle <strong>Published</strong> off to
-                keep a draft hidden from the menu and from regular users.
-            </MudText>
+                <MudExpansionPanel Text="Google Calendar" Icon="@Icons.Material.Filled.Event">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Calendar usually connects when you sign in with Google.
+                        Manage the link under <strong>Settings → Tyme → Google Calendar</strong>.
+                        Intranet files live on App Drive after a workspace Admin connects it
+                        under App Settings → Drive — you do not connect your own Drive for that.
+                        Only events with a <code>[slug]</code> in the title import as tasks; other events stay private.
+                        A tagged event imports unless you declined the invite.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Export Tyme tasks to Google Calendar</strong> copies each Tyme task onto
+                        your calendar. <strong>Import Google Calendar events into Tyme</strong> brings
+                        back only events whose title includes a project <code>[slug]</code>. After you
+                        connect, a dialog asks you to choose Export and Import (and a one-time backfill)
+                        before sync starts. Tagged events import when you save them in Google Calendar
+                        (a few seconds later if the app was idle). Edits you make in Google on a
+                        Tyme-created event come back into Tyme.
+                        Use <strong>Pull missed events</strong>
+                        in Settings for a manual rescan — the result lists what changed and names any
+                        [tag] that did not match a project. A nightly job re-scans ±7 days as a backup.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        An all-day entry spanning several weekdays (for example Tue–Thu) is one Google
+                        all-day event covering those dates. Turn on <strong>Publish</strong> under Settings
+                        or the event stays only in Tyme.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Under Settings you can turn on <strong>Only Availability projects</strong> so
+                        import and export on your Google Calendar use only the categories a manager
+                        listed on Tyme → Availability. Other projects stay in Tyme, and their
+                        already-published Google events are left alone — Tyme just stops updating them —
+                        unless you also opt into
+                        <strong>Also remove existing Google events for projects that stop syncing</strong>.
+                        The Team Availability calendar is unchanged either way.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Example: <code>[itsup] Laptop rebuild</code>. Stop Calendar sync ends import and export
+                        without deleting existing Google events or Tyme tasks. Sign-in no longer
+                        starts Google Calendar — connect again from Settings if you want it back.
+                        To fully remove access, use Google Account → Connections.
+                        If you then delete those events from Google, Tyme keeps the tasks. Deleting an
+                        event from Google while still connected still removes the matching unsubmitted Tyme row.
+                    </MudText>
+                </MudExpansionPanel>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">The page editor (Quill)</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                You edit the formatted page directly — there is no separate Markdown preview.
-                Use the toolbar or shortcuts (<strong>Ctrl+B</strong> bold,
-                <strong>Ctrl+I</strong> italic, etc.) for headings, lists, and alignment.
-            </MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>Image</strong> — upload or pick from the company Drive library;
-                    images are inserted at your cursor and load securely for viewers.
-                </li>
-                <li class="mb-1">
-                    <strong>Folder</strong> — insert a link to a file from the library (or upload
-                    one) at your cursor.
-                </li>
-                <li class="mb-1">
-                    <strong>Link</strong> — insert a web address (opens the link dialog instead
-                    of Quill's built-in link box).
-                </li>
-                <li>
-                    <strong>Code &lt;&gt;</strong> — view, edit, or copy the full page HTML,
-                    or paste a snippet and apply it to the page.
-                </li>
-            </ul>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Paste or drag images from other websites</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                When you paste or drop an external image into the editor, an <strong>Insert image</strong>
-                dialog opens. Allowed file types and per-type size limits come from
-                <strong>App Settings → Intranet → Editor File Policy</strong> (global admins maintain
-                a list of extensions and max MB values).
-            </MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>Copy to library and embed on this page</strong> (default) — uploads the
-                    image to the company Google Drive folder (<em>Images</em> subfolder when it exists),
-                    attaches it to the page, and displays it through the secure intranet media proxy.
-                    This is the normal path for pasted or dragged images.
-                </li>
-                <li class="mb-1">
-                    <strong>Link to original URL</strong> — optional second choice, shown only when
-                    copy is also available. The saved page keeps the external URL as the image
-                    <code>src</code>. The editor never offers link-only.
-                </li>
-                <li class="mb-1">
-                    <strong>Sources that block direct image links</strong> — some hosts (notably
-                    Google Sites / <code>googleusercontent.com</code> URLs) cannot be used as a bare
-                    image link after save. Those show <strong>copy only</strong>. The original URL
-                    may be stored as reference metadata, but viewers see the library copy.
-                </li>
-                <li>
-                    <strong>If copy is not offered</strong> — the paste may be a URL without image
-                    data. Drag the image into the editor, paste the image file itself, or use the
-                    toolbar <strong>Image</strong> button to upload from the library.
-                </li>
-            </ul>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                The <strong>Attachments</strong> tab lists Drive files linked to the page and
-                whether each file is still referenced in the content. The <strong>Page Settings</strong>
-                tab covers slug, optional <strong>parent page</strong> (Manage Pages hierarchy), and
-                <strong>menu location</strong> (where the page appears in the sidebar — separate from parent page).
-            </MudText>
+                @if (hasTymeManager)
+                {
+                    <MudExpansionPanel Text="Management" Icon="@Icons.Material.Filled.SupervisorAccount">
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            <strong>Tyme → Management</strong> reviews team time: date range, employees,
+                            organization, project group, project, submitted/unsubmitted, and billable filters.
+                            Filters and the Summary / Task Details tab are remembered for your next visit.
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Use <strong>Apply</strong> after changing dates (reloads data). Other filters update
+                            the tables immediately. Columns on Task Details can be shown or hidden. Download
+                            exports the active tab.
+                        </MudText>
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Correcting submitted time</MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Corrections apply only after that month is submitted. Workspace mode is either
+                            <strong>Alias</strong> or <strong>Direct</strong> (App Settings → Tyme → Correction mode).
+                        </MudText>
+                        <ul class="mb-2" style="padding-left: 1.2rem;">
+                            <li class="mb-1">
+                                <strong>Alias</strong> — overlay on the original entry; delete the alias to revert.
+                            </li>
+                            <li class="mb-1">
+                                <strong>Direct</strong> — updates the task and keeps an audit of previous vs new values.
+                                Original values still appear on the person's Tasks list; adjusted values show on the overlay.
+                            </li>
+                        </ul>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Use the row menu for <strong>Update (Alias)</strong> or <strong>Update (Direct)</strong>.
+                            Type in the project field to search the full catalog.
+                        </MudText>
+                        <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined" Class="mb-2">
+                            Leave the project set when you only mean to change name or hours. Clearing the project
+                            field saves “no project” on the correction.
+                        </MudAlert>
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Team submissions</MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            On <strong>Submit</strong>, <strong>Team submissions</strong> lists employee × month
+                            rows in scope. <strong>Unsubmit</strong> reopens that one person's month only.
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            Time-off categories live under <strong>Tyme → Availability</strong> — see Availability
+                            in this Help menu.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Creating pages and navigation</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Best practice: <strong>Intranet → Navigation</strong> and use contextual actions
-                on a parent item — add a sub-nav item, add a page under it, or attach content.
-                You can also use <strong>Manage Pages</strong> (Editor+) and link pages into the
-                menu later with title-based pickers (no page IDs to memorize).
-            </MudText>
+                @if (hasTymeManager)
+                {
+                    <MudExpansionPanel Text="Data" Icon="@Icons.Material.Filled.Storage">
+                        <MudText Typo="Typo.body2">
+                            <strong>Tyme → Data</strong> has two tabs. <strong>Extraction</strong> exports
+                            selected tables to Excel. Reference tables can run without a date range;
+                            time-based tables need from/to. Organization, project, and employee filters
+                            are optional. <strong>Mirror</strong> shows last successful copy separately
+                            from the latest run. <strong>Push</strong> starts the same app-owned GitHub
+                            job as the nightly copy — it does not use the clicker's SQL login.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Intranet)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Intranet</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="Pages and favorites" Icon="@Icons.Material.Filled.MenuBook" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Curated links appear in the sidebar. Search from the top bar (or press <kbd>/</kbd>).
+                        Star a page to pin it on the dashboard, or use Add / Remove on the Favorite pages tile.
+                        Unpublished drafts are only visible when you
+                        have edit access.
+                    </MudText>
+                </MudExpansionPanel>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Documents library</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                <strong>Intranet → Documents Library</strong> (Editor+) browses the company Google
-                Drive folder configured in <strong>App Settings → Intranet</strong>, including
-                <em>Images</em>, <em>Videos</em>, and <em>Documents</em> subfolders when present.
-                Upload and manage files here; insert them into pages from the editor toolbar.
-                Files uploaded through the editor or library are registered in the app and tracked
-                on the <strong>Used on</strong> column. Google Calendar and Drive must be connected
-                (normally part of sign-in, or reconnect under <strong>Settings</strong>).
-            </MudText>
+                @if (hasIntranetEditor)
+                {
+                    <MudExpansionPanel Text="Editing pages" Icon="@Icons.Material.Filled.Edit">
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            <strong>Edit this page</strong> opens the editor. Save, Save &amp; view, or return
+                            without saving. Uncheck <strong>Published</strong> to keep a draft out of the menu.
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Toolbar: image (library/upload), file link, web link, HTML. Pasted external images
+                            prefer copy-to-library (file types under App Settings → Intranet).
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            <strong>Manage Pages</strong> and <strong>Documents Library</strong> are under the
+                            Intranet maintenance group in the nav. Uploads go to App Drive → Intranet
+                            (Images / Videos / Documents). Images on a page are shown by the app; opening a file
+                            in Google Drive itself requires Shared Drive membership, which employees do not have.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Roles</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1"><strong>User:Intranet</strong> — view published pages and sidebar nav.</li>
-                <li class="mb-1"><strong>Editor:Intranet</strong> — edit pages, documents library, Manage Pages.</li>
-                <li><strong>Admin:Intranet</strong> — navigation tree plus everything editors can do.</li>
-            </ul>
-            <MudText Typo="Typo.body2">
-                Global <code>Admin</code> alone does not grant Intranet access — same scoped model
-                as Tyme. Global admins use <strong>impersonation</strong> to work inside the module.
-            </MudText>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+                @if (hasIntranetNavigation)
+                {
+                    <MudExpansionPanel Text="Navigation" Icon="@Icons.Material.Filled.AccountTree">
+                        <MudText Typo="Typo.body2">
+                            <strong>Intranet → Navigation</strong> is for <code>Navigation:Intranet</code>.
+                            It builds the curated sidebar: internal pages
+                            or external URLs, nested up to the depth set in App Settings. Prefer creating pages
+                            from a parent nav item so menu placement stays consistent.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Organizations)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Organizations</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="What Organizations is" Icon="@Icons.Material.Filled.Business" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Organizations</strong> is its own menu and role — not part of Tyme.
+                        It holds customers, departments, and contacts that projects (and other modules)
+                        can attach to. Sort is on the Organization column header.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <code>User:Organizations</code> can view.
+                        <code>Editor:Organizations</code> can create and edit organizations and departments.
+                        <code>Manager:Organizations</code> can archive, unarchive, set active/inactive, and
+                        delete (when enabled) — and includes Editor. <code>UserAccess:Organizations</code> assigns Organizations roles on Users.
+                        Workspace <code>Admin</code> does not open this menu. A Tyme Manager does not
+                        get it unless they also have an Organizations role.
+                    </MudText>
+                </MudExpansionPanel>
+                @if (hasOrganizationsEditor)
+                {
+                    <MudExpansionPanel Text="Editing" Icon="@Icons.Material.Filled.Edit">
+                        <MudText Typo="Typo.body2">
+                            Create or edit an organization from the Organizations page. Archiving an
+                            organization also archives its departments and projects. Unarchiving restores
+                            the organization and its departments; if you also have Manager:Tyme (or
+                            Manager:Tyme), you are asked whether to unarchive its projects too. Deactivating
+                            an organization marks its departments inactive; you are asked whether to mark
+                            its projects inactive too.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Expenses)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Expenses</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="What Expenses is" Icon="@Icons.Material.Filled.ReceiptLong" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Expenses</strong> is reimbursable spend against the home company — the company —
+                        not Tyme time and not client or project work. It has its own role
+                        (<code>User:Expenses</code> / <code>Manager:Expenses</code> /
+                        <code>UserAccess:Expenses</code> to assign those on Users).
+                        Workspace <code>Admin</code> does not open this menu.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Open <strong>Expenses</strong>, pick a month, and click <strong>New Report</strong>.
+                        On the report, <kbd>Ctrl</kbd>+<kbd>N</kbd> adds a line. Add a line per expense.
+                        Personal-car mileage lives under <strong>Transportation</strong> (type Personal car, then miles).
+                        Meals can be marked Breakfast / Lunch / Dinner. Attach a PDF or image on the line —
+                        receipts are stored under App Drive → Expenses after a workspace Admin
+                        connects that Drive in App Settings. If a line's date is after the report's
+                        <strong>Cover end</strong>, attaching its receipt shows a warning so you can double-check it.
+                        <kbd>Ctrl</kbd>+<kbd>S</kbd> saves. Click <strong>Submit</strong> when the month is
+                        ready — that locks the report, builds the statement PDF (form + receipts), and
+                        files it under App Drive → Expenses → <strong>Filed</strong> → month.
+                        That filed PDF is the copy Open PDF uses after submit. A manager
+                        <strong>Unsubmit</strong> removes it so the next submit files a fresh one.
+                        Deleting the person later can clear their receipt folder; the filed PDF stays.
+                        After the company pays you, the report shows as <strong>Reimbursed</strong>.
+                        After a month ends, an unsubmitted report with lines shows on the dashboard
+                        the same way unsubmitted Tyme months do.
+                        Click a row to open a report. Home address and your signature live under
+                        <strong>Settings → Expenses</strong>. <strong>PDF</strong> has Open / Download
+                        and a legacy Form 87-43 option that fills the old Excel template.
+                        iPhone HEIC receipts are converted to JPEG for the statement.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mt-2">
+                        <strong>Cover period</strong> (the Start/End dates on the printed statement) defaults to
+                        the full calendar month. You can shorten it, but start and end must stay in that
+                        same month. Line dates must also be in that month.
+                    </MudText>
+                </MudExpansionPanel>
+                @if (hasExpensesManager)
+                {
+                    <MudExpansionPanel Text="Collect, export, and QuickBooks" Icon="@Icons.Material.Filled.Groups">
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Employees click <strong>Submit</strong> on a draft to lock it. Managers open
+                            <strong>Expenses</strong> and switch to <strong>Team</strong> to collect
+                            everyone's reports, open a report to review lines and download receipts, and
+                            <strong>Unsubmit</strong> if a correction is needed (that drops the filed PDF;
+                            the employee’s next Submit files a new one).
+                            After the company has paid the employee, a manager clicks <strong>Reimburse</strong>.
+                            <strong>Undo reimbursed</strong> returns it to submitted.
+                            The dashboard lists last month's team reports.
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            <strong>Expenses → Data</strong> exports reports, line items, and receipt
+                            metadata to Excel. That export is the stand-in until QuickBooks Online is
+                            connected. Categories are closed so a later QuickBooks account map can
+                            attach without changing employee entry.
+                        </MudText>
+                    </MudExpansionPanel>
+                    <MudExpansionPanel Text="Expense settings" Icon="@Icons.Material.Filled.Tune">
+                        <MudText Typo="Typo.body2">
+                            <strong>Expenses → Settings</strong> is for <code>Manager:Expenses</code>.
+                            Set the personal-car mileage rate — it saves when
+                            you finish typing or leave the field. New reports copy
+                            the rate at create time. The same page links to Team collection and Data export.
+                            Home company (which Organizations row is the home company)
+                            is a workspace Admin setting under App Settings → Organizations.
+                            Receipts still need a workspace Admin to connect App Drive under
+                            App Settings → Drive.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Settings)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Settings</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="Appearance and display" Icon="@Icons.Material.Filled.Palette" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Settings → Appearance</strong>: Light, Dark, or System.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        <strong>Settings → Display Preferences</strong>: 12- or 24-hour clock and time zone
+                        (day boundaries for tracking and reports). Preferences save as soon as you change them.
+                    </MudText>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="Session expired" Icon="@Icons.Material.Filled.Warning">
+                    <MudText Typo="Typo.body2">
+                        If Google sign-in cannot refresh, a yellow banner asks you to sign in again.
+                        A running stopwatch keeps local state — sign in and continue. Server saves fail
+                        until you re-authenticate.
+                    </MudText>
+                </MudExpansionPanel>
+                @if (hasTyme)
+                {
+                    <MudExpansionPanel Text="Google Calendar connection" Icon="@Icons.Material.Filled.Event">
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Manage connect, Export / Import toggles, event colors (the dropdown shows the
+                            actual color), disconnect, and
+                            pull missed events under <strong>Settings → Tyme → Google Calendar</strong>.
+                            After you connect, choose Export and Import in that first dialog — sync does
+                            not start until you do. Preferences save as you change them.
+                            See also Tyme → Google Calendar in this Help menu.
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            <strong>Only Availability projects</strong> limits personal Google sync to
+                            the categories on Tyme → Availability. Other projects stay in Tyme. The
+                            Team Availability calendar is unchanged. See Tyme → Availability in this Help menu.
+                        </MudText>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Security)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Security</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="Identity provider (sign-in)" Icon="@Icons.Material.Filled.VerifiedUser" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        We don't run our own password system — sign-in is delegated entirely to
+                        <strong>Google</strong> (OAuth 2.0 / OpenID Connect). Only accounts on the
+                        <code>your allowed domain</code> Google Workspace domain are accepted; a personal Gmail
+                        address is rejected before a session is ever created.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Every API call carries the Google-issued ID token. The server verifies its signature
+                        and expiry against Google's public keys on each request — it does not just trust a
+                        token because the browser sent one. If Google can't silently refresh the token
+                        (expired session, revoked consent), you'll see the "session expired" banner and
+                        writes are blocked until you sign in again.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Tyme calendar sync still uses a separate Google consent under Settings.
+                        Intranet files and expense receipts use the workspace Drive connected under
+                        App Settings → Drive, not each employee's Drive.
+                    </MudText>
+                </MudExpansionPanel>
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Preferences &amp; your account</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="Display preferences and theme" Icon="@Icons.Material.Filled.Palette">
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Theme</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                <strong>Settings → Appearance</strong> lets you pick <strong>Light</strong>,
-                <strong>Dark</strong>, or <strong>System</strong>. <em>System</em> follows your
-                operating system's light/dark setting and switches automatically.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Time format and time zone</MudText>
-            <MudText Typo="Typo.body2">
-                <strong>Settings → Display Preferences</strong> toggles between 12- and 24-hour
-                clocks and lets you set your time zone. The time zone decides day boundaries for
-                tracking and reports — set it to where you actually work so your daily totals
-                line up with your day.
-            </MudText>
-        </MudExpansionPanel>
+                <MudExpansionPanel Text="The gated API" Icon="@Icons.Material.Filled.Lock">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Every request to the API goes through the same authorization checkpoint before it
+                        reaches any feature code — identity is verified, then your account's roles are
+                        attached, then the specific endpoint checks whether those roles are enough. Hiding
+                        a button in the UI is a convenience, never the actual boundary; the server re-checks
+                        on every call, including ones triggered by the keyboard or a replayed request.
+                    </MudText>
+                    <ul class="mb-2" style="padding-left: 1.2rem;">
+                        <li class="mb-1">
+                            <strong>Not signed in / bad token</strong> → rejected outright (no session).
+                        </li>
+                        <li class="mb-1">
+                            <strong>Signed in, wrong role for that action</strong> → rejected with a generic
+                            "not allowed" — the endpoint still runs the role check even if a menu item was
+                            hidden from you.
+                        </li>
+                        <li class="mb-1">
+                            Roles are scoped per module (<code>Editor:Tyme</code>, <code>Manager:Tyme</code>,
+                            <code>Navigation:Intranet</code>, <code>Editor:Organizations</code>, and so on) —
+                            access to one module never implies access to another. See the role table on the
+                            Overview/Admin pages for what each level unlocks.
+                        </li>
+                        <li class="mb-1">
+                            A global <strong>Admin</strong> can temporarily "View As" a module role to test
+                            or troubleshoot it, instead of permanently holding that access. The same
+                            server-side role check applies during impersonation — it's not a client-side skin.
+                        </li>
+                    </ul>
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        Repeated or bulk requests are throttled by rate limiting (tunable under
+                        App Settings → General) so a runaway script or bug can't hammer the API.
+                    </MudText>
+                    <MudText Typo="Typo.body2">
+                        Errors shown in the app are intentionally generic ("something went wrong") so they
+                        don't leak internal details; the real error and stack trace go to server logs
+                        (Admin → Logs) instead.
+                    </MudText>
+                </MudExpansionPanel>
 
-        <MudExpansionPanel Text="Session expired? (the yellow banner)" Icon="@Icons.Material.Filled.Warning">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                Tyme uses your Google account for sign-in. Your sign-in is normally renewed
-                silently in the background while you're working. If that renewal fails — usually
-                because you've been away for a long time, signed out of Google in another tab,
-                or cleared cookies — you'll see a yellow banner across the top of the page:
-            </MudText>
-            <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background-color: var(--mud-palette-warning); color: var(--mud-palette-warning-text);">
-                <MudText Typo="Typo.body2">
-                    ⚠ Your sign-in expired. Changes will be saved locally until you sign in again. <strong>[Sign in]</strong>
-                </MudText>
-            </MudPaper>
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Your work isn't lost.</strong> A running stopwatch keeps ticking against
-                your local clock, and any state it had is saved in your browser. Finish what
-                you're doing if you'd like — there's no rush — then click <strong>Sign in</strong>
-                in the banner. Google will sign you back in and you'll land back on the same
-                page with your timer state restored.
-            </MudText>
-            <MudText Typo="Typo.body2">
-                While the banner is up, anything that needs the server (saving a task, loading
-                reports) will surface a friendly error. Sign back in and those operations work
-                again immediately.
-            </MudText>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+                <MudExpansionPanel Text="Data handling" Icon="@Icons.Material.Filled.Storage">
+                    <ul class="mb-0" style="padding-left: 1.2rem;">
+                        <li class="mb-1">Team time views and corrections stay inside the Tyme module scope — a Tyme role never sees Intranet data or vice versa.</li>
+                        <li class="mb-1">Intranet page HTML is sanitized on save; uploads follow the file-type policy set in App Settings; embedded media is proxied rather than linked directly.</li>
+                        <li class="mb-1">Deleting a user, organization, or project is gated separately from normal edit access, and some of it can be disabled entirely per workspace policy (App Settings → deletion gates).</li>
+                    </ul>
+                </MudExpansionPanel>
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Security</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="How this site stays secure" Icon="@Icons.Material.Filled.Shield">
-            <MudText Typo="Typo.body2" Class="mb-3">
-                My.Workspace is an internal workspace for <strong>@@example.com</strong> staff.
-                Security is enforced on the server — the UI hiding a button is not the only gate.
-            </MudText>
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-2">
+                    This page covers the practical basics. For the full technical write-up — the exact
+                    request pipeline, role-shape validation, session invalidation, and diagrams — see
+                    <code>docs/ARCHITECTURE.md</code> and <code>docs/diagrams/</code> in source control.
+                </MudAlert>
+            </MudExpansionPanels>
+        }
+        else if (selectedScope == HelpScope.Admin && isGlobalAdmin)
+        {
+            <MudText Typo="Typo.h6" Class="mb-3">Admin</MudText>
+            <MudExpansionPanels MultiExpansion="true" Elevation="1">
+                <MudExpansionPanel Text="App Settings" Icon="@Icons.Material.Filled.Settings" Expanded="true">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Admin → App Settings</strong> holds workspace-wide policy. Tyme-related items include:
+                    </MudText>
+                    <ul class="mb-2" style="padding-left: 1.2rem;">
+                        <li class="mb-1">Manager time correction (on/off) and correction mode (Alias or Direct)</li>
+                        <li class="mb-1">Whether Tyme users can view other employees on Reports (managers always can)</li>
+                        <li class="mb-1">Employee time display (Original / Adjusted / Both) for Tasks, Calendar, and Reports</li>
+                        <li class="mb-1">Workday hours, Team Availability calendar id (writes still need the Function App service account + impersonate user — see Tyme → Availability in this Help)</li>
+                        <li class="mb-1">User/org/project deletion gates and data retention</li>
+                        <li>Organizations tab: home company (which Organizations row is home) for the whole workspace</li>
+                        <li>Drive tab: App Shared Drive connect, Intranet/Expenses folders, membership and Drive settings</li>
+                        <li>Intranet tab: sidebar depth and upload types; API rate limits under General</li>
+                    </ul>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="Users" Icon="@Icons.Material.Filled.People">
+                    <MudText Typo="Typo.body2" Class="mb-2">
+                        <strong>Admin → Users</strong>: Add User uses a role picker grouped by module.
+                        Scoped admins can see every account and assign roles inside their module.
+                        Roles in other modules stay as they are — they are not removed on save.
+                        Set inactive/active, archive, force re-sign-in, revoke Google permissions,
+                        optional permanent delete, and pull Google events are global Admin only.
+                    </MudText>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="Logs" Icon="@Icons.Material.Filled.Article">
+                    <MudText Typo="Typo.body2">
+                        <strong>Admin → Logs</strong> queries Application Insights for troubleshooting.
+                        Timestamps display in local time.
+                    </MudText>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="Debug" Icon="@Icons.Material.Filled.BugReport">
+                    <MudText Typo="Typo.body2">
+                        <strong>Admin → Debug</strong> is global Admin only. <strong>Google Calendar</strong>
+                        shows who is connected, whether import can run, and recent import activity in
+                        plain language. <strong>Test import queue</strong> writes a message to storage
+                        and confirms the worker ran. <strong>Pull missed events</strong> on a person
+                        re-scans their Google Calendar.
+                    </MudText>
+                </MudExpansionPanel>
+                <MudExpansionPanel Text="Impersonation" Icon="@Icons.Material.Filled.SwitchAccount">
+                    <MudText Typo="Typo.body2">
+                        Impersonate a module role to exercise Tyme, Intranet, or Organizations without
+                        permanently holding that access. Exit from the banner or account menu when finished.
+                    </MudText>
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+    </div>
+</div>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Sign-in and identity</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    Only <strong>verified Google accounts</strong> with an <code>@@example.com</code>
-                    email can use the API. Personal Gmail or unverified addresses are rejected
-                    server-side even if the browser sign-in screen appeared to succeed.
-                </li>
-                <li class="mb-1">
-                    Google Calendar and Drive connect flows only accept <strong>approved redirect
-                    URLs</strong> (your production site, staging, and local dev hosts registered
-                    in Google Cloud). Connecting from an unknown hostname fails by design.
-                </li>
-                <li>
-                    Calendar <strong>webhook</strong> callbacks from Google must present a channel
-                    token that matches what the app stored when the subscription was created —
-                    stray or replayed notifications are ignored.
-                </li>
-            </ul>
+<style>
+    .help-layout {
+        display: grid;
+        grid-template-columns: minmax(180px, 220px) 1fr;
+        gap: 1.25rem;
+        align-items: start;
+        max-width: 960px;
+    }
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Roles and least privilege</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Access is <strong>scoped by module</strong> (<code>User:Tyme</code>,
-                <code>Editor:Intranet</code>, etc.). Global <code>Admin</code> is for workspace
-                setup (Users, App Settings, Logs) — not automatic access to Tyme or Intranet
-                content. Every API call re-checks your roles; see <strong>Roles and access</strong>
-                below for the full matrix.
-            </MudText>
+    .help-nav {
+        position: sticky;
+        top: 1rem;
+    }
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Tyme data boundaries</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>Manager:Tyme</strong> reports and corrections apply to users in the
-                    Tyme scope — not the whole company directory and not Intranet-only accounts.
-                </li>
-                <li class="mb-1">
-                    Managers can only create or edit <strong>alias corrections</strong> for employees
-                    they are allowed to manage. Guessing another person's task id does not work.
-                </li>
-                <li>
-                    When a manager corrects your submitted time, you still see <strong>your original
-                    entry</strong> plus the manager overlay on your own task list — corrections are
-                    visible to you, not hidden.
-                </li>
-            </ul>
+    .help-content {
+        min-width: 0;
+    }
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Intranet content safety</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    Page HTML is <strong>sanitized on save</strong> — scripts, iframes, and other
-                    dangerous markup are stripped. Existing pages are cleaned the next time an
-                    editor saves them.
-                </li>
-                <li class="mb-1">
-                    <strong>Uploads and library files</strong> must match the allowed-type list in
-                    App Settings (extension + max MB per type). Executables and script installers
-                    (<code>exe</code>, <code>msi</code>, <code>bat</code>, etc.) are always blocked;
-                    documents and images are admin-controlled.
-                </li>
-                <li class="mb-1">
-                    Image uploads are checked for <strong>real file content</strong> on the server
-                    (not just the file name) so a renamed executable cannot pass as a PNG.
-                </li>
-                <li class="mb-1">
-                    Embedded images and attachments are served through a <strong>media proxy</strong>
-                    that only returns Drive files registered in the intranet library or referenced
-                    on a page — arbitrary Drive file ids cannot be pulled by URL guessing.
-                </li>
-                <li>
-                    Pasting an external image URL triggers a <strong>controlled fetch</strong> on the
-                    server (blocked private networks, credentials in URLs, non-image responses).
-                    Copy-to-library is the default safe path.
-                </li>
-            </ul>
+    @@media (max-width: 700px) {
+        .help-layout {
+            grid-template-columns: 1fr;
+        }
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">API rate limiting</MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                Optional protection against abuse: global admins can turn on
-                <strong>Enable API rate limiting</strong> under <strong>App Settings → General</strong>.
-                Limits are generous for everyday use; uploads, log queries, and similar heavy endpoints
-                have tighter caps. If you hit the limit, wait a moment and retry — the app shows a generic
-                “too many requests” message.
-            </MudText>
+        .help-nav {
+            position: static;
+        }
+    }
+</style>
 
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Errors and admin response</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    API errors shown in the app are <strong>generic</strong> — internal exception
-                    details stay in server logs (global admins can review under <strong>Admin → Logs</strong>).
-                </li>
-                <li class="mb-1">
-                    <strong>Force re-sign-in</strong> and <strong>Revoke Google permissions</strong>
-                    (global Admin, Users page) let you respond to a suspected stale or compromised
-                    session without deleting the account.
-                </li>
-            </ul>
+@code {
+    private enum HelpScope
+    {
+        Overview,
+        Tyme,
+        Intranet,
+        Organizations,
+        Expenses,
+        Settings,
+        Security,
+        Admin
+    }
 
-            <MudText Typo="Typo.body2">
-                If something legitimate is blocked (a file type you need, a new staging URL for
-                Google connect), ask a global admin to adjust <strong>App Settings</strong> or
-                register the URL in Google Cloud — do not work around server checks from the browser.
-            </MudText>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
-    <MudText Typo="Typo.h6" Class="mt-2 mb-2">Roles &amp; administration</MudText>
-    <MudExpansionPanels MultiExpansion="true" Elevation="1" Class="mb-4">
-        <MudExpansionPanel Text="Roles and access" Icon="@Icons.Material.Filled.Security">
-            <MudText Typo="Typo.body2" Class="mb-3">
-                The app uses <strong>scoped roles</strong> for modules. A role looks like
-                <code>Manager:Tyme</code> or <code>Editor:Intranet</code> — the part before the
-                colon is the level and the part after is the module/scope. The bare
-                <code>Admin</code> role (no colon) is <strong>global system admin</strong> only.
-            </MudText>
-            <MudText Typo="Typo.body2" Class="mb-3">
-                <strong>Important:</strong> Global <code>Admin</code> is for main software setup
-                (Users, App Settings, Logs, Debug, etc.). It does <strong>not</strong> automatically give
-                you access to Tyme, Intranet, or Organizations. Module surfaces require an explicit
-                scoped role (e.g. <code>User:Tyme</code>, <code>Editor:Intranet</code>,
-                <code>Admin:Organizations</code>). Global admins use the impersonation dialog when
-                they need to act inside a module.
-            </MudText>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Tyme module roles</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>User:Tyme</strong> — track your own time, view your own tasks,
-                    calendar, and reports.
-                </li>
-                <li class="mb-1">
-                    <strong>Manager:Tyme</strong> — everything a User can do, plus manage
-                    projects and use <em>Management</em> for everyone in the Tyme scope.
-                    Organizations is a separate role scope.
-                </li>
-                <li class="mb-1">
-                    <strong>Admin:Tyme</strong> — everything a Manager can do, plus manage user
-                    accounts that have at least one Tyme-scoped role (within scope), and use
-                    <em>Data Extraction</em> to export raw table data (organizations, projects,
-                    tasks, audits, and more) with independent filters.
-                </li>
-            </ul>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Intranet module roles</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>User:Intranet</strong> — view published pages, sidebar nav, star
-                    favorites for your dashboard.
-                </li>
-                <li class="mb-1">
-                    <strong>Editor:Intranet</strong> — Quill page editor, documents library,
-                    Manage Pages (draft/publish).
-                </li>
-                <li>
-                    <strong>Admin:Intranet</strong> — navigation tree plus everything Editors
-                    can do. See the <strong>Intranet</strong> section above.
-                </li>
-            </ul>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Organizations module roles</MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>User:Organizations</strong> — view organizations and departments.
-                </li>
-                <li class="mb-1">
-                    <strong>Editor:Organizations</strong> — create and edit organizations and departments.
-                </li>
-                <li>
-                    <strong>Admin:Organizations</strong> — archive/unarchive, set active/inactive,
-                    delete when enabled, and assign Organizations roles.
-                </li>
-            </ul>
-            <MudText Typo="Typo.body2">
-                If you don't see a menu item or a button, your role doesn't have access to it —
-                that's working as intended. Ask a global admin to assign the appropriate
-                scoped role (or use impersonation if you are a global admin testing).
-            </MudText>
-        </MudExpansionPanel>
+    private HelpScope selectedScope = HelpScope.Overview;
+    private bool hasTyme;
+    private bool hasTymeManager;
+    private bool hasIntranet;
+    private bool hasIntranetEditor;
+    private bool hasIntranetNavigation;
+    private bool hasOrganizations;
+    private bool hasOrganizationsEditor;
+    private bool hasExpenses;
+    private bool hasExpensesManager;
+    private bool isGlobalAdmin;
 
-        <MudExpansionPanel Text="App Settings (admins)" Icon="@Icons.Material.Filled.Settings">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Admin → App Settings</strong> is global Admin-only. It controls a few
-                workspace-wide policies:
-            </MudText>
-            <ul class="mb-2" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>Allow User Deletion</strong> — when off (default), users can only
-                    be archived, never permanently removed. When on, an admin can delete a user
-                    whose most recent tracked task is older than the retention window below.
-                </li>
-                <li class="mb-1">
-                    <strong>Data Retention (days)</strong> — minimum age of a user's most recent
-                    task before they can be deleted. Default 2555 (7 years), to satisfy typical
-                    record-keeping requirements.
-                </li>
-                <li class="mb-1">
-                    <strong>Allow Organization / Department Deletion</strong> — same idea for
-                    organizations and departments. Off by default; archiving is the safe path.
-                </li>
-                <li>
-                    <strong>Allow Project Deletion</strong> — same idea for projects.
-                </li>
-                <li class="mb-1">
-                    <strong>Allow users to view other employees on Reports</strong> — when on,
-                    any Tyme user can pick employees on Reports (read-only). Tyme managers and
-                    admins can always do this. Off by default.
-                </li>
-                <li class="mb-1">
-                    <strong>Calendar backfill — default lookback (days)</strong> — how far back
-                    Tyme should push existing tracked tasks onto a freshly-connected user's
-                    primary Google calendar. Default 30. Set to 0 to disable backfill entirely.
-                </li>
-                <li>
-                    <strong>Calendar backfill — prompt user for date range</strong> — when on
-                    (default), users see a date-range picker on connect and can adjust the
-                    range or skip. When off, the default lookback runs silently on every connect.
-                </li>
-                <li class="mb-1">
-                    <strong>Workday hours</strong> — how many hours count as a full workday.
-                    Used by all-day entries: a 5-day vacation logs <code>5 × workday hours</code>.
-                    Default 8.
-                </li>
-                <li>
-                    <strong>Team Availability calendar id</strong> — Google calendar id of the
-                    shared workspace calendar that receives sanitized echoes of any time logged
-                    against a project flagged <em>Share availability with team</em>. Leave empty
-                    to disable.
-                </li>
-            </ul>
-            <MudText Typo="Typo.subtitle2" Class="mb-1">Intranet tab</MudText>
-            <ul class="mb-2" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>Maximum menu nesting depth</strong> — how deep the curated sidebar
-                    navigation can nest (see the Intranet help section).
-                </li>
-                <li class="mb-1">
-                    <strong>Editor File Policy</strong> — list of allowed file extensions and
-                    max upload size (MB) per type for the intranet editor, documents library, and
-                    external-image copy flow. Type an extension and MB value, click <strong>Add</strong>,
-                    and remove entries with the delete icon in the list below. Executables cannot
-                    be added. If the list is empty, uploads and paste-copy are blocked.
-                </li>
-                <li>
-                    <strong>Intranet Drive Parent Folder ID</strong> — root Google Drive folder
-                    for company uploads (<em>Images</em>, <em>Videos</em>, <em>Documents</em>
-                    subfolders when present).
-                </li>
-            </ul>
-            <MudText Typo="Typo.body2">
-                Scoped admins (e.g. <code>Admin:Tyme</code>) can <em>read</em> these settings
-                but not change them — that keeps workspace-wide policy in the hands of the
-                global admin.
-            </MudText>
-        </MudExpansionPanel>
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthenticationStateTask is null)
+            return;
 
-        <MudExpansionPanel Text="Debug" Icon="@Icons.Material.Filled.BugReport">
-            <MudText Typo="Typo.body2">
-                <strong>Admin → Debug</strong> is global Admin only. <strong>Google Calendar</strong>
-                shows who is connected, whether import can run, and recent import activity in
-                plain language. <strong>Test import queue</strong> writes a message to storage
-                and confirms the worker ran. <strong>Pull missed events</strong> on a person
-                re-scans their Google Calendar. <strong>Renew watches</strong> re-registers
-                Google push channels that are expired or due.
-            </MudText>
-        </MudExpansionPanel>
+        var auth = await AuthenticationStateTask;
+        var user = auth.User;
 
-        <MudExpansionPanel Text="Admin user actions" Icon="@Icons.Material.Filled.AdminPanelSettings">
-            <MudText Typo="Typo.body2" Class="mb-2">
-                <strong>Admin → Users</strong>: Add User uses a role picker grouped by module.
-                Scoped admins can see every account and assign roles inside their module.
-                Roles in other modules stay as they are — they are not removed on save.
-                Set inactive/active, archive, force re-sign-in, revoke Google permissions,
-                optional permanent delete, and pull Google events are global Admin only.
-            </MudText>
-            <ul class="mb-3" style="padding-left: 1.2rem;">
-                <li class="mb-1">
-                    <strong>Set inactive / active</strong> (<code>global Admin only</code>) — locks
-                    the user out of the app without removing their data. Reactivating restores access.
-                </li>
-                <li class="mb-1">
-                    <strong>Archive</strong> (<code>global Admin only</code>) — same as inactive,
-                    but also hides the user from every view except this page.
-                </li>
-                <li class="mb-1">
-                    <strong>Force re-sign-in</strong> (<code>global Admin only</code>) — invalidates
-                    the user's current sign-in. Their next API call fails and they're redirected
-                    through Google again. <em>Not</em> a lockout — they can sign right back in.
-                    Use this if you suspect a stale session needs to be refreshed.
-                </li>
-                <li class="mb-1">
-                    <strong>Revoke Google permissions</strong> (<code>global Admin only</code>) —
-                    revokes the user's Google grant: calendar sync stops, stored event IDs are
-                    cleared, and they're forced to re-sign-in. Use this if a user's Google
-                    credentials are compromised or if you need to fully reset their OAuth state.
-                    The user can reconnect their calendar afterwards normally.
-                </li>
-                <li>
-                    <strong>Delete</strong> (<code>global Admin only</code>) — permanently removes
-                    the user and all their data. Only available if "Allow User Deletion" is on
-                    and the user has no recent tracked tasks.
-                </li>
-            </ul>
-            <MudText Typo="Typo.body2">
-                Scoped admins edit only in-scope roles; other modules stay on the user.
-                Account-level actions (inactive, archive, Google, delete) stay global Admin only.
-            </MudText>
-        </MudExpansionPanel>
-    </MudExpansionPanels>
+        isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
+        hasTyme = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.User);
+        hasTymeManager = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.Manager);
+        hasIntranet = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.User);
+        hasIntranetEditor = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Editor);
+        hasIntranetNavigation = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Navigation);
+        hasOrganizations = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.User);
+        hasOrganizationsEditor = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Editor);
+        hasExpenses = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses, Constants.Roles.User);
+        hasExpensesManager = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses, Constants.Roles.Manager);
 
-</MudContainer>
+        // Land on the first module the user can use when Help opens.
+        if (hasTyme)
+            selectedScope = HelpScope.Tyme;
+        else if (hasIntranet)
+            selectedScope = HelpScope.Intranet;
+        else if (hasOrganizations)
+            selectedScope = HelpScope.Organizations;
+        else if (hasExpenses)
+            selectedScope = HelpScope.Expenses;
+        else
+            selectedScope = HelpScope.Overview;
+    }
+
+    private void SelectScope(HelpScope scope)
+    {
+        selectedScope = scope;
+    }
+}

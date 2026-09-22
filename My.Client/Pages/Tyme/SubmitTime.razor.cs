@@ -48,6 +48,9 @@ namespace My.Client.Pages.Tyme
         [Inject]
         private IJSRuntime JS { get; set; } = null!;
 
+        [Inject]
+        private NavigationManager Navigation { get; set; } = null!;
+
         protected override async Task OnInitializedAsync()
         {
             client = ClientFactory.CreateClient(Constants.API.ClientName);
@@ -59,7 +62,22 @@ namespace My.Client.Pages.Tyme
             canManage = Constants.Roles.HasScopedAccess(authState.User, Constants.Scopes.Tyme, Constants.Roles.Manager);
 
             if (canManage)
+            {
                 await RestoreManagerViewAsync();
+                var query = Navigation.ToAbsoluteUri(Navigation.Uri).Query;
+                if (query.Contains("view=team", StringComparison.OrdinalIgnoreCase))
+                    _managerView = "team";
+                else if (query.Contains("view=my", StringComparison.OrdinalIgnoreCase))
+                    _managerView = "my";
+                try
+                {
+                    await JS.InvokeVoidAsync("sessionStorage.setItem", ManagerViewStorageKey, _managerView);
+                }
+                catch
+                {
+                    // Non-fatal.
+                }
+            }
 
             await LoadAsync();
         }

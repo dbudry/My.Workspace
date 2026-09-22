@@ -12,10 +12,14 @@ public static class CalendarDayTotalRules
         TimeSpan Duration,
         bool IsAllDay,
         bool IsOverlay,
-        string TaskId);
+        string TaskId,
+        bool CountsAsTime = true);
 
     public static TimeSpan HoursForChip(Chip chip, double workdayHours)
     {
+        if (!chip.CountsAsTime)
+            return TimeSpan.Zero;
+
         if (chip.IsAllDay)
         {
             var day = chip.Start.Date;

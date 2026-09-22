@@ -1,0 +1,71 @@
+@using My.Shared.Rules
+
+@*
+  Shared week-of picker used on Tasks and Stopwatch.
+  Same merged control as Tasks: prev / date / today / next, snaps any picked date to Monday.
+*@
+<div class="tasks-week-nav">
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
+                   aria-label="Previous week"
+                   OnClick="@(() => ShiftAsync(-1))"
+                   Disabled="@Disabled" />
+    <div class="management-date-field tasks-toolbar-week-field">
+        <MudDatePicker Date="pickerDate"
+                       DateChanged="OnDatePickedAsync"
+                       Placeholder="Week of"
+                       DateFormat="MMM d, yyyy"
+                       Variant="Variant.Text"
+                       Margin="Margin.Dense"
+                       Editable="true"
+                       AdornmentIcon="@Icons.Material.Filled.CalendarMonth"
+                       Disabled="@Disabled" />
+    </div>
+    <MudTooltip Text="Go to this week">
+        <MudIconButton Icon="@Icons.Material.Filled.CalendarToday"
+                       Color="Color.Primary"
+                       Class="tasks-toolbar-today-icon"
+                       aria-label="Go to this week"
+                       OnClick="GoToThisWeekAsync"
+                       Disabled="@Disabled" />
+    </MudTooltip>
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                   aria-label="Next week"
+                   OnClick="@(() => ShiftAsync(1))"
+                   Disabled="@Disabled" />
+</div>
+
+@code {
+    [Parameter] public DateTime WeekStartMonday { get; set; }
+    [Parameter] public EventCallback<DateTime> WeekStartChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private DateTime? pickerDate;
+
+    protected override void OnParametersSet()
+    {
+        pickerDate = WeekStartMonday.Date;
+    }
+
+    private Task ShiftAsync(int weeks) =>
+        SetMondayAsync(WeekStartMonday.AddDays(7 * weeks));
+
+    private Task GoToThisWeekAsync() =>
+        SetMondayAsync(WeekEntryGridRules.GetWeekStartMonday(DateTime.Today));
+
+    private Task OnDatePickedAsync(DateTime? date)
+    {
+        if (!date.HasValue)
+            return Task.CompletedTask;
+        pickerDate = date;
+        return SetMondayAsync(WeekEntryGridRules.GetWeekStartMonday(date.Value));
+    }
+
+    private async Task SetMondayAsync(DateTime monday)
+    {
+        monday = monday.Date;
+        pickerDate = monday;
+        if (monday == WeekStartMonday.Date)
+            return;
+        await WeekStartChanged.InvokeAsync(monday);
+    }
+}

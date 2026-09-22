@@ -105,8 +105,7 @@ namespace My.Client.Pages.Tyme
             // Gate mutation UI on the user's *scoped* Tyme role. A global Admin without
             // any Tyme:* scope will have been denied by the [Authorize(Policy="Tyme:User:Scoped")]
             // attribute on the page (consistent with Intranet scoping).
-            canManage = user.IsInRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme))
-                     || user.IsInRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme));
+            canManage = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.Manager);
 
             // Editor:Tyme gets project create/edit only. canManage (Manager+) already implies
             // this, so an Editor is anyone who clears the Editor bar but not the Manager one.
@@ -512,6 +511,7 @@ namespace My.Client.Pages.Tyme
                     DepartmentId = edited.DepartmentId,
                     ProjectGroupId = edited.ProjectGroupId,
                     IsSharedAvailability = edited.IsSharedAvailability,
+                    CountsAsTime = edited.CountsAsTime,
                     IsBillable = edited.IsBillable
                 };
                 var response = await client.PostAsJsonAsync(Constants.API.Project.Create, dto);
@@ -551,6 +551,7 @@ namespace My.Client.Pages.Tyme
                 IsActive = project.IsActive,
                 IsArchived = project.IsArchived,
                 IsSharedAvailability = project.IsSharedAvailability,
+                CountsAsTime = project.CountsAsTime,
                 IsBillable = project.IsBillable
             };
 
@@ -587,6 +588,7 @@ namespace My.Client.Pages.Tyme
                     DepartmentId = edited.DepartmentId,
                     ProjectGroupId = edited.ProjectGroupId,
                     IsSharedAvailability = edited.IsSharedAvailability,
+                    CountsAsTime = edited.CountsAsTime,
                     IsBillable = edited.IsBillable
                 };
                 var response = await client.PutAsJsonAsync(Constants.API.Project.Update, dto);

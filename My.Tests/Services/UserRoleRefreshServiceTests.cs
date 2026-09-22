@@ -12,7 +12,7 @@ public class UserRoleRefreshServiceTests
     private sealed class CacheableAuthStateProvider : AuthenticationStateProvider
     {
         private DateTimeOffset _userLastCheck = DateTimeOffset.UtcNow;
-        private ClaimsPrincipal _cachedUser = new(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, "Admin:Tyme") }, "test"));
+        private ClaimsPrincipal _cachedUser = new(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, "Manager:Tyme") }, "test"));
 
         public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
             Task.FromResult(new AuthenticationState(_cachedUser));

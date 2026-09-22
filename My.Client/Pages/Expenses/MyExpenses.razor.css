@@ -1,0 +1,53 @@
+.expense-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.expense-filter-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+.expense-filter-row ::deep .mud-input-control,
+.expense-filter-row ::deep .mud-select {
+    margin-bottom: 0;
+    flex: 0 0 auto !important;
+    max-width: 100%;
+}
+
+.expense-filter-row ::deep .mud-input-control-helper-container,
+.expense-filter-row ::deep .mud-input-helper-text {
+    display: none !important;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    overflow: hidden;
+    line-height: 0;
+}
+
+::deep .expense-grid-row {
+    cursor: pointer;
+}
+
+.expense-filter-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: auto;
+    /* Match .mud-input-outlined-with-label so the button sits on the field, not under it. */
+    margin-top: 8px;
+    min-height: 40px;
+}
+
+.expense-filter-actions ::deep .mud-button-root {
+    height: 40px;
+}

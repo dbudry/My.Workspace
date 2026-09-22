@@ -41,6 +41,13 @@ public static class GoogleCalendarOAuthRules
     }
 
     /// <summary>
+    /// Google often omits <c>refresh_token</c> on reconnect even with prompt=consent.
+    /// Complete connect if we received one or still have a stored token from before disconnect.
+    /// </summary>
+    public static bool CanCompleteConnect(string? incomingRefreshToken, bool hasExistingToken) =>
+        !string.IsNullOrEmpty(incomingRefreshToken) || hasExistingToken;
+
+    /// <summary>
     /// After a StartWatch failure, retry with the freshly-received token only when we chose
     /// to keep an old one <em>and</em> Google actually gave us a new token to try. Otherwise
     /// there is nothing to retry with (empty incoming token), or nothing was kept in the

@@ -39,9 +39,17 @@ namespace My.Functions.Services
         public bool IsConfigured => !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret);
 
         /// <summary>
+        /// True when the workspace service account JSON is present. Team Availability
+        /// writes use that identity (optionally impersonating a Workspace user), not
+        /// each employee's Calendar refresh token.
+        /// </summary>
+        public bool IsTeamAvailabilityPublisherConfigured =>
+            GoogleTeamAvailabilityCredentialRules.IsConfigured(
+                Environment.GetEnvironmentVariable(GoogleTeamAvailabilityCredentialRules.JsonEnvVar));
+
+        /// <summary>
         /// Builds the consent URL for Calendar-only access. Does not request Drive and does not
-        /// send <c>login_hint</c> — both were failing Google's consent page with "Backend Error"
-        /// for some Workspace users. Optional <paramref name="hostedDomain"/> sets <c>hd</c> when
+        /// send <c>login_hint</c>. Optional <paramref name="hostedDomain"/> sets <c>hd</c> when
         /// the tenant policy has a single domain hint.
         /// </summary>
         public string BuildAuthorizationUrl(string redirectUri, string state, string? hostedDomain = null)
@@ -132,18 +140,26 @@ namespace My.Functions.Services
         /// so that an email never lands on the team calendar.
         /// </summary>
         public Task<Event> CreateTeamAvailabilityEventAsync(
-            string encryptedRefreshToken, string calendarId, TrackedTask task,
+            string calendarId, TrackedTask task,
             string displayName, string? projectName, string? timeZone,
             CancellationToken ct = default)
-            => MutateAsync(encryptedRefreshToken, async svc =>
+            => MutateTeamAvailabilityAsync(async svc =>
                 await svc.Events.Insert(BuildTeamAvailabilityEvent(task, displayName, projectName, timeZone), calendarId).ExecuteAsync(ct));
 
         public Task<Event> UpdateTeamAvailabilityEventAsync(
-            string encryptedRefreshToken, string calendarId, string eventId, TrackedTask task,
+            string calendarId, string eventId, TrackedTask task,
             string displayName, string? projectName, string? timeZone,
             CancellationToken ct = default)
-            => MutateAsync(encryptedRefreshToken, async svc =>
+            => MutateTeamAvailabilityAsync(async svc =>
                 await svc.Events.Update(BuildTeamAvailabilityEvent(task, displayName, projectName, timeZone), calendarId, eventId).ExecuteAsync(ct));
+
+        public Task DeleteTeamAvailabilityEventAsync(
+            string calendarId, string eventId, CancellationToken ct = default)
+            => MutateTeamAvailabilityAsync(async svc =>
+            {
+                await svc.Events.Delete(calendarId, eventId).ExecuteAsync(ct);
+                return (object?)null;
+            });
 
         /// <summary>
         /// Registers a push channel on the user's primary calendar. Google caps channels at ~1 week;
@@ -388,6 +404,35 @@ namespace My.Functions.Services
             return await work(svc);
         }
 
+        private async Task<T> MutateTeamAvailabilityAsync<T>(Func<CalendarService, Task<T>> work)
+        {
+            var svc = CreateTeamAvailabilityService();
+            return await work(svc);
+        }
+
+        private static CalendarService CreateTeamAvailabilityService()
+        {
+            var raw = Environment.GetEnvironmentVariable(GoogleTeamAvailabilityCredentialRules.JsonEnvVar);
+            if (!GoogleTeamAvailabilityCredentialRules.TryResolveJson(raw, out var json))
+            {
+                throw new InvalidOperationException(
+                    $"{GoogleTeamAvailabilityCredentialRules.JsonEnvVar} is not configured.");
+            }
+
+            var credential = GoogleCredential.FromJson(json)
+                .CreateScoped(GoogleCalendarOAuthRules.CalendarScope);
+            var impersonate = GoogleTeamAvailabilityCredentialRules.NormalizeImpersonateUser(
+                Environment.GetEnvironmentVariable(GoogleTeamAvailabilityCredentialRules.ImpersonateUserEnvVar));
+            if (impersonate != null)
+                credential = credential.CreateWithUser(impersonate);
+
+            return new CalendarService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "My.Workspace"
+            });
+        }
+
         private async Task<CalendarService> CreateServiceAsync(string encryptedRefreshToken)
         {
             var refresh = encryptor.Decrypt(encryptedRefreshToken);
@@ -402,7 +447,7 @@ namespace My.Functions.Services
             return new CalendarService(new BaseClientService.Initializer
             {
                 HttpClientInitializer = credential,
-                ApplicationName = "Tyme"
+                ApplicationName = "My.Workspace"
             });
         }
 

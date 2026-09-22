@@ -68,6 +68,14 @@
 
                 @if (Model.IsSharedAvailability && CanManageSharedAvailability)
                 {
+                    <DialogFormGroup>
+                        <MudSwitch T="bool" @bind-Value="Model.CountsAsTime" Label="Counts as Tyme hours"
+                                   Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                            Off = team calendar only (Unavailable / Busy). On = time off that
+                            counts toward reports and Submit.
+                        </MudText>
+                    </DialogFormGroup>
                     <MudTextField @bind-Value="Model.TeamDisplayName" For="@(() => Model.TeamDisplayName)"
                                   Label="Team calendar display name (optional)"
                                   Placeholder="@TeamAvailabilityEventRules.DefaultDisplayName"
@@ -129,6 +137,10 @@
             Model.IsBillable = false;
             if (string.IsNullOrWhiteSpace(Model.TeamDisplayName))
                 Model.TeamDisplayName = TeamAvailabilityEventRules.DefaultDisplayName;
+        }
+        else
+        {
+            Model.CountsAsTime = true;
         }
     }
 

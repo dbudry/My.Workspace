@@ -1,7 +1,7 @@
 # Team Availability
 
-**Branch:** `feature/team-availability-slugs` (name retained — the implementation pivoted away from slugs)
-**Status:** Phase 1 shipped 2026-05-19. Phase 2a shipped 2026-05-19.
+**Branch:** `feat/#1078_presence-only-availability` (Phase 2b). Earlier phases shipped on `feature/team-availability-slugs`.
+**Status:** Phase 1 shipped 2026-05-19. Phase 2a shipped 2026-05-19. Phase 2b shipped 2026-09-21 (story 1078, v1.3.30).
 
 ## Goal
 
@@ -24,8 +24,9 @@ dual-publish out of Tyme.
 - New AppSetting **TeamAvailabilityCalendarId** (admin-set under
   `/admin/appsettings → Tyme → Team Availability Calendar`). Empty disables the
   feature.
-- Writes use each user's existing per-user OAuth token (no service account, no
-  admin-owned credentials).
+- Writes use the workspace service account (`Google__TeamAvailabilityServiceAccountJson`),
+  impersonating `Google__TeamAvailabilityImpersonateUser` when set. Employees do not
+  need write access on the Team Availability calendar.
 - Linkage stored on `TrackedTask.TeamAvailabilityEventId` so updates and deletes
   flow through cleanly. Flipping the project flag from on→off on an existing entry
   deletes the sister event; off→on creates it on next save.
@@ -66,6 +67,31 @@ Phase 2a adds:
   only when the "Share availability with team" switch is on. Lets a regular
   client project override its team-calendar identity too.
 - Nav menu entry under Tyme, gated by `Manager:Tyme+`.
+
+## Phase 2b — Presence-only categories (no Tyme hours)
+
+Some people need the team calendar to show them as out / unavailable while they
+are still working. Logging that against Vacation (or any time-off category)
+inflates hours and double-counts if they also log client work that day.
+
+Phase 2b adds **`Project.CountsAsTime`** (migration
+`20260921140102_AddProjectCountsAsTime`, SQL default `true` so existing Vacation /
+Sick rows keep counting):
+
+- Time-off categories (Vacation, Sick) keep counting as Tyme hours.
+- A manager (`Manager:Tyme+`) can turn **Counts as Tyme hours** off on an
+  availability category (Unavailable, Busy). Editors cannot flip it. Employees
+  pick the category the same way. Tyme still dual-publishes to Team Availability.
+  Hour totals, dashboard, Reports, calendar footer, Week/Project grids, and
+  Submit ignore those rows. A month with only presence-only entries is not
+  submittable.
+- Management (`GET analytics/alluserstasks`) does not return presence-only rows.
+  The Project picker there lists only projects that have time in the loaded date
+  range for the selected employees, and reloads when From/To change.
+- Work + Unavailable on the same day is allowed: 8h client work stays 8h.
+- Client (non-availability) projects cannot skip hours. Existing categories stay
+  time-off until a manager changes them.
+- Forward-only: flipping hours off does not rewrite historical durations.
 
 ## Forward-only
 
@@ -126,6 +152,12 @@ project, the internal `Name` is what shows.
 The conceptual gap between client projects and PTO categories is wide enough that
 a separate page wins over a "show availability only" toggle on Project Manager.
 Both dialogs reuse the same `/api/projects` endpoints, so there's no API duplication.
+
+**2026-09-21 (Phase 2b) — CountsAsTime on availability projects**
+Vacation/Sick stay hours. A separate Unavailable/Busy category can publish to
+Team Availability without counting as Tyme. Flag lives on the project (manager
+delegated), not per entry, so employees pick the right category instead of
+remembering a "don't count this" checkbox.
 
 **2026-05-19 (Phase 2a) — Auto-create "Time Off" project group**
 Asking a manager to manually set up a group before creating their first vacation

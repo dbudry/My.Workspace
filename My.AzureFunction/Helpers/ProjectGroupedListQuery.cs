@@ -249,6 +249,7 @@ namespace My.Functions.Helpers
                 IsActive = p.IsActive,
                 IsArchived = p.IsArchived,
                 IsSharedAvailability = p.IsSharedAvailability,
+                CountsAsTime = p.CountsAsTime,
                 IsBillable = p.IsBillable
             });
 

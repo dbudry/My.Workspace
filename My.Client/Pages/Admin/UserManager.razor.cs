@@ -472,8 +472,13 @@ namespace My.Client.Pages.Admin
 
         private static Color GetRoleColor(string role)
         {
-            if (role.StartsWith("Admin")) return Color.Error;
-            if (role.StartsWith("Manager")) return Color.Warning;
+            if (role == Constants.Roles.Admin || role.StartsWith(Constants.Roles.Admin + ":", StringComparison.Ordinal))
+                return Color.Error;
+            if (role.StartsWith(Constants.Roles.UserAccess, StringComparison.Ordinal))
+                return Color.Secondary;
+            if (role.StartsWith(Constants.Roles.Manager, StringComparison.Ordinal)
+                || role.StartsWith(Constants.Roles.Navigation, StringComparison.Ordinal))
+                return Color.Warning;
             return Color.Info;
         }
 

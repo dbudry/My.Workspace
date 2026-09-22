@@ -35,8 +35,8 @@ public class RoleAdministrationTests
         return new ClaimsPrincipal(identity);
     }
 
-    private static string AdminInTyme => Constants.Roles.Scoped(Constants.Roles.Admin, TymeScope);
-    private static string AdminInUnrelated => Constants.Roles.Scoped(Constants.Roles.Admin, UnrelatedScope);
+    private static string UserAccessInTyme => Constants.Roles.Scoped(Constants.Roles.UserAccess, TymeScope);
+    private static string UserAccessInUnrelated => Constants.Roles.Scoped(Constants.Roles.UserAccess, UnrelatedScope);
     private static string ManagerInTyme => Constants.Roles.Scoped(Constants.Roles.Manager, TymeScope);
     private static string UserInTyme => Constants.Roles.Scoped(Constants.Roles.User, TymeScope);
 
@@ -51,7 +51,7 @@ public class RoleAdministrationTests
     [Fact]
     public void IsAnyAdmin_true_for_scoped_admin()
     {
-        Assert.True(Constants.Roles.IsAnyAdmin(PrincipalWithRoles(AdminInTyme)));
+        Assert.True(Constants.Roles.IsAnyAdmin(PrincipalWithRoles(UserAccessInTyme)));
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class RoleAdministrationTests
     [Fact]
     public void IsGlobalAdmin_false_for_scoped_admin()
     {
-        Assert.False(Constants.Roles.IsGlobalAdmin(PrincipalWithRoles(AdminInTyme)));
+        Assert.False(Constants.Roles.IsGlobalAdmin(PrincipalWithRoles(UserAccessInTyme)));
     }
 
     // ---------- AdministeredScopes ----------
@@ -94,7 +94,7 @@ public class RoleAdministrationTests
     [Fact]
     public void AdministeredScopes_scoped_admin_returns_just_that_scope()
     {
-        var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(AdminInTyme));
+        var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(UserAccessInTyme));
 
         Assert.Single(scopes);
         Assert.Contains(TymeScope, scopes);
@@ -103,7 +103,7 @@ public class RoleAdministrationTests
     [Fact]
     public void AdministeredScopes_multiple_scoped_admins_returns_all_their_scopes()
     {
-        var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(AdminInTyme, AdminInUnrelated));
+        var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(UserAccessInTyme, UserAccessInUnrelated));
 
         Assert.Equal(2, scopes.Count);
         Assert.Contains(TymeScope, scopes);
@@ -121,9 +121,9 @@ public class RoleAdministrationTests
     [Fact]
     public void AdministeredScopes_global_admin_dominates_scoped_admin()
     {
-        // If you have both Admin and Admin:Tyme, the global wildcard wins ΓÇö
+        // If you have both Admin and Admin:Tyme, the global wildcard wins —
         // returning ["*"] communicates "manages every scope, no need to enumerate".
-        var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(Constants.Roles.Admin, AdminInTyme));
+        var scopes = Constants.Roles.AdministeredScopes(PrincipalWithRoles(Constants.Roles.Admin, UserAccessInTyme));
 
         Assert.Single(scopes);
         Assert.Contains(Constants.Roles.GlobalScopeWildcard, scopes);
@@ -137,14 +137,14 @@ public class RoleAdministrationTests
         var admin = PrincipalWithRoles(Constants.Roles.Admin);
 
         Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin }));
-        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { AdminInTyme }));
+        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { UserAccessInTyme }));
         Assert.True(Constants.Roles.IsVisibleTo(admin, Array.Empty<string>()));
     }
 
     [Fact]
     public void IsVisibleTo_scoped_admin_sees_target_with_overlapping_scoped_role()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { ManagerInTyme }));
         Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { UserInTyme }));
@@ -153,9 +153,9 @@ public class RoleAdministrationTests
     [Fact]
     public void IsVisibleTo_scoped_admin_sees_target_with_only_other_scope()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
-        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { AdminInUnrelated }));
+        Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { UserAccessInUnrelated }));
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public class RoleAdministrationTests
     {
         // Directory visibility is open so a scoped admin can find anyone.
         // Role updates merge in-scope changes; a global role on the target stays.
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin }));
         Assert.True(Constants.Roles.IsVisibleTo(admin, new[] { Constants.Roles.Admin, ManagerInTyme }));
@@ -185,13 +185,13 @@ public class RoleAdministrationTests
         var admin = PrincipalWithRoles(Constants.Roles.Admin);
 
         Assert.True(Constants.Roles.CanManageUser(admin, new[] { Constants.Roles.Admin }));
-        Assert.True(Constants.Roles.CanManageUser(admin, new[] { AdminInUnrelated }));
+        Assert.True(Constants.Roles.CanManageUser(admin, new[] { UserAccessInUnrelated }));
     }
 
     [Fact]
     public void CanManageUser_scoped_admin_can_manage_if_every_target_role_is_in_scope()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.True(Constants.Roles.CanManageUser(admin, new[] { ManagerInTyme, UserInTyme }));
     }
@@ -199,9 +199,9 @@ public class RoleAdministrationTests
     [Fact]
     public void CanManageUser_scoped_admin_cannot_manage_if_target_has_any_out_of_scope_role()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
-        Assert.False(Constants.Roles.CanManageUser(admin, new[] { ManagerInTyme, AdminInUnrelated }));
+        Assert.False(Constants.Roles.CanManageUser(admin, new[] { ManagerInTyme, UserAccessInUnrelated }));
         Assert.False(Constants.Roles.CanManageUser(admin, new[] { Constants.Roles.Admin }));
     }
 
@@ -209,7 +209,7 @@ public class RoleAdministrationTests
     public void CanChangeUserActiveStatus_true_only_for_global_Admin()
     {
         Assert.True(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(Constants.Roles.Admin)));
-        Assert.False(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(AdminInTyme)));
+        Assert.False(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(UserAccessInTyme)));
         Assert.False(Constants.Roles.CanChangeUserActiveStatus(PrincipalWithRoles(ManagerInTyme)));
     }
 
@@ -226,13 +226,13 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void IsVisibleInTymeTeamView_AdminInTyme_sees_Tyme_scoped_users_only()
+    public void IsVisibleInTymeTeamView_UserAccessInTyme_sees_Tyme_scoped_users_only()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.True(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { UserInTyme }));
         Assert.False(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { Constants.Roles.Admin }));
-        Assert.False(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { AdminInUnrelated }));
+        Assert.False(Constants.Roles.IsVisibleInTymeTeamView(admin, new[] { UserAccessInUnrelated }));
     }
 
     // ---------- CanViewTymeTeamReports ----------
@@ -247,12 +247,20 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void CanViewTymeTeamReports_AdminInTyme_always()
+    public void CanViewTymeTeamReports_UserAccessInTyme_does_not()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var access = PrincipalWithRoles(UserAccessInTyme);
 
-        Assert.True(Constants.Roles.CanViewTymeTeamReports(admin, allowUsers: false));
-        Assert.True(Constants.Roles.CanViewTymeTeamReports(admin, allowUsers: true));
+        Assert.False(Constants.Roles.CanViewTymeTeamReports(access, allowUsers: false));
+        Assert.False(Constants.Roles.CanViewTymeTeamReports(access, allowUsers: true));
+    }
+
+    [Fact]
+    public void IsVisibleInTymeTeamView_UserAccess_target_is_not_a_tyme_operator()
+    {
+        var manager = PrincipalWithRoles(ManagerInTyme);
+
+        Assert.False(Constants.Roles.IsVisibleInTymeTeamView(manager, new[] { UserAccessInTyme }));
     }
 
     [Fact]
@@ -289,24 +297,24 @@ public class RoleAdministrationTests
         var admin = PrincipalWithRoles(Constants.Roles.Admin);
 
         Assert.True(Constants.Roles.CanAssignRole(admin, Constants.Roles.Admin));
-        Assert.True(Constants.Roles.CanAssignRole(admin, AdminInTyme));
-        Assert.False(Constants.Roles.CanAssignRole(admin, AdminInUnrelated));
+        Assert.True(Constants.Roles.CanAssignRole(admin, UserAccessInTyme));
+        Assert.False(Constants.Roles.CanAssignRole(admin, UserAccessInUnrelated));
     }
 
     [Fact]
     public void CanAssignRole_scoped_admin_can_assign_roles_in_their_scope_only()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
-        Assert.True(Constants.Roles.CanAssignRole(admin, AdminInTyme));
+        Assert.False(Constants.Roles.CanAssignRole(admin, UserAccessInTyme));
         Assert.True(Constants.Roles.CanAssignRole(admin, ManagerInTyme));
-        Assert.False(Constants.Roles.CanAssignRole(admin, AdminInUnrelated));
+        Assert.False(Constants.Roles.CanAssignRole(admin, UserAccessInUnrelated));
     }
 
     [Fact]
     public void CanAssignRole_scoped_admin_cannot_assign_a_global_role()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.False(Constants.Roles.CanAssignRole(admin, Constants.Roles.Admin));
     }
@@ -324,7 +332,7 @@ public class RoleAdministrationTests
     public void IsAssignableRole_accepts_Editor_Tyme()
     {
         // Editor:Tyme grants project create/edit only (see ProjectFunction Create/UpdateProject
-        // and ProjectManager.razor's canEditProjects) ΓÇö no delete/archive/group management or
+        // and ProjectManager.razor's canEditProjects) — no delete/archive/group management or
         // team surfaces, so it's now offered alongside Manager:Tyme / Admin:Tyme.
         var editorTyme = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme);
 
@@ -333,20 +341,52 @@ public class RoleAdministrationTests
     }
 
     [Fact]
-    public void IsAssignableRole_accepts_tyme_user_editor_manager_admin()
+    public void IsAssignableRole_accepts_tyme_user_editor_manager_useraccess()
     {
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Tyme)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme)));
-        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme)));
+        Assert.True(Constants.Roles.IsAssignableRole(UserAccessInTyme));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme)));
     }
 
     [Fact]
-    public void IsAssignableRole_accepts_intranet_user_editor_admin()
+    public void IsAssignableRole_accepts_intranet_user_editor_navigation_useraccess()
     {
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Intranet)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Intranet)));
-        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Navigation, Constants.Scopes.Intranet)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Intranet)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet)));
+    }
+
+    [Fact]
+    public void IsAssignableRole_accepts_organizations_user_editor_maintenance_useraccess()
+    {
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
+    }
+
+    [Fact]
+    public void IsAssignableRole_accepts_expenses_user_manager_useraccess()
+    {
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Expenses)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Expenses)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Expenses)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Expenses)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Expenses)));
+    }
+
+    [Fact]
+    public void CanAssignRole_user_access_cannot_grant_user_access()
+    {
+        var access = PrincipalWithRoles(UserAccessInTyme);
+        Assert.True(Constants.Roles.CanAssignRole(access, ManagerInTyme));
+        Assert.False(Constants.Roles.CanAssignRole(access, UserAccessInTyme));
+        Assert.True(Constants.Roles.CanAssignRole(PrincipalWithRoles(Constants.Roles.Admin), UserAccessInTyme));
     }
 
     // ---------- AssignableFor ----------
@@ -362,7 +402,7 @@ public class RoleAdministrationTests
     [Fact]
     public void AssignableFor_scoped_admin_returns_only_roles_in_their_scopes()
     {
-        var assignable = Constants.Roles.AssignableFor(PrincipalWithRoles(AdminInTyme));
+        var assignable = Constants.Roles.AssignableFor(PrincipalWithRoles(UserAccessInTyme));
 
         // Every returned role must be a scoped role whose scope equals TymeScope.
         Assert.All(assignable, r =>
@@ -374,37 +414,29 @@ public class RoleAdministrationTests
     }
 
     [Fact]
+    public void AssignableFor_organizations_admin_returns_only_organizations_roles()
+    {
+        var assignable = Constants.Roles.AssignableFor(
+            PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations)));
+
+        Assert.All(assignable, r =>
+        {
+            var colon = r.IndexOf(':');
+            Assert.True(colon > 0, $"AssignableFor returned bare role '{r}' to Organizations User Access.");
+            Assert.Equal(Constants.Scopes.Organizations, r.Substring(colon + 1));
+        });
+        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations), assignable);
+        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations), assignable);
+        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations), assignable);
+        Assert.DoesNotContain(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations), assignable);
+    }
+
+    [Fact]
     public void AssignableFor_non_admin_returns_empty()
     {
         var assignable = Constants.Roles.AssignableFor(PrincipalWithRoles(ManagerInTyme));
 
         Assert.Empty(assignable);
-    }
-
-    [Fact]
-    public void IsAssignableRole_accepts_organizations_user_editor_admin()
-    {
-        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations)));
-        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations)));
-        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
-        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations)));
-    }
-
-    [Fact]
-    public void AssignableFor_organizations_admin_returns_only_organizations_roles()
-    {
-        var assignable = Constants.Roles.AssignableFor(
-            PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)));
-
-        Assert.All(assignable, r =>
-        {
-            var colon = r.IndexOf(':');
-            Assert.True(colon > 0, $"AssignableFor returned bare role '{r}' to an Organizations admin.");
-            Assert.Equal(Constants.Scopes.Organizations, r.Substring(colon + 1));
-        });
-        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations), assignable);
-        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations), assignable);
-        Assert.Contains(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations), assignable);
     }
 
     // ---------- TryMergeRoleUpdate ----------
@@ -418,13 +450,13 @@ public class RoleAdministrationTests
     [Fact]
     public void TryMergeRoleUpdate_scoped_admin_adds_tyme_preserving_other_modules()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
         var current = new[] { EditorInOrganizations, UserInIntranet };
-        var requested = new[] { AdminInTyme };
+        var requested = new[] { ManagerInTyme };
 
         Assert.True(Constants.Roles.TryMergeRoleUpdate(admin, current, requested, out var merged));
         Assert.Equal(3, merged.Count);
-        Assert.Contains(AdminInTyme, merged);
+        Assert.Contains(ManagerInTyme, merged);
         Assert.Contains(EditorInOrganizations, merged);
         Assert.Contains(UserInIntranet, merged);
     }
@@ -432,7 +464,7 @@ public class RoleAdministrationTests
     [Fact]
     public void TryMergeRoleUpdate_scoped_admin_cannot_request_out_of_scope_role()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.False(Constants.Roles.TryMergeRoleUpdate(
             admin,
@@ -444,7 +476,7 @@ public class RoleAdministrationTests
     [Fact]
     public void TryMergeRoleUpdate_scoped_admin_can_remove_in_scope_role()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.True(Constants.Roles.TryMergeRoleUpdate(
             admin,
@@ -472,7 +504,7 @@ public class RoleAdministrationTests
     [Fact]
     public void TryMergeRoleUpdate_scoped_admin_preserves_unknown_legacy()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.True(Constants.Roles.TryMergeRoleUpdate(
             admin,
@@ -487,7 +519,7 @@ public class RoleAdministrationTests
     [Fact]
     public void TryMergeRoleUpdate_rejects_empty_merged()
     {
-        var admin = PrincipalWithRoles(AdminInTyme);
+        var admin = PrincipalWithRoles(UserAccessInTyme);
 
         Assert.False(Constants.Roles.TryMergeRoleUpdate(
             admin,

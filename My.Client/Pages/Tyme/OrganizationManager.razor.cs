@@ -22,7 +22,7 @@ namespace My.Client.Pages.Tyme
         MudTable<OrgDisplayRow> table = null!;
 
         bool allowOrgDelete = false;
-        // Admin:Organizations — set active/inactive, archive/unarchive, delete
+        // Manager:Organizations — set active/inactive, archive/unarchive, delete
         // for organizations and departments. Global Admin does not imply this.
         bool canManage = false;
         // Editor:Organizations (or canManage): create/edit orgs and departments.
@@ -73,7 +73,7 @@ namespace My.Client.Pages.Tyme
             if (user.Identity != null && !user.Identity.IsAuthenticated)
                 Navigation.NavigateTo($"{Navigation.BaseUri}auth/login", true);
 
-            canManage = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Admin);
+            canManage = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Manager);
             canEditOrganizations = canManage
                 || Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations, Constants.Roles.Editor);
             canUnarchiveProjects = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.Manager);

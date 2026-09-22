@@ -10,6 +10,7 @@ public sealed class SidebarNavAccordionState
     public const string BuiltInAdminKey = "admin";
     public const string BuiltInAdminDebugKey = "admin-debug";
     public const string BuiltInIntranetMaintenanceKey = "intranet-maintenance";
+    public const string BuiltInExpensesKey = "expenses";
 
     private readonly Dictionary<string, string> _expandedNestedChildByParent = new(StringComparer.Ordinal);
 

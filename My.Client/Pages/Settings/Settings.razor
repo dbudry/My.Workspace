@@ -1,11 +1,12 @@
 @page "/settings"
 @attribute [Authorize]
 @using My.Client.Theme
+@using My.Shared.Constants
 @using My.Shared.Rules
 
 <PageTitle>Settings</PageTitle>
 
-<PageHeader Title="Settings" Description="General applies everywhere. Tyme is time tracking and Google Calendar." />
+<PageHeader Title="Settings" Description="@settingsDescription" />
 
 <PageLoader IsLoading="@isLoading">
     <div class="settings-stack">
@@ -93,7 +94,7 @@
         </SectionCard>
 
         <SectionCard Title="Google Calendar"
-                     Description="Calendar sync is normally configured when you sign in with Google. Drive for Intranet is requested the first time you browse or attach a file. Use the controls below to manage Calendar, or reconnect if you previously revoked access.">
+                     Description="Connect once. Then choose what syncs. Live import needs a public webhook (not localhost).">
 
             @if (googleError != null)
             {
@@ -102,76 +103,89 @@
 
             @if (isGoogleConnected)
             {
-                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Connection</MudText>
+                <MudAlert Severity="Severity.Success" Dense="true" Class="mb-2">
                     Connected as <strong>@googleEmail</strong>
                 </MudAlert>
                 @if (!isGoogleLiveSyncActive)
                 {
-                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
-                        Calendar is still connected, but live import from Google has expired.
-                        Resume live import below — this does not disconnect Calendar or Intranet Drive.
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+                        Live import from Google is not running on this machine. Export from Tyme still works.
                     </MudAlert>
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mb-3"
-                               StartIcon="@Icons.Material.Filled.Sync"
-                               OnClick="ConnectGoogle" Disabled="@isGoogleBusy">
+                }
+                <div class="d-flex flex-wrap gap-2 mb-1">
+                    @if (!isGoogleLiveSyncActive)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Sync"
+                                   OnClick="ConnectGoogle" Disabled="@isGoogleBusy">
+                            @if (isGoogleBusy)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                            }
+                            Resume live import
+                        </MudButton>
+                    }
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                               OnClick="DisconnectGoogle" Disabled="@isGoogleBusy">
                         @if (isGoogleBusy)
                         {
                             <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
                         }
-                        Resume live import
+                        Stop Calendar sync
                     </MudButton>
-                }
+                </div>
+                <MudText Typo="Typo.caption" Class="mb-4 d-block" Style="color: var(--mud-palette-text-secondary);">
+                    Stop sync ends import and export. Reconnect is one click.
+                    To fully remove access, use Google Account → Connections.
+                </MudText>
 
+                <MudDivider Class="mb-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-1">What syncs</MudText>
                 <MudSwitch T="bool" @bind-Value="publishToGoogle" @bind-Value:after="PersistNow"
                            Color="Color.Primary" Class="mb-0">
-                    Export Tyme tasks to Google Calendar
+                    Tyme → Google (export)
                 </MudSwitch>
                 <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                    By selecting this, every task you log in Tyme is copied to your Google Calendar.
-                    Edits and deletes in Tyme update that Google event. Turning it off stops sending
-                    new tasks; events already on Google stay there.
+                    New and edited Tyme tasks appear on your calendar. Off: stop sending; existing Google events stay.
                 </MudText>
 
                 <MudSwitch T="bool" @bind-Value="importFromGoogle" @bind-Value:after="PersistNow"
                            Color="Color.Primary" Class="mb-0">
-                    Import Google Calendar events into Tyme
+                    Google → Tyme (import tagged events)
                 </MudSwitch>
                 <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                    By selecting this, Google events whose title includes a project
-                    <code>[slug]</code> (for example <code>[itsup] Laptop rebuild</code>) become Tyme
-                    tasks on that project. Events without a <code>[slug]</code> stay private and are
-                    never imported. Turning it off stops bringing new tagged events in; tasks already
-                    in Tyme stay.
+                    Only events with a project <code>[slug]</code> in the title (e.g. <code>[itsup] Laptop rebuild</code>).
+                    Untagged events stay private.
                 </MudText>
 
-                <MudSwitch T="bool" @bind-Value="availabilityOnlySync" @bind-Value:after="PersistNow"
+                <MudSwitch T="bool"
+                           Value="@((publishToGoogle || importFromGoogle) && availabilityOnlySync)"
+                           ValueChanged="OnAvailabilityOnlyChanged"
                            Color="Color.Primary" Class="mb-0"
                            Disabled="@(!publishToGoogle && !importFromGoogle)">
-                    Only Availability projects (OOO, PTO)
+                    Only OOO / PTO (Share availability)
                 </MudSwitch>
                 <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
-                    Import and export on your Google Calendar use only projects marked
-                    Share availability with team. Work projects stay in Tyme. The workspace
-                    Team Availability calendar is unchanged.
+                    Work projects stay in Tyme. Team Availability calendar is unchanged.
                 </MudText>
-
                 @if (availabilityOnlySync)
                 {
                     <MudSwitch T="bool" @bind-Value="removeExcludedEvents" @bind-Value:after="PersistNow"
                                Color="Color.Primary" Class="mb-0">
-                        Also remove existing Google events for projects that stop syncing
+                        Delete Google events when a project stops syncing
                     </MudSwitch>
-                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
-                        Off (default): a work project's already-published Google event is left alone —
-                        Tyme just stops updating it. On: that Google event is deleted the next time
-                        the task is edited.
+                    <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        Off: leave those events on Google. On: delete them the next time the task is edited.
                     </MudText>
                 }
 
-                <MudGrid Spacing="6" Class="mt-2 mb-4">
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Event colors</MudText>
+                <MudGrid Spacing="3" Class="mb-2">
                     <MudItem xs="12" md="6">
                         <MudSelect T="string" @bind-Value="matchedColorId" @bind-Value:after="PersistNow"
-                                   Label="Event color (with project)"
+                                   Label="With a project"
                                    Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
                                    ToStringFunc="GoogleEventColors.DisplayName"
                                    Adornment="Adornment.Start"
@@ -189,13 +203,10 @@
                                 </MudSelectItem>
                             }
                         </MudSelect>
-                        <MudText Typo="Typo.caption" Class="mt-1" Style="color: var(--mud-palette-text-secondary);">
-                            Applied to Tyme events whose project slug resolves.
-                        </MudText>
                     </MudItem>
                     <MudItem xs="12" md="6">
                         <MudSelect T="string" @bind-Value="unmatchedColorId" @bind-Value:after="PersistNow"
-                                   Label="Event color (no project)"
+                                   Label="No project (flag)"
                                    Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
                                    ToStringFunc="GoogleEventColors.DisplayName"
                                    Adornment="Adornment.Start"
@@ -213,38 +224,21 @@
                                 </MudSelectItem>
                             }
                         </MudSelect>
-                        <MudText Typo="Typo.caption" Class="mt-1" Style="color: var(--mud-palette-text-secondary);">
-                            Flag color for "needs a project" events. Defaults to Tomato.
-                        </MudText>
                     </MudItem>
                 </MudGrid>
 
-                <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined" Class="mb-4">
-                    <MudText Typo="Typo.body2">
-                        <strong>Tag events to import them.</strong> Include the project's
-                        <code>[slug]</code> anywhere in the event title (e.g.
-                        <code>[wrkr] Fixed login bug</code>) and Tyme will route the entry to
-                        that project on import. Events without a slug are skipped entirely so
-                        personal entries on your primary calendar stay private.
-                    </MudText>
-                </MudAlert>
-
-                @* Recovery path for missed webhook deliveries — a user can re-run the
-                   import over a date range without having to disconnect and reconnect. *@
-                <MudDivider Class="my-4" />
-                <MudText Typo="Typo.subtitle2" Class="mb-1">Pull missed events from Google</MudText>
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-1">Pull missed events</MudText>
                 <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                    Tagged events normally import when you save them in Google Calendar.
-                    If one did not appear in Tyme, pick a date range and Tyme will re-scan
-                    and import anything it missed. Already-imported events are updated in
-                    place; nothing on your timesheet gets duplicated.
+                    Live import can miss a save. Pick a range to re-scan tagged Google events. Already in Tyme are updated, not duplicated.
                 </MudText>
-                <div class="d-flex gap-3 flex-wrap mb-2 align-end">
+                <div class="google-cal-pull-row">
                     <MudDatePicker @bind-Date="pullFromDate" Label="From" Variant="Variant.Outlined"
-                                   Margin="Margin.Dense" Style="min-width: 160px;" />
+                                   Margin="Margin.Dense" DateFormat="MM/dd/yyyy" />
                     <MudDatePicker @bind-Date="pullToDate" Label="To" Variant="Variant.Outlined"
-                                   Margin="Margin.Dense" Style="min-width: 160px;" />
+                                   Margin="Margin.Dense" DateFormat="MM/dd/yyyy" />
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Sync"
+                               Class="google-cal-pull-btn"
                                OnClick="PullFromGoogle" Disabled="@isPullingFromGoogle">
                         @if (isPullingFromGoogle)
                         {
@@ -256,7 +250,7 @@
                 @if (pullResult != null)
                 {
                     <MudAlert Severity="@(pullResult.Error != null ? Severity.Warning : Severity.Success)"
-                              Variant="Variant.Outlined" Dense="true" Class="mb-4">
+                              Variant="Variant.Outlined" Dense="true" Class="mt-2">
                         @if (pullResult.Error != null)
                         {
                             @pullResult.Error
@@ -303,17 +297,13 @@
                         }
                     </MudAlert>
                 }
-
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="DisconnectGoogle" Disabled="@isGoogleBusy">
-                    @if (isGoogleBusy)
-                    {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
-                    }
-                    Disconnect
-                </MudButton>
             }
             else
             {
+                <MudText Typo="Typo.body2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                    Connect your Google account to export Tyme tasks and import events tagged with a project
+                    <code>[slug]</code>.
+                </MudText>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Event"
                            OnClick="ConnectGoogle" Disabled="@isGoogleBusy">
                     @if (isGoogleBusy)
@@ -325,6 +315,33 @@
             }
         </SectionCard>
             </MudTabPanel>
+            @if (hasExpensesAccess)
+            {
+                <MudTabPanel Text="Expenses" Icon="@Icons.Material.Filled.ReceiptLong">
+                    <SectionCard Title="Home address">
+                        <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                            Printed on Form 87-43 under ADDRESS. Street on the first line, city and ZIP on the second.
+                            Copied onto new expense reports.
+                        </MudText>
+                        <MudTextField @bind-Value="expenseHomeStreet" @bind-Value:after="PersistDebounced"
+                                      Label="Street" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Immediate="true" MaxLength="120" />
+                        <MudTextField @bind-Value="expenseHomeCityLine" @bind-Value:after="PersistDebounced"
+                                      Label="City, state ZIP" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Immediate="true" MaxLength="120" Class="mt-2" />
+                    </SectionCard>
+                    <SectionCard Title="Expense signature">
+                        <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                            Saved on your profile. Stamped as Employee's Signature on expense PDFs you download.
+                            Reused until you replace it — it is not stored on Drive.
+                        </MudText>
+                        <SignatureEditor MediaUrl="@Constants.API.Expenses.MySignatureMedia"
+                                         PutUrl="@Constants.API.Expenses.MySignature"
+                                         DeleteUrl="@Constants.API.Expenses.MySignature"
+                                         @bind-HasSignature="hasExpenseSignature" />
+                    </SectionCard>
+                </MudTabPanel>
+            }
         </MudTabs>
     </div>
 </PageLoader>

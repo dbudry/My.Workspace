@@ -26,6 +26,17 @@ namespace My.Client.Services
                 ?? new PagedResponse<StopwatchItemDto>();
         }
 
+        public async Task<StopwatchDayViewDto> LoadDayViewAsync(
+            DateTime fromUtc, DateTime toUtcExclusive, CancellationToken cancellationToken = default)
+        {
+            var client = _clientFactory.CreateClient(Constants.API.ClientName);
+            var from = Uri.EscapeDataString(fromUtc.ToUniversalTime().ToString("o"));
+            var to = Uri.EscapeDataString(toUtcExclusive.ToUniversalTime().ToString("o"));
+            var url = $"{Constants.API.StopwatchItem.GetDay}?from={from}&to={to}";
+            return await client.GetFromJsonAsync<StopwatchDayViewDto>(url, cancellationToken)
+                ?? new StopwatchDayViewDto();
+        }
+
         public async Task<StopwatchItemDto> UpdateAsync(UpdateStopwatchItemDto dto, CancellationToken cancellationToken = default)
         {
             var client = _clientFactory.CreateClient(Constants.API.ClientName);

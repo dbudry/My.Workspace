@@ -1,0 +1,256 @@
+@page "/expenses"
+@* Expenses module surface. Requires an Expenses-scoped role (even for global Admins). *@
+@attribute [Authorize(Policy = "Expenses:User:Scoped")]
+
+@using My.Shared.Dtos.Expenses
+@using My.Shared.Rules
+
+<PageTitle>@pageTitle</PageTitle>
+
+<PageHeader Title="@pageTitle" />
+
+@if (canManage)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-3">
+        <MudToggleGroup T="string" Value="@_managerView" ValueChanged="OnManagerViewChangedAsync"
+                        SelectionMode="SelectionMode.SingleSelection" Color="Color.Primary" Size="Size.Small">
+            <MudToggleItem Value="@("my")">My</MudToggleItem>
+            <MudToggleItem Value="@("team")">Team</MudToggleItem>
+        </MudToggleGroup>
+    </MudStack>
+}
+
+@if (ShowMyReports)
+{
+    <div class="expense-filter-row">
+        <div class="expense-filter-fields">
+            <MudSelect T="int" MultiSelection="true" Clearable="true"
+                       @bind-SelectedValues="myYears"
+                       MultiSelectionTextFunc="YearChipText"
+                       Label="Year" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:calc(9rem + 50px);">
+                @foreach (var y in myYearOptions)
+                {
+                    <MudSelectItem T="int" Value="@y">@y</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int" MultiSelection="true" Clearable="true"
+                       @bind-SelectedValues="myMonths"
+                       MultiSelectionTextFunc="MonthChipText"
+                       Label="Month" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:11.25rem;">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    var month = m;
+                    <MudSelectItem T="int" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div class="expense-filter-actions">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="CreateAsync" Disabled="@isCreating">
+                New Report
+            </MudButton>
+        </div>
+    </div>
+}
+
+@if (ShowTeamReports)
+{
+    <div class="expense-filter-row">
+        <div class="expense-filter-fields">
+            <MudSelect T="string" @bind-Value="userFilter" Label="Employee" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:12.5rem;">
+                <MudSelectItem T="string" Value="@((string?)null)">All employees</MudSelectItem>
+                @foreach (var u in distinctUsers)
+                {
+                    <MudSelectItem T="string" Value="@u.UserId">@u.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int" MultiSelection="true" Clearable="true"
+                       @bind-SelectedValues="teamYears"
+                       MultiSelectionTextFunc="YearChipText"
+                       Label="Year" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:calc(9rem + 50px);">
+                @foreach (var y in yearOptions)
+                {
+                    <MudSelectItem T="int" Value="@y">@y</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int" MultiSelection="true" Clearable="true"
+                       @bind-SelectedValues="teamMonths"
+                       MultiSelectionTextFunc="MonthChipText"
+                       Label="Month" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:11.25rem;">
+                @for (int m = 1; m <= 12; m++)
+                {
+                    var month = m;
+                    <MudSelectItem T="int" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div class="expense-filter-actions">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="ReloadTeamAsync">Refresh</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.TableView"
+                       OnClick="OpenData">
+                Export Excel
+            </MudButton>
+        </div>
+    </div>
+}
+
+<PageLoader IsLoading="@isLoading">
+    @if (ShowMyReports)
+    {
+        @if (rows.Count == 0)
+        {
+            <EmptyState Icon="@Icons.Material.Outlined.ReceiptLong"
+                        Title="No expense reports yet"
+                        Message="Click New Report for this month. You'll add line items on the next screen." />
+        }
+        else if (visibleMyRows.Count == 0)
+        {
+            <EmptyState Icon="@Icons.Material.Outlined.FilterList"
+                        Title="No reports match"
+                        Message="Clear Year or Month to see more, or create a report with New Report." />
+        }
+        else
+        {
+            <MudDataGrid T="ExpenseReportListDto" Items="@visibleMyRows"
+                         Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
+                         Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
+                         FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                         SortMode="SortMode.Single" ShowColumnOptions="false"
+                         RowClass="expense-grid-row"
+                         RowClick="OnExpenseRowClick">
+                <Columns>
+                    <PropertyColumn Property="x => MonthLabel(x.Year, x.Month)" Title="Month"
+                                    SortBy="x => x.Year * 100 + x.Month"
+                                    InitialDirection="SortDirection.Descending" />
+                    <PropertyColumn Property="x => x.Status" Title="Status">
+                        <CellTemplate>
+                            <ExpenseStatusChip Status="@context.Item.Status" />
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.LineCount" Title="Lines"
+                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                    <PropertyColumn Property="x => x.TotalAmount" Title="Total" Format="C"
+                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false"
+                                    HeaderStyle="width:120px; text-align:right;" CellStyle="text-align:right;">
+                        <CellTemplate>
+                            <div class="d-flex justify-end align-center" @onclick:stopPropagation="true">
+                                <ExpensePdfMenu ReportId="@context.Item.ExpenseReportId"
+                                                FileName="@PdfFileName(context.Item)"
+                                                IconOnly="true"
+                                                Disabled="@(busyId == context.Item.ExpenseReportId)" />
+                                @if (ExpenseStatusRules.IsDraft(context.Item.Status))
+                                {
+                                    <MudTooltip Text="Submit">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                                                       aria-label="Submit"
+                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
+                                                       OnClick="@(() => SubmitAsync(context.Item))" />
+                                    </MudTooltip>
+                                    <MudTooltip Text="Delete draft">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                       aria-label="Delete draft"
+                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
+                                                       OnClick="@(() => DeleteAsync(context.Item))" />
+                                    </MudTooltip>
+                                }
+                            </div>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
+                             Style="color: var(--mud-palette-text-secondary);">
+                        No reports match the column filters.
+                    </MudText>
+                </NoRecordsContent>
+            </MudDataGrid>
+        }
+    }
+
+    @if (ShowTeamReports)
+    {
+        @if (teamRows.Count == 0)
+        {
+            <EmptyState Icon="@Icons.Material.Outlined.Groups"
+                        Title="No matching reports"
+                        Message="Adjust the filters, or wait for employees to create and submit expense reports." />
+        }
+        else
+        {
+            <MudDataGrid T="ExpenseReportListDto" Items="@teamRows"
+                         Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
+                         Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
+                         FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                         SortMode="SortMode.Single" ShowColumnOptions="false"
+                         RowClass="expense-grid-row"
+                         RowClick="OnExpenseRowClick">
+                <Columns>
+                    <PropertyColumn Property="x => x.EmployeeName" Title="Employee" />
+                    <PropertyColumn Property="x => MonthLabel(x.Year, x.Month)" Title="Month"
+                                    SortBy="x => x.Year * 100 + x.Month"
+                                    InitialDirection="SortDirection.Descending" />
+                    <PropertyColumn Property="x => x.Status" Title="Status">
+                        <CellTemplate>
+                            <ExpenseStatusChip Status="@context.Item.Status" />
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.LineCount" Title="Lines"
+                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                    <PropertyColumn Property="x => x.TotalAmount" Title="Total" Format="C"
+                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false"
+                                    HeaderStyle="width:120px; text-align:right;" CellStyle="text-align:right;">
+                        <CellTemplate>
+                            <div class="d-flex justify-end align-center" @onclick:stopPropagation="true">
+                                <ExpensePdfMenu ReportId="@context.Item.ExpenseReportId"
+                                                FileName="@PdfFileName(context.Item)"
+                                                IconOnly="true"
+                                                Disabled="@(busyId == context.Item.ExpenseReportId)" />
+                                @if (ExpenseStatusRules.IsSubmitted(context.Item.Status))
+                                {
+                                    <MudTooltip Text="Reimburse">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Paid" Size="Size.Small" Color="Color.Tertiary"
+                                                       aria-label="Reimburse"
+                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
+                                                       OnClick="@(() => ReimburseAsync(context.Item))" />
+                                    </MudTooltip>
+                                    <MudTooltip Text="Unsubmit">
+                                        <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" Color="Color.Warning"
+                                                       aria-label="Unsubmit"
+                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
+                                                       OnClick="@(() => UnsubmitAsync(context.Item))" />
+                                    </MudTooltip>
+                                }
+                                else if (ExpenseStatusRules.IsReimbursed(context.Item.Status))
+                                {
+                                    <MudTooltip Text="Undo reimbursed">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Color="Color.Default"
+                                                       aria-label="Undo reimbursed"
+                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
+                                                       OnClick="@(() => UndoReimburseAsync(context.Item))" />
+                                    </MudTooltip>
+                                }
+                            </div>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
+                             Style="color: var(--mud-palette-text-secondary);">
+                        No reports match the column filters.
+                    </MudText>
+                </NoRecordsContent>
+            </MudDataGrid>
+        }
+    }
+</PageLoader>

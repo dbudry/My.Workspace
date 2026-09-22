@@ -14,6 +14,7 @@ using My.DAL.Models.Paging;
 using My.DAL.Repository;
 using My.Functions.Authorization;
 using My.Functions.Helpers;
+using My.Shared.Rules;
 
 namespace My.Functions
 {
@@ -180,6 +181,9 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
+            if (await FindNameCollisionAsync(dto!.Name, excludeOrganizationId: null) is { } createCollision)
+                return new BadRequestObjectResult(createCollision);
+
             var org = new Organization
             {
                 Name = dto!.Name,
@@ -218,6 +222,9 @@ namespace My.Functions
             var org = await organizationRepository.GetById(dto!.OrganizationId);
             if (org == null)
                 return new NotFoundObjectResult("Organization not found!");
+
+            if (await FindNameCollisionAsync(dto.Name, excludeOrganizationId: dto.OrganizationId) is { } updateCollision)
+                return new BadRequestObjectResult(updateCollision);
 
             org.Name = dto.Name;
             org.Address = dto.Address;
@@ -309,6 +316,27 @@ namespace My.Functions
                 "Organization {Id} IsArchived set to {IsArchived} (was {WasArchived}); IsActive={IsActive}",
                 id, org.IsArchived, wasArchived, org.IsActive);
             return new OkObjectResult(new { org.IsArchived, org.IsActive });
+        }
+
+        /// <summary>
+        /// Returns a user-facing collision message if another org (including archived)
+        /// already uses this name; otherwise null.
+        /// </summary>
+        private async Task<string?> FindNameCollisionAsync(string requestedName, string? excludeOrganizationId)
+        {
+            var key = OrganizationNameRules.Normalize(requestedName);
+            if (key.Length == 0)
+                return null;
+
+            var hit = await dbContext.Organizations.AsNoTracking()
+                .Where(o => excludeOrganizationId == null || o.OrganizationId != excludeOrganizationId)
+                .Where(o => o.Name.Trim().ToLower() == key)
+                .Select(o => new { o.IsArchived })
+                .FirstOrDefaultAsync();
+
+            return hit == null
+                ? null
+                : OrganizationNameRules.CollisionMessage(requestedName, hit.IsArchived);
         }
 
         /// <summary>

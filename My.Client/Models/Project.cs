@@ -9,7 +9,8 @@ namespace My.Client.Models
         public string ProjectId { get; set; } = null!;
 
         [Required]
-        [StringLength(100, MinimumLength = 3, ErrorMessage = "Project name must be between 3 and 100 characters.")]
+        [StringLength(ProjectFieldRules.NameMaxLength, MinimumLength = ProjectFieldRules.NameMinLength,
+            ErrorMessage = ProjectFieldRules.NameLengthMessage)]
         public string Name { get; set; } = null!;
 
         [StringLength(SlugRules.MaxLength, MinimumLength = SlugRules.MinLength,
@@ -47,12 +48,18 @@ namespace My.Client.Models
         public bool IsSharedAvailability { get; set; }
 
         /// <summary>
+        /// When false on a shared-availability project, entries publish to Team
+        /// Availability but do not count as Tyme hours. Default true.
+        /// </summary>
+        public bool CountsAsTime { get; set; } = true;
+
+        /// <summary>
         /// When true, time logged against this project is marked billable. Set by a
         /// Tyme manager on the project edit form.
         /// </summary>
         public bool IsBillable { get; set; }
 
-        /// <summary>The project's human name with its group prefix — e.g. "Sample Network - Worker".</summary>
+        /// <summary>The project's human name with its group prefix — e.g. "Profit Network - Worker".</summary>
         public string DisplayName => string.IsNullOrEmpty(ProjectGroupName)
             ? Name
             : $"{ProjectGroupName} - {Name}";
@@ -88,6 +95,7 @@ namespace My.Client.Models
             IsActive = project.IsActive;
             IsArchived = project.IsArchived;
             IsSharedAvailability = project.IsSharedAvailability;
+            CountsAsTime = project.CountsAsTime;
             IsBillable = project.IsBillable;
         }
     }
