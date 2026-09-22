@@ -7,7 +7,7 @@ namespace My.Tests.Rules;
 public class GoogleTeamAvailabilityCredentialRulesTests
 {
     private const string SampleJson =
-        """{"type":"service_account","project_id":"myprofitpoint","client_email":"tyme-team-availability@myprofitpoint.iam.gserviceaccount.com"}""";
+        """{"type":"service_account","project_id":"my-workspace","client_email":"tyme-team-availability@my-workspace.iam.gserviceaccount.com"}""";
 
     [Theory]
     [InlineData(null)]
@@ -43,7 +43,7 @@ public class GoogleTeamAvailabilityCredentialRulesTests
     [InlineData(null, null)]
     [InlineData("", null)]
     [InlineData("  ", null)]
-    [InlineData(" dbudry@profitpt.com ", "dbudry@profitpt.com")]
+    [InlineData(" user@example.com ", "user@example.com")]
     public void NormalizeImpersonateUser_trims_or_nulls(string? raw, string? expected) =>
         Assert.Equal(expected, GoogleTeamAvailabilityCredentialRules.NormalizeImpersonateUser(raw));
 }

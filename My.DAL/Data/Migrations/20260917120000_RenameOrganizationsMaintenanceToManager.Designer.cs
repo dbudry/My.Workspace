@@ -271,7 +271,7 @@ namespace My.DAL.Data.Migrations
                         new
                         {
                             Key = "HomeOrganizationId",
-                            Description = "OrganizationId of Profit Point (the company).",
+                            Description = "OrganizationId of the home company.",
                             Value = ""
                         },
                         new
