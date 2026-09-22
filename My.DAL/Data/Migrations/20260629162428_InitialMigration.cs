@@ -457,7 +457,8 @@ namespace My.DAL.Data.Migrations
                     ProjectGroupId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     IsArchived = table.Column<bool>(type: "bit", nullable: false),
-                    IsSharedAvailability = table.Column<bool>(type: "bit", nullable: false)
+                    IsSharedAvailability = table.Column<bool>(type: "bit", nullable: false),
+                    CountsAsTime = table.Column<bool>(type: "bit", nullable: false, defaultValue: true)
                 },
                 constraints: table =>
                 {
