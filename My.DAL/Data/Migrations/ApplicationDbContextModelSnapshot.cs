@@ -128,6 +128,35 @@ namespace My.DAL.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("My.DAL.Models.AppDriveCredential", b =>
+                {
+                    b.Property<string>("AppDriveCredentialId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("ConnectedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConnectedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SharedDriveId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("AppDriveCredentialId");
+
+                    b.ToTable("AppDriveCredentials");
+                });
+
             modelBuilder.Entity("My.DAL.Models.AppSetting", b =>
                 {
                     b.Property<string>("Key")
@@ -140,8 +169,7 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<string>("Value")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Key");
 
@@ -183,6 +211,12 @@ namespace My.DAL.Data.Migrations
                             Key = "TymeAllowManagerTimeCorrection",
                             Description = "When enabled, Tyme managers and admins can correct submitted employee time entries.",
                             Value = "true"
+                        },
+                        new
+                        {
+                            Key = "TymeAllowManagerSubmitOnBehalf",
+                            Description = "When enabled, Tyme managers and admins can submit an employee's time month on their behalf.",
+                            Value = "false"
                         },
                         new
                         {
@@ -231,6 +265,24 @@ namespace My.DAL.Data.Migrations
                             Key = "IntranetNavigationMaxDepth",
                             Description = "Maximum nesting depth for curated intranet sidebar navigation. Top-level menu entries count as depth 1.",
                             Value = "10"
+                        },
+                        new
+                        {
+                            Key = "HomeOrganizationId",
+                            Description = "OrganizationId of the home company.",
+                            Value = ""
+                        },
+                        new
+                        {
+                            Key = "ExpensesMileageRatePerMile",
+                            Description = "Personal-car mileage reimbursement rate in USD per mile.",
+                            Value = "0.555"
+                        },
+                        new
+                        {
+                            Key = "ExpensesDriveParentFolderId",
+                            Description = "Google Drive folder ID for the private Expenses root. Not shared company-wide.",
+                            Value = ""
                         });
                 });
 
@@ -299,14 +351,6 @@ namespace My.DAL.Data.Migrations
                         },
                         new
                         {
-                            Id = "a2b3c4d5-e6f7-8901-a2b3-c4d5e6f78901",
-                            ConcurrencyStamp = "a2b3c4d5-e6f7-8901-a2b3-c4d5e6f78901",
-                            Description = "Tyme-scoped editor role (create/edit projects).",
-                            Name = "Editor:Tyme",
-                            NormalizedName = "EDITOR:TYME"
-                        },
-                        new
-                        {
                             Id = "b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
                             ConcurrencyStamp = "b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
                             Description = "Tyme-scoped manager role.",
@@ -315,11 +359,11 @@ namespace My.DAL.Data.Migrations
                         },
                         new
                         {
-                            Id = "c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012",
-                            ConcurrencyStamp = "c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012",
-                            Description = "Tyme-scoped admin role.",
-                            Name = "Admin:Tyme",
-                            NormalizedName = "ADMIN:TYME"
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345701",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345701",
+                            Description = "Tyme User Access — assign Tyme roles on Users. Does not operate Tyme.",
+                            Name = "UserAccess:Tyme",
+                            NormalizedName = "USERACCESS:TYME"
                         },
                         new
                         {
@@ -339,35 +383,75 @@ namespace My.DAL.Data.Migrations
                         },
                         new
                         {
-                            Id = "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345",
-                            ConcurrencyStamp = "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345",
-                            Description = "Intranet-scoped admin role (full control of navigation structure and content).",
-                            Name = "Admin:Intranet",
-                            NormalizedName = "ADMIN:INTRANET"
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345705",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345705",
+                            Description = "Intranet Navigation — curated sidebar tree.",
+                            Name = "Navigation:Intranet",
+                            NormalizedName = "NAVIGATION:INTRANET"
                         },
                         new
                         {
-                            Id = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789",
-                            ConcurrencyStamp = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789",
-                            Description = "Organizations-scoped user role (view organizations and departments).",
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345702",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345702",
+                            Description = "Intranet User Access — assign Intranet roles on Users. Does not operate Intranet.",
+                            Name = "UserAccess:Intranet",
+                            NormalizedName = "USERACCESS:INTRANET"
+                        },
+                        new
+                        {
+                            Id = "10a1b2c3-d4e5-4678-9abc-def012345601",
+                            ConcurrencyStamp = "10a1b2c3-d4e5-4678-9abc-def012345601",
+                            Description = "Expenses-scoped user role (own reports and receipts).",
+                            Name = "User:Expenses",
+                            NormalizedName = "USER:EXPENSES"
+                        },
+                        new
+                        {
+                            Id = "10a1b2c3-d4e5-4678-9abc-def012345602",
+                            ConcurrencyStamp = "10a1b2c3-d4e5-4678-9abc-def012345602",
+                            Description = "Expenses-scoped manager role (team reports and unsubmit).",
+                            Name = "Manager:Expenses",
+                            NormalizedName = "MANAGER:EXPENSES"
+                        },
+                        new
+                        {
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345704",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345704",
+                            Description = "Expenses User Access — assign Expenses roles on Users. Does not operate Expenses.",
+                            Name = "UserAccess:Expenses",
+                            NormalizedName = "USERACCESS:EXPENSES"
+                        },
+                        new
+                        {
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345707",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345707",
+                            Description = "Organizations-scoped user role (view).",
                             Name = "User:Organizations",
                             NormalizedName = "USER:ORGANIZATIONS"
                         },
                         new
                         {
-                            Id = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890",
-                            ConcurrencyStamp = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890",
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345708",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345708",
                             Description = "Organizations-scoped editor role (create/edit organizations and departments).",
                             Name = "Editor:Organizations",
                             NormalizedName = "EDITOR:ORGANIZATIONS"
                         },
                         new
                         {
-                            Id = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901",
-                            ConcurrencyStamp = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901",
-                            Description = "Organizations-scoped admin role (archive/delete/set active and assign Organizations roles).",
-                            Name = "Admin:Organizations",
-                            NormalizedName = "ADMIN:ORGANIZATIONS"
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345706",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345706",
+                            Description = "Organizations-scoped manager role (archive, delete, set active/inactive; includes edit).",
+                            Name = "Manager:Organizations",
+                            NormalizedName = "MANAGER:ORGANIZATIONS"
+                        },
+                        new
+                        {
+                            Id = "20a1b2c3-d4e5-4678-9abc-def012345703",
+                            ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345703",
+                            Description = "Organizations User Access — assign Organizations roles on Users.",
+                            Name = "UserAccess:Organizations",
+                            NormalizedName = "USERACCESS:ORGANIZATIONS"
                         });
                 });
 
@@ -529,6 +613,204 @@ namespace My.DAL.Data.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("Departments");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseLine", b =>
+                {
+                    b.Property<string>("ExpenseLineId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ExpenseReportId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("MealBreakfast")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("MealDinner")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("MealLunch")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("Miles")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<string>("MiscellaneousCode")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransportationCode")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.HasKey("ExpenseLineId");
+
+                    b.HasIndex("ExpenseReportId");
+
+                    b.ToTable("ExpenseLines");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseReceipt", b =>
+                {
+                    b.Property<string>("ExpenseReceiptId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<byte[]>("Content")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("DriveFileId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("ExpenseLineId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("MimeType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SizeBytes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UploadedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("ExpenseReceiptId");
+
+                    b.HasIndex("ExpenseLineId");
+
+                    b.ToTable("ExpenseReceipts");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseReport", b =>
+                {
+                    b.Property<string>("ExpenseReportId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("AddressSnapshot")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ChargeToNote")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("CoverEnd")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CoverStart")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DepartmentId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("DriveFiledPdfFileId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("DrivePeriodFolderId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("DriveUserFolderId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("EmployeeNameSnapshot")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<decimal>("MileageRateSnapshot")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlantOrLocation")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Purpose")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("ReimbursedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReimbursedByUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ReportDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SubmittedByUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
+
+                    b.HasKey("ExpenseReportId");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("UserId", "Year", "Month")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExpenseReports_UserId_Year_Month");
+
+                    b.ToTable("ExpenseReports");
                 });
 
             modelBuilder.Entity("My.DAL.Models.IntranetDocument", b =>
@@ -782,6 +1064,11 @@ namespace My.DAL.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<bool>("CountsAsTime")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("DepartmentId")
                         .HasColumnType("nvarchar(450)");
 
@@ -861,16 +1148,16 @@ namespace My.DAL.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("Details")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<bool>("IsCleared")
                         .HasColumnType("bit");
 
                     b.Property<DateTime>("LastWorkedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(450)");
@@ -925,10 +1212,6 @@ namespace My.DAL.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("Details")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<TimeSpan>("Duration")
                         .HasColumnType("time");
 
@@ -946,6 +1229,10 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<bool>("IsBillable")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(450)");
@@ -987,16 +1274,15 @@ namespace My.DAL.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Details")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
                     b.Property<TimeSpan>("Duration")
                         .HasColumnType("time");
 
                     b.Property<bool>("IsBillable")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ProjectId")
                         .HasColumnType("nvarchar(450)");
@@ -1034,25 +1320,21 @@ namespace My.DAL.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("NewDetails")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<TimeSpan>("NewDuration")
                         .HasColumnType("time");
 
                     b.Property<bool>("NewIsBillable")
                         .HasColumnType("bit");
 
+                    b.Property<string>("NewName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("NewProjectId")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("NewStartDate")
                         .HasColumnType("datetime2");
-
-                    b.Property<string>("PreviousDetails")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<TimeSpan>("PreviousDuration")
                         .HasColumnType("time");
@@ -1065,6 +1347,10 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<bool>("PreviousIsBillable")
                         .HasColumnType("bit");
+
+                    b.Property<string>("PreviousName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PreviousProjectId")
                         .HasColumnType("nvarchar(max)");
@@ -1095,6 +1381,17 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<int>("DefaultStartTimeMinutes")
                         .HasColumnType("int");
+
+                    b.Property<string>("ExpenseHomeAddress")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<byte[]>("ExpenseSignature")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ExpenseSignatureMime")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("FavoriteIntranetPageIdsJson")
                         .HasColumnType("nvarchar(max)");
@@ -1248,6 +1545,46 @@ namespace My.DAL.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseLine", b =>
+                {
+                    b.HasOne("My.DAL.Models.ExpenseReport", "ExpenseReport")
+                        .WithMany("Lines")
+                        .HasForeignKey("ExpenseReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ExpenseReport");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseReceipt", b =>
+                {
+                    b.HasOne("My.DAL.Models.ExpenseLine", "ExpenseLine")
+                        .WithMany("Receipts")
+                        .HasForeignKey("ExpenseLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ExpenseLine");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseReport", b =>
+                {
+                    b.HasOne("My.DAL.Models.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("My.DAL.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("My.DAL.Models.IntranetNavigationItem", b =>
@@ -1430,6 +1767,16 @@ namespace My.DAL.Data.Migrations
                     b.Navigation("Contacts");
 
                     b.Navigation("Projects");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseLine", b =>
+                {
+                    b.Navigation("Receipts");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseReport", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("My.DAL.Models.IntranetDocument", b =>

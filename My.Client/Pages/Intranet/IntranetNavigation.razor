@@ -7,7 +7,7 @@
 
 <PageTitle>Intranet Navigation</PageTitle>
 
-<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Admin" ScopedOnly="true">
+<ScopedAuthorizeView Scope="@Constants.Scopes.Intranet" MinimumRole="@Constants.Roles.Navigation" ScopedOnly="true">
     <Authorized>
         <PageHeader Title="Intranet Navigation & Content Structure" Description="This is the main place to organize your intranet menu and add content. Build the tree here, then use 'Add page' or 'Add content' on any item to create pages in context. No more separate wiring of pages to menu." />
 
@@ -44,7 +44,7 @@
         </PageLoader>
     </Authorized>
     <NotAuthorized>
-        <MudAlert Severity="Severity.Warning">Admin:Intranet role required.</MudAlert>
+        <MudAlert Severity="Severity.Warning">Intranet — Navigation role required.</MudAlert>
     </NotAuthorized>
 </ScopedAuthorizeView>
 

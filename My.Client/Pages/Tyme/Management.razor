@@ -17,11 +17,13 @@
             <MudStack Spacing="2">
                 <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" AlignItems="AlignItems.End">
                     <div class="management-date-field">
-                        <MudDatePicker @bind-Date="dateFrom" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense"
+                        <MudDatePicker Date="dateFrom" DateChanged="OnDateFromChanged" Label="From"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense"
                                        DateFormat="MM/dd/yyyy" Editable="true" />
                     </div>
                     <div class="management-date-field">
-                        <MudDatePicker @bind-Date="dateTo" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense"
+                        <MudDatePicker Date="dateTo" DateChanged="OnDateToChanged" Label="To"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense"
                                        DateFormat="MM/dd/yyyy" Editable="true" />
                     </div>
                     <div style="min-width: 220px;">

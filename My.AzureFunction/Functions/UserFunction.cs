@@ -26,6 +26,7 @@ namespace My.Functions
         private readonly ApplicationDbContext _dbContext;
         private readonly IMemoryCache _cache;
         private readonly GoogleCalendarService _googleCalendar;
+        private readonly GoogleDriveService _drive;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<UserFunctions> _logger;
         private readonly IValidator<CreateUserDto> _createValidator;
@@ -37,6 +38,7 @@ namespace My.Functions
             ApplicationDbContext dbContext,
             IMemoryCache cache,
             GoogleCalendarService googleCalendar,
+            GoogleDriveService drive,
             IHttpClientFactory httpClientFactory,
             ILogger<UserFunctions> logger,
             IValidator<CreateUserDto> createValidator,
@@ -47,6 +49,7 @@ namespace My.Functions
             _dbContext = dbContext;
             _cache = cache;
             _googleCalendar = googleCalendar;
+            _drive = drive;
             _httpClientFactory = httpClientFactory;
             _logger = logger;
             _createValidator = createValidator;
@@ -159,6 +162,7 @@ namespace My.Functions
                     return ProvisionDenied(403, ProvisionFailureRules.CodeInactiveOrArchived, email);
                 }
 
+
                 // Heal stale FirstName/LastName when the stored values look auto-generated
                 // (the email itself, or its local-part). Earlier provisioning paths
                 // sometimes stuffed the email into FirstName because Google's tokeninfo
@@ -196,23 +200,16 @@ namespace My.Functions
 
                 var roles = await _userManager.GetRolesAsync(existingUser);
 
-                // Note: We no longer auto-grant module-scoped admin roles (Admin:Tyme, Admin:Intranet)
-                // to global Admins on every login. This was a legacy bootstrap convenience.
-                // Global Admins must have the scoped roles explicitly assigned if they want
-                // module access (or use impersonation). This respects the design where global
-                // Admin is only for system setup (Users, AppSettings, Logs, etc.) and does not
-                // automatically confer module permissions. Explicit removal of scoped roles
-                // will now stick.
+                // Note: We no longer auto-grant module-scoped roles to global Admins on every
+                // login. Global Admins must have scoped roles explicitly assigned if they want
+                // module access (or use impersonation). Explicit removal of scoped roles sticks.
                 var roleList = roles.ToList();
 
                 return new OkObjectResult(ToDto(existingUser, roleList));
             }
 
             // If NO users exist at all, this is the first user — make them global Admin
-            // PLUS the primary scoped admin roles (Admin:Tyme, Admin:Intranet). This lets the
-            // bootstrap user immediately access personal dashboard data, time submissions,
-            // the Tyme module, Intranet, etc. without a separate role-assignment step or
-            // having to use the impersonation dialog on first run.
+            // plus operational tops and User Access so they can use and grant each module.
             var anyUsers = await _dbContext.ApplicationUsers.AnyAsync();
             if (!anyUsers)
             {
@@ -238,12 +235,20 @@ namespace My.Functions
                     return ProvisionDenied(500, ProvisionFailureRules.CodeServerError, email);
                 }
 
+
                 var bootstrapRoles = new[]
                 {
                     Constants.Roles.Admin,
-                    Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme),
-                    Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet),
-                    Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations)
+                    Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme),
+                    Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Tyme),
+                    Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Intranet),
+                    Constants.Roles.Scoped(Constants.Roles.Navigation, Constants.Scopes.Intranet),
+                    Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Intranet),
+                    Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations),
+                    Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations),
+                    Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations),
+                    Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Expenses),
+                    Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Expenses)
                 };
 
                 var assignedRoles = new List<string>();
@@ -267,14 +272,13 @@ namespace My.Functions
 
                 _logger.LogInformation("First user {Email} provisioned as {Roles}.", email, string.Join(", ", assignedRoles));
 
-                // First successful admin completes the setup wizard.
-                await SetupState.MarkCompletedAsync(_dbContext, _cache);
-
                 return new OkObjectResult(ToDto(adminUser, assignedRoles));
             }
 
             // User doesn't exist and they're not the first — must be pre-created by admin
-            _logger.LogWarning("Unauthorized login attempt from {Email} — user not provisioned by admin.", email);
+            _logger.LogWarning(
+                "Provision denied for {Email}: user not provisioned by admin (code={Code}).",
+                email, ProvisionFailureRules.CodeNotProvisioned);
             return ProvisionDenied(403, ProvisionFailureRules.CodeNotProvisioned, email);
         }
 
@@ -293,6 +297,7 @@ namespace My.Functions
                 StatusCode = statusCode
             };
         }
+
 
         /// <summary>
         /// Admin: Get all users. Pass ?includeArchived=true to include archived users.
@@ -844,15 +849,26 @@ namespace My.Functions
 
             // Check if user has data newer than the retention period
             var cutoffDate = DateTimeOffset.UtcNow.AddDays(-retentionDays);
-            var hasRecentData = await _dbContext.TrackedTasks
+            var cutoffUtc = cutoffDate.UtcDateTime;
+            var hasRecentTime = await _dbContext.TrackedTasks
                 .AnyAsync(t => t.UserId == id && t.StartDate > cutoffDate);
+            var hasRecentExpenses = await _dbContext.ExpenseReports
+                .AnyAsync(r => r.UserId == id && UserDeleteRetentionRules.HasRecentExpenseActivity(
+                    cutoffUtc, r.CreatedAt, r.UpdatedAt, r.SubmittedAt, r.ReimbursedAt));
 
-            if (hasRecentData)
+            if (hasRecentTime || hasRecentExpenses)
                 return new BadRequestObjectResult($"User has data newer than the {retentionDays}-day retention period. Cannot delete.");
 
             // Delete all user data
             var tasks = _dbContext.TrackedTasks.Where(t => t.UserId == id);
             _dbContext.TrackedTasks.RemoveRange(tasks);
+
+            var expenseReports = await _dbContext.ExpenseReports
+                .Include(r => r.Lines).ThenInclude(l => l.Receipts)
+                .Where(r => r.UserId == id)
+                .ToListAsync();
+            await TryDeleteAppDriveExpenseReceiptsAsync(id, expenseReports);
+            _dbContext.ExpenseReports.RemoveRange(expenseReports);
 
             var settings = _dbContext.UserSettings.Where(s => s.UserId == id);
             _dbContext.UserSettings.RemoveRange(settings);
@@ -880,6 +896,63 @@ namespace My.Functions
 
             _logger.LogInformation("Admin deleted user {Email} and all associated data.", user.Email);
             return new NoContentResult();
+        }
+
+        /// <summary>
+        /// Best-effort: remove this person's receipt files and
+        /// <c>{Last}_{First}</c> / month folders on the company App Drive.
+        /// Does not delete statement PDFs under Expenses/Filed.
+        /// SQL delete still proceeds if Drive is disconnected or a file delete fails.
+        /// </summary>
+        private async Task TryDeleteAppDriveExpenseReceiptsAsync(string userId, IReadOnlyList<ExpenseReport> reports)
+        {
+            var fileIds = reports
+                .SelectMany(r => r.Lines)
+                .SelectMany(l => l.Receipts ?? [])
+                .Select(r => r.DriveFileId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Select(id => id!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var periodFolderIds = reports
+                .Select(r => r.DrivePeriodFolderId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Select(id => id!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var userFolderIds = reports
+                .Select(r => r.DriveUserFolderId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Select(id => id!)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (fileIds.Count == 0 && periodFolderIds.Count == 0 && userFolderIds.Count == 0)
+                return;
+
+            var cred = await _dbContext.AppDriveCredentials.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.AppDriveCredentialId == AppDriveLayoutRules.CredentialId);
+            if (cred == null || string.IsNullOrEmpty(cred.EncryptedRefreshToken))
+            {
+                _logger.LogWarning(
+                    "Skipped expense Drive cleanup for deleted user {UserId}: App Drive is not connected.",
+                    userId);
+                return;
+            }
+
+            foreach (var fileId in fileIds.Concat(periodFolderIds).Concat(userFolderIds))
+            {
+                try
+                {
+                    await _drive.DeleteFileAsync(cred.EncryptedRefreshToken, fileId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Could not delete expense Drive item {FileId} for user {UserId}.",
+                        fileId, userId);
+                }
+            }
         }
 
         /// <summary>

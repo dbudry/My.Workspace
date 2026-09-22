@@ -17,6 +17,9 @@ namespace My.Client.Models
         /// <summary>True when the underlying tracked task is an all-day entry.</summary>
         public bool IsAllDay { get; set; }
 
+        /// <summary>False for presence-only availability chips (busy on the team calendar, no Tyme hours).</summary>
+        public bool CountsAsTime { get; set; } = true;
+
         public bool IsManagerAdjusted { get; set; }
 
         public bool IsManagerAdjustmentOverlay { get; set; }

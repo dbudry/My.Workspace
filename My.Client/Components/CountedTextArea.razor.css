@@ -1,0 +1,59 @@
+.counted-textarea {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 40px;
+    padding: 6px 12px;
+    font-size: 1rem;
+    line-height: 1.375;
+    color: var(--mud-palette-text-primary);
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: var(--mud-default-borderradius);
+    min-width: 0;
+    width: 100%;
+}
+
+.counted-textarea:focus-within {
+    border-color: var(--mud-palette-primary);
+    outline: none;
+}
+
+.counted-textarea--error {
+    border-color: var(--mud-palette-error);
+}
+
+.counted-textarea--disabled {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.counted-textarea__surface {
+    display: flow-root;
+    outline: none;
+    min-height: 1.25em;
+    padding-right: 2.4rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.counted-textarea > .counted-textarea__counter,
+.counted-textarea ::deep .counted-textarea__counter {
+    position: absolute;
+    right: 3px;
+    bottom: 2px;
+    box-sizing: border-box;
+    width: auto;
+    height: auto;
+    line-height: 1;
+    text-align: right;
+    font-size: 0.6875rem;
+    color: var(--mud-palette-text-secondary);
+    pointer-events: none;
+    user-select: none;
+}
+
+.counted-textarea--empty:not(:focus-within) .counted-textarea__surface::after {
+    content: attr(data-placeholder);
+    color: var(--mud-palette-text-disabled);
+}

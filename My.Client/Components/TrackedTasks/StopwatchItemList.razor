@@ -1,11 +1,128 @@
 @using My.Shared.Rules
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge">
+    <div class="tasks-toolbar stopwatch-list-toolbar">
+        <div class="tasks-toolbar-row tasks-toolbar-view-row-project">
+            <div class="tasks-search-control tasks-search-control-tabs-only">
+                <SegmentedTabBar TValue="ListMode"
+                                 Class="tasks-search-views"
+                                 AriaLabel="Stopwatch view"
+                                 Value="listMode"
+                                 ValueChanged="SetListModeAsync"
+                                 Tabs="ListModeTabs" />
+            </div>
+            @if (listMode == ListMode.Day)
+            {
+                <WeekNavControl WeekStartMonday="weekStartMonday"
+                                WeekStartChanged="OnWeekNavChangedAsync"
+                                Disabled="@isDayLoading" />
+            }
+        </div>
+    </div>
 
-    <MudText Typo="Typo.h6" Align="Align.Center">Work Items</MudText>
-
-    <PageLoader IsLoading="@isLoading">
-        @if (items.Count <= 0)
+    <PageLoader IsLoading="@(listMode == ListMode.Day ? isDayLoading : isLoading)">
+        @if (listMode == ListMode.Day)
+        {
+            @if (daySections.Count == 0 || daySections.All(s => s.Rows.Count == 0))
+            {
+                <MudText Typo="Typo.h5" Align="Align.Center" Class="my-4" Style="color: var(--mud-palette-text-secondary);">
+                    No stopwatch time this week.
+                </MudText>
+            }
+            @foreach (var day in daySections)
+            {
+                <MudText Typo="Typo.subtitle1" Class="stopwatch-day-heading">@DayHeading(day.Day)</MudText>
+                @if (day.Rows.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                        No time yet today.
+                    </MudText>
+                }
+                else
+                {
+                    <MudTable Items="@day.Rows" Hover="true" Dense="true"
+                              Breakpoint="Breakpoint.Xs"
+                              Class="mt-1 mb-4 tasks-list-table stopwatch-items-table"
+                              RowClassFunc="@((row, _) => row.Item.IsRunning ? "running-row" : "")">
+                        <ColGroup>
+                            <col class="stopwatch-col-timer" />
+                            <col class="tasks-col-project" />
+                            <col class="tasks-col-name" />
+                            <col class="stopwatch-col-total" />
+                            <col class="tasks-col-actions" />
+                        </ColGroup>
+                        <HeaderContent>
+                            <MudTh>Timer</MudTh>
+                            <MudTh>Project</MudTh>
+                            <MudTh>Details</MudTh>
+                            <MudTh>Total</MudTh>
+                            <MudTh Style="text-align: center;">Actions</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Timer">
+                                @if (context.Item.IsRunning)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                                               Disabled="@(busyItemId != null || context.Item.IsCleared)"
+                                               OnClick="@(() => StopAsync(context.Item))">Stop</MudButton>
+                                }
+                                else if (CanStart(context.Item))
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                               Disabled="@(busyItemId != null)"
+                                               OnClick="@(() => StartAsync(context.Item))">Start</MudButton>
+                                }
+                            </MudTd>
+                            <MudTd DataLabel="Project">
+                                <ProjectAffiliationDisplay @key="@($"{context.ExpandKey}|{projectColorSource}")"
+                                                           ProjectName="@context.Item.Project?.Name"
+                                                           DisplayName="@GetProjectDisplayName(context.Item)"
+                                                           OrganizationName="@context.Item.Project?.OrganizationName"
+                                                           OrganizationColor="@context.Item.Project?.OrganizationColor"
+                                                           ProjectGroupName="@context.Item.Project?.ProjectGroupName"
+                                                           ProjectGroupColor="@context.Item.Project?.ProjectGroupColor"
+                                                           ColorSource="@projectColorSource" />
+                            </MudTd>
+                            <MudTd DataLabel="Details" Class="tasks-details-cell">
+                                <MudText Typo="Typo.body2" Class="tasks-details-ellipsis"
+                                         Style="@(context.Item.IsRunning ? "font-weight: bold;" : "")">
+                                    @context.Item.Details
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Total">
+                                <MudText Typo="Typo.body2" Style="font-family: monospace;">
+                                    @FormatDayTotal(context)
+                                </MudText>
+                            </MudTd>
+                            <MudTd DataLabel="Actions" Style="text-align: center;">
+                                <MudTooltip Text="Sessions">
+                                    <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
+                                                   OnClick="@(() => OpenSessionsAsync(context.Item))" />
+                                </MudTooltip>
+                            </MudTd>
+                        </RowTemplate>
+                        <ChildRowContent>
+                            <MudTr Class="stopwatch-expand-tab-row">
+                                <MudTd colspan="5" Class="stopwatch-expand-tab-cell">
+                                    <StopwatchRowExpandTab Expanded="@expandedKeys.Contains(context.ExpandKey)"
+                                                           OnToggle="@(() => ToggleExpandAsync(context.ExpandKey))" />
+                                </MudTd>
+                            </MudTr>
+                            @if (expandedKeys.Contains(context.ExpandKey))
+                            {
+                                <MudTr>
+                                    <MudTd colspan="5" Class="stopwatch-session-expand-cell">
+                                        <div class="stopwatch-session-expand-wrap">
+                                            <StopwatchSessionExpandTable Sessions="@context.Sessions" />
+                                        </div>
+                                    </MudTd>
+                                </MudTr>
+                            }
+                        </ChildRowContent>
+                    </MudTable>
+                }
+            }
+        }
+        else if (items.Count <= 0)
         {
             <MudText Typo="Typo.h5" Align="Align.Center" Class="my-4" Style="color: var(--mud-palette-text-secondary);">
                 No work items yet. Start one above.
@@ -27,7 +144,7 @@
                     <col class="tasks-col-actions" />
                 </ColGroup>
                 <HeaderContent>
-                    <MudTh Style="text-align: center;">Timer</MudTh>
+                    <MudTh>Timer</MudTh>
                     <MudTh>
                         <div class="tasks-project-header">
                             <span>Project</span>
@@ -56,7 +173,7 @@
                     <MudTh Style="text-align: center;">Actions</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="Timer" Style="text-align: center;">
+                    <MudTd DataLabel="Timer">
                         @if (context.IsRunning)
                         {
                             <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
@@ -85,20 +202,17 @@
                         }
                         else
                         {
-                            <div @onclick="@(() => OpenSessionsAsync(context))" style="cursor: pointer;">
-                                <ProjectAffiliationDisplay @key="@($"{context.StopwatchItemId}|{projectColorSource}")"
-                                                           ProjectName="@context.Project?.Name"
-                                                           DisplayName="@GetProjectDisplayName(context)"
-                                                           OrganizationName="@context.Project?.OrganizationName"
-                                                           OrganizationColor="@context.Project?.OrganizationColor"
-                                                           ProjectGroupName="@context.Project?.ProjectGroupName"
-                                                           ProjectGroupColor="@context.Project?.ProjectGroupColor"
-                                                           ColorSource="@projectColorSource" />
-                            </div>
+                            <ProjectAffiliationDisplay @key="@($"{context.StopwatchItemId}|{projectColorSource}")"
+                                                       ProjectName="@context.Project?.Name"
+                                                       DisplayName="@GetProjectDisplayName(context)"
+                                                       OrganizationName="@context.Project?.OrganizationName"
+                                                       OrganizationColor="@context.Project?.OrganizationColor"
+                                                       ProjectGroupName="@context.Project?.ProjectGroupName"
+                                                       ProjectGroupColor="@context.Project?.ProjectGroupColor"
+                                                       ColorSource="@projectColorSource" />
                         }
                     </MudTd>
-                    <MudTd DataLabel="Details" Class="tasks-details-cell"
-                           @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
+                    <MudTd DataLabel="Details" Class="tasks-details-cell">
                         <MudTooltip>
                             <ChildContent>
                                 <MudText Typo="Typo.body2" Class="tasks-details-ellipsis"
@@ -111,7 +225,7 @@
                             </TooltipContent>
                         </MudTooltip>
                     </MudTd>
-                    <MudTd DataLabel="Total" @onclick="@(() => OpenSessionsAsync(context))" Style="cursor: pointer;">
+                    <MudTd DataLabel="Total">
                         <MudText Typo="Typo.body2" Style="font-family: monospace;">
                             @FormatTotal(context)
                         </MudText>
@@ -119,8 +233,8 @@
                     <MudTd DataLabel="Actions" Style="text-align: center;">
                         <div class="d-flex justify-center" style="gap: 2px;">
                             @* Deleting a work item (and all its sessions) lives inside the sessions dialog now —
-                               everything else (details/project when unlocked, session durations) already did. *@
-                            <MudTooltip Text="Sessions — durations, create duration, timer; edit details/project when unlocked">
+                               everything else (name/project when unlocked, session durations) already did. *@
+                            <MudTooltip Text="Sessions — durations, create duration, timer; edit name/project when unlocked">
                                 <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Color="Color.Primary"
                                                OnClick="@(() => OpenSessionsAsync(context))" />
                             </MudTooltip>
@@ -136,10 +250,35 @@
                         </div>
                     </MudTd>
                 </RowTemplate>
+                <ChildRowContent>
+                    <MudTr Class="stopwatch-expand-tab-row">
+                        <MudTd colspan="5" Class="stopwatch-expand-tab-cell">
+                            <StopwatchRowExpandTab Expanded="@expandedKeys.Contains(context.StopwatchItemId)"
+                                                   OnToggle="@(() => ToggleExpandAsync(context.StopwatchItemId, context))" />
+                        </MudTd>
+                    </MudTr>
+                    @if (expandedKeys.Contains(context.StopwatchItemId))
+                    {
+                        <MudTr>
+                            <MudTd colspan="5" Class="stopwatch-session-expand-cell">
+                                @if (loadingExpandKeys.Contains(context.StopwatchItemId))
+                                {
+                                    <MudProgressLinear Indeterminate="true" Class="my-2" />
+                                }
+                                else
+                                {
+                                    <div class="stopwatch-session-expand-wrap">
+                                        <StopwatchSessionExpandTable Sessions="@ItemExpandSessions(context.StopwatchItemId)"
+                                                                     ShowDate="true" />
+                                    </div>
+                                }
+                            </MudTd>
+                        </MudTr>
+                    }
+                </ChildRowContent>
             </MudTable>
 
             <MudPagination Class="mt-4 d-flex justify-center" Count="@pagingAttributes.TotalPageCount"
                            Selected="@(currentPage + 1)" SelectedChanged="@((int p) => PageChanged(p - 1))" />
         }
     </PageLoader>
-</MudContainer>

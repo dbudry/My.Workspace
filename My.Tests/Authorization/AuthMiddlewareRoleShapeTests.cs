@@ -29,13 +29,16 @@ public class AuthMiddlewareRoleShapeTests
     }
 
     [Theory]
-    [InlineData("Admin:Tyme")]
     [InlineData("Manager:Tyme")]
     [InlineData("Editor:Tyme")] // the exact shape that regressed
     [InlineData("User:Tyme")]
     [InlineData("Editor:Intranet")]
-    [InlineData("Admin:Organizations")]
-    [InlineData("Admin:Some_Scope_1")]
+    [InlineData("UserAccess:Tyme")]
+    [InlineData("Navigation:Intranet")]
+    [InlineData("Manager:Organizations")]
+    [InlineData("User:Expenses")]
+    [InlineData("UserAccess:Expenses")]
+    [InlineData("Manager:Some_Scope_1")]
     public void Scoped_role_with_recognized_base_is_valid(string role)
     {
         Assert.True(AuthMiddleware.IsValidRoleShape(role));
@@ -46,9 +49,11 @@ public class AuthMiddlewareRoleShapeTests
     [InlineData("root")]
     [InlineData("")]
     [InlineData("Admin:")]
+    [InlineData("Admin:Tyme")]
     [InlineData("Admin:Tyme:Extra")]
     [InlineData("Admin:Ty me")]
     [InlineData("Admin:Ty-me")]
+    [InlineData("Maintenance:Organizations")]
     public void Malformed_or_unrecognized_role_is_rejected(string role)
     {
         Assert.False(AuthMiddleware.IsValidRoleShape(role));

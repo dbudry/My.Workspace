@@ -36,6 +36,16 @@ public class GoogleCalendarWebhookUrlRulesTests
             "https://func-example.azurewebsites.net/api/googlecalendar/webhook",
             GoogleCalendarWebhookUrlRules.ResolveFromHttp(null, null, "https", "func-example.azurewebsites.net"));
 
+    [Theory]
+    [InlineData("https://app.example.com/api/googlecalendar/webhook", true)]
+    [InlineData("https://func.azurewebsites.net/api/googlecalendar/webhook", true)]
+    [InlineData("https://localhost:7074/api/googlecalendar/webhook", false)]
+    [InlineData("https://127.0.0.1/api/googlecalendar/webhook", false)]
+    [InlineData("http://example.com/api/googlecalendar/webhook", false)]
+    [InlineData(null, false)]
+    public void IsReachableByGoogle_rejects_loopback_and_non_https(string? url, bool expected) =>
+        Assert.Equal(expected, GoogleCalendarWebhookUrlRules.IsReachableByGoogle(url));
+
     [Fact]
     public void Source_reports_which_value_would_be_used()
     {

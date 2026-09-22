@@ -15,49 +15,49 @@
     <DialogContent>
         <DialogFormStack>
             <MudText>
-                Your <strong>Tyme</strong> calendar was just created. Sync is optional — choose what
-                you want below. Everything here can be changed later from Settings.
+                Choose what syncs. Same options as Settings → Tyme → Google Calendar.
             </MudText>
 
             <MudSwitch T="bool" @bind-Value="publishToGoogle" Color="Color.Primary" Class="mb-0">
-                Export Tyme tasks to Google Calendar
+                Tyme → Google (export)
             </MudSwitch>
-            <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
-                Every task you log in Tyme is copied to your Google Calendar. Edits and deletes in Tyme
-                update that Google event.
+            <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                New and edited Tyme tasks appear on your calendar. Off: stop sending; existing Google events stay.
             </MudText>
 
             <MudSwitch T="bool" @bind-Value="importFromGoogle" Color="Color.Primary" Class="mb-0">
-                Import Google Calendar events into Tyme
+                Google → Tyme (import tagged events)
             </MudSwitch>
-            <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
-                Google events whose title includes a project <code>[slug]</code> (for example
-                <code>[itsup] Laptop rebuild</code>) become Tyme tasks on that project. Events without
-                a <code>[slug]</code> stay private and are never imported.
+            <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                Only events with a project <code>[slug]</code> in the title (e.g. <code>[itsup] Laptop rebuild</code>).
+                Untagged events stay private.
             </MudText>
 
-            <MudSwitch T="bool" @bind-Value="availabilityOnly" Color="Color.Primary" Class="mb-0"
+            <MudSwitch T="bool"
+                       Value="@((publishToGoogle || importFromGoogle) && availabilityOnly)"
+                       ValueChanged="v => availabilityOnly = v"
+                       Color="Color.Primary" Class="mb-0"
                        Disabled="@(!publishToGoogle && !importFromGoogle)">
-                Only Availability projects (OOO, PTO)
+                Only OOO / PTO (Share availability)
             </MudSwitch>
             <MudText Typo="Typo.caption" Class="mb-2" Style="color: var(--mud-palette-text-secondary);">
-                Limit import and export to projects marked Share availability with team. Work
-                projects stay in Tyme.
+                Work projects stay in Tyme. Team Availability calendar is unchanged.
             </MudText>
 
             @if (publishToGoogle)
             {
                 <MudDivider Class="my-2" />
                 <MudText Typo="Typo.body2">
-                    Optionally push your existing tracked tasks from a date range too, so the calendar
-                    also shows your recent work, not just new tasks going forward:
+                    Optionally push existing Tyme tasks in a date range so Google also shows recent work:
                 </MudText>
-                <div class="d-flex gap-3">
-                    <MudDatePicker @bind-Date="fromDate" Label="From" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
-                    <MudDatePicker @bind-Date="toDate" Label="To" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                <div class="google-cal-pull-row mt-2">
+                    <MudDatePicker @bind-Date="fromDate" Label="From" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" DateFormat="MM/dd/yyyy" />
+                    <MudDatePicker @bind-Date="toDate" Label="To" Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" DateFormat="MM/dd/yyyy" />
                 </div>
-                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                    Tasks already on a calendar are skipped automatically.
+                <MudText Typo="Typo.caption" Class="mt-1" Style="color: var(--mud-palette-text-secondary);">
+                    Tasks already on a calendar are skipped.
                 </MudText>
             }
         </DialogFormStack>
@@ -101,11 +101,14 @@
         var range = publishToGoogle && fromDate is not null && toDate is not null
             ? new BackfillRange(fromDate.Value, toDate.Value)
             : null;
-        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, availabilityOnly, range)));
+        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, AvailabilityOnlyToSave, range)));
     }
 
+    private bool AvailabilityOnlyToSave =>
+        (publishToGoogle || importFromGoogle) && availabilityOnly;
+
     private void SkipBackfill() =>
-        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, availabilityOnly, null)));
+        Dialog.Close(DialogResult.Ok(new BackfillChoice(publishToGoogle, importFromGoogle, AvailabilityOnlyToSave, null)));
 
     public record BackfillRange(DateTime From, DateTime To);
 

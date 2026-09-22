@@ -20,5 +20,11 @@ namespace My.Shared.Dtos.StopwatchItem
         /// item cannot change while this is true; unlocked sessions can still edit duration.
         /// </summary>
         public bool HasLockedSessions { get; set; }
+
+        /// <summary>
+        /// True when the user removed this item from the Work Items list. Sessions remain.
+        /// Day view still shows logged time; Start is hidden because the item is not on the list.
+        /// </summary>
+        public bool IsCleared { get; set; }
     }
 }

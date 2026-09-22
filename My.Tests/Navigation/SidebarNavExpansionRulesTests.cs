@@ -12,13 +12,16 @@ public class SidebarNavExpansionRulesTests
     [InlineData("admin/calendar", true)]
     [InlineData("intranet/pages", true)]
     [InlineData("intranet/editor/abc", true)]
+    [InlineData("expenses", true)]
+    [InlineData("expenses/settings", true)]
     [InlineData("intranet/pages/bitlocker", false)]
     public void RouteClassifiers_MatchExpectedSections(string path, bool isBuiltIn)
     {
         Assert.Equal(isBuiltIn,
             SidebarNavExpansionRules.IsTymeRoute(path)
             || SidebarNavExpansionRules.IsAdminRoute(path)
-            || SidebarNavExpansionRules.IsIntranetMaintenanceRoute(path));
+            || SidebarNavExpansionRules.IsIntranetMaintenanceRoute(path)
+            || SidebarNavExpansionRules.IsExpensesRoute(path));
     }
 
     [Theory]

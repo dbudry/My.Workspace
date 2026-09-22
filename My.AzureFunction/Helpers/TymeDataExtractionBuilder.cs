@@ -181,6 +181,7 @@ public sealed class TymeDataExtractionBuilder
                 IsActive = p.IsActive,
                 IsArchived = p.IsArchived,
                 IsSharedAvailability = p.IsSharedAvailability,
+                CountsAsTime = p.CountsAsTime,
                 IsBillable = p.IsBillable
             })
             .ToListAsync();
@@ -237,11 +238,11 @@ public sealed class TymeDataExtractionBuilder
             .Select(task => new TrackedTaskExportRow
             {
                 TaskId = task.TaskId,
-                Details = task.Details ?? string.Empty, // TrackedTask.Details is nullable in the DB; export row stays non-null.
+                Name = task.Details ?? string.Empty, // trackedTask.Details is nullable in the DB; export row stays non-null.
                 // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store
                 // that) — recompute from the dates instead of exporting the raw column.
-                DurationSeconds = AllDayEntryRules.EffectiveDuration(
-                    task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours).TotalSeconds,
+                DurationSeconds = TeamAvailabilityHoursRules.HoursFor(
+                    task.Project?.CountsAsTime, task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours).TotalSeconds,
                 StartDate = task.StartDate,
                 EndDate = task.EndDate,
                 IsBillable = task.IsBillable,

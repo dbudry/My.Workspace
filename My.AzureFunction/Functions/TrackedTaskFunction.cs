@@ -111,6 +111,16 @@ namespace My.Functions
             task.StartDate = DateTime.SpecifyKind(startDay, DateTimeKind.Utc);
             task.EndDate = DateTime.SpecifyKind(lastDay, DateTimeKind.Utc);
 
+            var project = await GetProjectAsync(task.ProjectId);
+            if (project != null)
+                task.Project = project;
+            if (project != null
+                && TeamAvailabilityHoursRules.IsPresenceOnly(project.IsSharedAvailability, project.CountsAsTime))
+            {
+                task.Duration = TimeSpan.Zero;
+                return;
+            }
+
             var hours = await GetWorkdayHoursAsync();
             var derived = AllDayEntryRules.DurationFor(task.StartDate, task.EndDate, hours);
             // SQL time holds 13:17:30; it cannot hold 24:00. Overflow all-day totals
@@ -168,10 +178,11 @@ namespace My.Functions
         private TrackedTaskDto ToDto(TrackedTask task, double workdayHours)
         {
             var dto = mapper.TrackedTaskToDto(task);
-            // TrackedTask.Details is null in the DB when no details were entered; TrackedTaskDto.Details
+            // trackedTask.Details is null in the DB when no details were entered; TrackedTaskdto.Details
             // stays non-null so nothing downstream (client bindings, search/sort) has to change.
             dto.Details ??= string.Empty;
-            dto.Duration = AllDayEntryRules.EffectiveDuration(
+            dto.Duration = TeamAvailabilityHoursRules.DisplayDuration(
+                task.Project?.CountsAsTime,
                 task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours);
             return dto;
         }
@@ -471,6 +482,7 @@ namespace My.Functions
             if (trackedTask == null)
                 return new NotFoundObjectResult("Tracked task not found!");
 
+            await EnsureProjectLoadedAsync(trackedTask);
             var dto = ToDto(trackedTask, await GetWorkdayHoursAsync());
             dto.IsMonthSubmitted = await IsMonthSubmittedAsync(
                 trackedTask.UserId, trackedTask.StartDate.Year, trackedTask.StartDate.Month);
@@ -488,11 +500,11 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
-            // Never store leading/trailing whitespace on task details. Blank stays null in
-            // the DB rather than "" — SanitizeTaskDetails trims/coalesces for validation, then
+            // Never store leading/trailing whitespace on task names. Blank stays null in
+            // the DB rather than "" — SanitizeTaskName trims/coalesces for validation, then
             // we collapse the empty result back to null right before it's persisted.
-            var sanitizedDetails = WeekEntryGridRules.SanitizeTaskDetails(trackedTask!.Details);
-            trackedTask.Details = string.IsNullOrEmpty(sanitizedDetails) ? null : sanitizedDetails;
+            var sanitizedName = WeekEntryGridRules.SanitizeTaskName(trackedTask!.Details);
+            trackedTask.Details = string.IsNullOrEmpty(sanitizedName) ? null : sanitizedName;
 
             var newTrackedTask = mapper.DtoToTrackedTask(trackedTask!);
             newTrackedTask.UserId = userId;
@@ -586,6 +598,7 @@ namespace My.Functions
 
             await TryPushCreateAsync(newTrackedTask);
 
+            await EnsureProjectLoadedAsync(newTrackedTask);
             var createdDto = ToDto(newTrackedTask, await GetWorkdayHoursAsync());
             createdDto.IsMonthSubmitted = false;
             return new OkObjectResult(createdDto);
@@ -656,8 +669,7 @@ namespace My.Functions
             if (dupProjectIssue != null)
                 return new BadRequestObjectResult(dupProjectIssue);
 
-            var clone = new TrackedTask
-            {
+            var clone = new TrackedTask {
                 UserId = userId,
                 Details = source.Details,
                 ProjectId = source.ProjectId,
@@ -683,6 +695,7 @@ namespace My.Functions
             await TryPushCreateAsync(clone);
             logger.LogInformation("Tracked task {SourceId} duplicated to {NewId}.", id, clone.TaskId);
 
+            await EnsureProjectLoadedAsync(clone);
             var cloneDto = ToDto(clone, await GetWorkdayHoursAsync());
             cloneDto.IsMonthSubmitted = false;
             return new OkObjectResult(cloneDto);
@@ -698,10 +711,10 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
-            // Never store leading/trailing whitespace on task details. Blank stays null in
+            // Never store leading/trailing whitespace on task names. Blank stays null in
             // the DB rather than "" — see CreateTrackedTaskAsync for the same normalization.
-            var sanitizedUpdateDetails = WeekEntryGridRules.SanitizeTaskDetails(trackedTask!.Details);
-            trackedTask.Details = string.IsNullOrEmpty(sanitizedUpdateDetails) ? null : sanitizedUpdateDetails;
+            var sanitizedUpdateName = WeekEntryGridRules.SanitizeTaskName(trackedTask!.Details);
+            trackedTask.Details = string.IsNullOrEmpty(sanitizedUpdateName) ? null : sanitizedUpdateName;
 
             var foundTrackedTask = await taskRepository.Find(trackedTask!.TaskId);
             if (foundTrackedTask == null)
@@ -763,7 +776,15 @@ namespace My.Functions
 
             await taskRepository.Update(foundTrackedTask);
             await TryPushUpdateAsync(foundTrackedTask);
+            await EnsureProjectLoadedAsync(foundTrackedTask);
             return new OkObjectResult(ToDto(foundTrackedTask, await GetWorkdayHoursAsync()));
+        }
+
+        private async Task EnsureProjectLoadedAsync(TrackedTask task)
+        {
+            if (task.Project != null || string.IsNullOrEmpty(task.ProjectId))
+                return;
+            task.Project = await GetProjectAsync(task.ProjectId);
         }
 
     }

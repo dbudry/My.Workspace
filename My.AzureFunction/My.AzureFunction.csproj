@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -13,6 +13,52 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\cs\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\de\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\es\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\fr\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\it\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\ja\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\ko\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\Microsoft.Build.Locator.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.exe" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.exe.config" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\Microsoft.IO.Redist.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\Newtonsoft.Json.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\pl\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\pt-BR\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\ru\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.Buffers.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.Collections.Immutable.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.CommandLine.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.Memory.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.Numerics.Vectors.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.Runtime.CompilerServices.Unsafe.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\System.Threading.Tasks.Extensions.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\tr\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\zh-Hans\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-net472\zh-Hant\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\cs\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\de\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\es\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\fr\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\it\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\ja\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\ko\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\Microsoft.Build.Locator.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.deps.json" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.dll.config" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\Microsoft.CodeAnalysis.Workspaces.MSBuild.BuildHost.runtimeconfig.json" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\Newtonsoft.Json.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\pl\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\pt-BR\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\ru\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\System.Collections.Immutable.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\System.CommandLine.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\tr\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\zh-Hans\System.CommandLine.resources.dll" />
+    <Content Remove="C:\Users\dbudry_profitpt\.nuget\packages\microsoft.codeanalysis.workspaces.msbuild\4.14.0\contentFiles\any\any\BuildHost-netcore\zh-Hant\System.CommandLine.resources.dll" />
   </ItemGroup>
 
   <ItemGroup>
@@ -33,10 +79,22 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.1" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.17.1" />
+    <PackageReference Include="PDFsharp" Version="6.2.3" />
+    <PackageReference Include="QuestPDF" Version="2025.7.3" />
     <PackageReference Include="Riok.Mapperly" Version="4.3.1" />
     <PackageReference Include="Google.Apis.Calendar.v3" Version="1.68.0.3536" />
     <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Templates\Form_87-43.xlsx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

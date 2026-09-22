@@ -1,0 +1,13 @@
+<button type="button"
+        class="stopwatch-expand-tab"
+        aria-expanded="@Expanded"
+        aria-label="@(Expanded ? "Hide sessions" : "Show sessions")"
+        @onclick="OnToggle"
+        @onclick:stopPropagation="true">
+    <MudIcon Icon="@(Expanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" />
+</button>
+
+@code {
+    [Parameter] public bool Expanded { get; set; }
+    [Parameter] public EventCallback OnToggle { get; set; }
+}

@@ -241,6 +241,8 @@ namespace My.Client.Pages.Tyme
                     duration);
             }
             // Zero still shows as empty for manual drafts; stopwatch shows 00:00 so the cell isn't blank.
+            if (row.ManualTask?.Project is { CountsAsTime: false })
+                return "Busy";
             if (duration <= TimeSpan.Zero)
                 return row.Kind == TaskListRowKind.Stopwatch ? "00:00" : WeekEntryGridRules.FormatDayDurationInput(duration);
             // All-day uses workday hours × days (can exceed 24h). Do not use the
@@ -582,8 +584,7 @@ namespace My.Client.Pages.Tyme
                     TimeSpan? adjusted = null;
                     if (t.ManagerAdjustment != null && t.AdjustmentKind is "Alias" or "Direct")
                         adjusted = t.ManagerAdjustment.Duration;
-                    return new WeeklyTimeTotalsRules.TaskDurationSlice(
-                        t.StartDate, t.Duration, adjusted, t.IsAllDay, t.EndDate);
+                    return new WeeklyTimeTotalsRules.TaskDurationSlice(t.StartDate, t.Duration, adjusted, t.IsAllDay, t.EndDate, t.Project?.CountsAsTime != false);
                 });
             weeklyTotals = WeeklyTimeTotalsRules.Compute(slices, from, to, displayMode);
         }
@@ -952,8 +953,7 @@ namespace My.Client.Pages.Tyme
                         adjusted = t.ManagerAdjustment.Duration;
                     }
 
-                    return new WeeklyTimeTotalsRules.TaskDurationSlice(
-                        t.StartDate, t.Duration, adjusted, t.IsAllDay, t.EndDate);
+                    return new WeeklyTimeTotalsRules.TaskDurationSlice(t.StartDate, t.Duration, adjusted, t.IsAllDay, t.EndDate, t.Project?.CountsAsTime != false);
                 });
                 weeklyTotals = WeeklyTimeTotalsRules.Compute(
                     durationSlices, from, to, displayMode);

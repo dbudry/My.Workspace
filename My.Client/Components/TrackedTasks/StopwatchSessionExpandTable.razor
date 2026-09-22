@@ -1,0 +1,58 @@
+@using My.Shared.Rules
+@inject UserSettingsService SettingsService
+
+<MudTable T="StopwatchDayViewRules.SessionSlice" Items="@Sessions" Dense="true" Hover="true"
+          Elevation="0" Breakpoint="Breakpoint.None" Class="stopwatch-session-expand">
+    <HeaderContent>
+        @if (ShowDate)
+        {
+            <MudTh Class="stopwatch-session-date">Date</MudTh>
+        }
+        <MudTh>Start</MudTh>
+        <MudTh>Stop</MudTh>
+        <MudTh>Duration</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        @if (ShowDate)
+        {
+            <MudTd DataLabel="Date" Class="stopwatch-session-date">@context.StartLocal.ToString("ddd, MMM d")</MudTd>
+        }
+        <MudTd DataLabel="Start">@SettingsService.FormatTime(context.StartLocal)</MudTd>
+        <MudTd DataLabel="Stop">
+            @if (context.IsRunning)
+            {
+                <span style="color: var(--mud-palette-success);">Running</span>
+            }
+            else
+            {
+                @SettingsService.FormatTime(DisplayEnd(context))
+            }
+        </MudTd>
+        <MudTd DataLabel="Duration">
+            <div class="d-flex align-center">
+                <span style="font-family: monospace;">@FormatDuration(context.Duration, context)</span>
+                @if (context.IsLocked)
+                {
+                    <MudTooltip Text="This month is submitted — duration is locked">
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Size="Size.Small" Class="ml-1" />
+                    </MudTooltip>
+                }
+            </div>
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    [Parameter] public IReadOnlyList<StopwatchDayViewRules.SessionSlice> Sessions { get; set; } = [];
+    [Parameter] public bool ShowDate { get; set; }
+
+    private DateTime DisplayEnd(StopwatchDayViewRules.SessionSlice session) =>
+        StopwatchCalendarRules.GetSessionDisplayEnd(session.StartLocal, session.EndLocal, session.Duration);
+
+    private string FormatDuration(TimeSpan duration, StopwatchDayViewRules.SessionSlice session)
+    {
+        if (session.IsRunning)
+            duration = StopwatchRules.ElapsedForActiveSession(session.StartUtc, null);
+        return $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
+    }
+}

@@ -86,6 +86,17 @@ public class AuthGatesTests
     }
 
     [Fact]
+    public void UserAccess_tyme_does_not_satisfy_manager_tyme()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Tyme));
+
+        var result = AuthGates.RequireScopedTyme(principal, out _, Constants.Roles.Manager);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+    }
+
+    [Fact]
     public void Authenticated_with_manager_role_passes_manager_gate()
     {
         var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme));
@@ -154,6 +165,60 @@ public class AuthGatesTests
         var principal = new ClaimsPrincipal(new[] { anonymous, ours });
 
         var result = AuthGates.RequireScopedTyme(principal, out var userId);
+
+        Assert.Null(result);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireScopedExpenses_anonymous_caller_gets_401()
+    {
+        var result = AuthGates.RequireScopedExpenses(Anonymous(), out var userId);
+
+        Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(string.Empty, userId);
+    }
+
+    [Fact]
+    public void RequireScopedExpenses_global_admin_does_not_pass_without_expenses_role()
+    {
+        var principal = Authenticated(Constants.Roles.Admin);
+
+        var result = AuthGates.RequireScopedExpenses(principal, out var userId);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireScopedExpenses_scoped_user_role_passes_default_gate()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Expenses));
+
+        var result = AuthGates.RequireScopedExpenses(principal, out var userId);
+
+        Assert.Null(result);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireScopedExpenses_user_fails_manager_gate_with_403()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Expenses));
+
+        var result = AuthGates.RequireScopedExpenses(principal, out _, Constants.Roles.Manager);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+    }
+
+    [Fact]
+    public void RequireScopedExpenses_manager_passes_manager_gate()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Expenses));
+
+        var result = AuthGates.RequireScopedExpenses(principal, out var userId, Constants.Roles.Manager);
 
         Assert.Null(result);
         Assert.Equal(UserIdValue, userId);
@@ -231,7 +296,7 @@ public class AuthGatesTests
 
     // ---------- RequireOrganizationsAdminOnly ----------
     //
-    // Structural changes (archive/delete) — Admin:Organizations. Editor:Organizations does not
+    // Structural changes (archive/delete) — Manager:Organizations. Editor:Organizations does not
     // satisfy this. Global Admin does not satisfy this.
 
     [Fact]
@@ -256,10 +321,10 @@ public class AuthGatesTests
     }
 
     [Fact]
-    public void RequireOrganizationsAdminOnly_admin_organizations_passes()
+    public void RequireOrganizationsAdminOnly_manager_organizations_passes()
     {
         var principal = Authenticated(
-            Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations));
+            Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations));
 
         var result = AuthGates.RequireOrganizationsAdminOnly(principal, out var userId);
 
@@ -276,5 +341,41 @@ public class AuthGatesTests
 
         var status = Assert.IsType<StatusCodeResult>(result);
         Assert.Equal(403, status.StatusCode);
+    }
+
+    // ---------- RequireGlobalAdmin ----------
+    //
+    // Users / App Settings / App Drive. Scoped admins (Admin:Tyme, etc.) do not pass.
+
+    [Fact]
+    public void RequireGlobalAdmin_anonymous_caller_gets_401()
+    {
+        var result = AuthGates.RequireGlobalAdmin(Anonymous(), out var userId);
+
+        Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(string.Empty, userId);
+    }
+
+    [Fact]
+    public void RequireGlobalAdmin_scoped_admin_gets_403()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Tyme));
+
+        var result = AuthGates.RequireGlobalAdmin(principal, out var userId);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireGlobalAdmin_unscoped_admin_passes()
+    {
+        var principal = Authenticated(Constants.Roles.Admin);
+
+        var result = AuthGates.RequireGlobalAdmin(principal, out var userId);
+
+        Assert.Null(result);
+        Assert.Equal(UserIdValue, userId);
     }
 }

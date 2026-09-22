@@ -111,6 +111,9 @@ var host = new HostBuilder()
 
         // Google Drive integration for intranet (create/upload docs from page builder)
         services.AddSingleton<GoogleDriveService>();
+        services.AddSingleton<ExpenseStatementPdfService>();
+        services.AddSingleton<ExcelWorkbookPdfConverter>();
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
         // Token credential for the admin Logs page. DefaultAzureCredential picks up the
         // Function App's managed identity in Azure and falls back to local dev credentials

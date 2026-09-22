@@ -38,6 +38,10 @@
         {
             <span class="page-title">@pageTitle</span>
         }
+        @if (pageTitleActions is not null)
+        {
+            <span class="page-title-actions">@pageTitleActions</span>
+        }
         <span class="app-bar-spacer"></span>
         @if (Impersonation.IsActive)
         {
@@ -88,6 +92,7 @@
         <main>
             <article class="content">
                 <CascadingValue Value="SetPageTitle" Name="SetPageTitle">
+                <CascadingValue Value="SetPageTitleActions" Name="SetPageTitleActions">
                     @* ErrorBoundary keyed to the URL so a navigation away from a crashed
                        page resets the boundary and re-renders the new page. Without this,
                        the auth-expired AccessTokenNotAvailableException thrown from any
@@ -110,10 +115,14 @@
                                 <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
                                     Something went wrong on this page.
                                     <MudButton Color="Color.Inherit" Size="Size.Small" OnClick="ResetErrorBoundary">Retry</MudButton>
+#if DEBUG
+                                    <MudText Typo="Typo.caption" Class="mt-2" Style="white-space:pre-wrap;">@ex.GetType().Name: @ex.Message</MudText>
+#endif
                                 </MudAlert>
                             }
                         </ErrorContent>
                     </ErrorBoundary>
+                </CascadingValue>
                 </CascadingValue>
             </article>
         </main>
@@ -141,7 +150,9 @@
 #endif
 
     private string pageTitle = string.Empty;
+    private RenderFragment? pageTitleActions;
     private Action<string>? _setPageTitle;
+    private Action<RenderFragment?>? _setPageTitleActions;
 
     // ErrorBoundary state — keyed to the URL so a navigation away from a crashed
     // page resets the boundary automatically. Without the key, an error sticks
@@ -158,6 +169,12 @@
             pageTitle = title;
             InvokeAsync(StateHasChanged);
         }
+    };
+
+    private Action<RenderFragment?> SetPageTitleActions => _setPageTitleActions ??= (actions) =>
+    {
+        pageTitleActions = actions;
+        InvokeAsync(StateHasChanged);
     };
 
     private string PillLabel => Impersonation.Roles.Count switch
@@ -207,6 +224,7 @@
         // intranet navigations left a trail of stale titles until each load finished.
         if (!string.IsNullOrEmpty(pageTitle))
             pageTitle = string.Empty;
+        pageTitleActions = null;
         InvokeAsync(StateHasChanged);
     }
 

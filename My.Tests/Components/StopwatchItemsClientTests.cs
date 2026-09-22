@@ -50,6 +50,25 @@ namespace My.Tests.Components
         }
 
         [Fact]
+        public async Task LoadDayViewAsync_issues_GET_with_from_and_to()
+        {
+            var (client, handler) = Build(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"items\":[],\"sessions\":[]}", System.Text.Encoding.UTF8, "application/json")
+            });
+            var from = new DateTime(2026, 9, 14, 4, 0, 0, DateTimeKind.Utc);
+            var to = from.AddDays(7);
+
+            await client.LoadDayViewAsync(from, to);
+
+            Assert.Equal(HttpMethod.Get, handler.LastRequest!.Method);
+            var url = handler.LastRequest.RequestUri!.ToString();
+            Assert.Contains("/stopwatchitems/day?", url, StringComparison.Ordinal);
+            Assert.Contains("from=", url, StringComparison.Ordinal);
+            Assert.Contains("to=", url, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public async Task DeleteAsync_surfaces_server_reason_on_failure()
         {
             var (client, _) = Build(new HttpResponseMessage(HttpStatusCode.BadRequest)

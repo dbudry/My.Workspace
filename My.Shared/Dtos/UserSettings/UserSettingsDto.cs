@@ -69,5 +69,10 @@ namespace My.Shared.Dtos.UserSettings
         /// start Google Calendar OAuth until they connect again from Settings.
         /// </summary>
         public bool GoogleCalendarAutoConnectOptOut { get; set; }
+
+        public bool HasExpenseSignature { get; set; }
+
+        /// <summary>Home address for Form 87-43. Street, then city/state/ZIP on the next line.</summary>
+        public string? ExpenseHomeAddress { get; set; }
     }
 }

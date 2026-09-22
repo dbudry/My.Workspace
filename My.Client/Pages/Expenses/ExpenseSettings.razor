@@ -1,0 +1,38 @@
+@page "/expenses/settings"
+@attribute [Authorize(Policy = "Expenses:Manager:Scoped")]
+
+@using My.Shared.Constants
+@using My.Shared.Dtos.Expenses
+@using My.Shared.Rules
+
+<PageTitle>Expense settings</PageTitle>
+
+<PageHeader Title="Expense settings" />
+
+<PageLoader IsLoading="@isLoading">
+    <div style="max-width: 40rem;">
+        <SectionCard Title="Mileage">
+            <MudNumericField T="decimal" Value="mileageRatePerMile"
+                             ValueChanged="OnMileageChangedAsync"
+                             Immediate="true"
+                             DebounceInterval="400"
+                             Label="Personal car rate (USD per mile)"
+                             Variant="Variant.Outlined"
+                             Min="0m" Max="10m" Step="0.001m"
+                             Format="N3"
+                             Class="mb-2" />
+            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                Copied onto each report when it is created; later rate changes do not rewrite existing drafts.
+            </MudText>
+        </SectionCard>
+        <SectionCard Title="Approval signature">
+            <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                Stamped as Authorized Approval on every employee expense PDF. Reused until you replace it.
+            </MudText>
+            <SignatureEditor MediaUrl="@Constants.API.Expenses.SignatureMedia"
+                             PutUrl="@Constants.API.Expenses.Signature"
+                             DeleteUrl="@Constants.API.Expenses.Signature"
+                             @bind-HasSignature="hasApprovalSignature" />
+        </SectionCard>
+    </div>
+</PageLoader>

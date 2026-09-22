@@ -16,7 +16,8 @@ namespace My.Functions.Services;
 /// calendar the same way an in-app save would.
 ///
 /// Handles all four transitions (off→off, off→on, on→on, on→off) including stale-id
-/// recreate. Errors are logged but never bubble — the primary task save must not
+/// recreate. Writes use the workspace service account, not the employee's Calendar
+/// token. Errors are logged but never bubble — the primary task save must not
 /// fail because the team calendar push glitched.
 /// </summary>
 public class TeamAvailabilityPublisher
@@ -54,9 +55,9 @@ public class TeamAvailabilityPublisher
         {
             var teamCalId = await GetTeamAvailabilityCalendarIdAsync();
             if (teamCalId == null) return;
+            if (!_googleCalendar.IsTeamAvailabilityPublisherConfigured) return;
 
             settings ??= (await _settingsRepository.Get(s => s.UserId == task.UserId)).FirstOrDefault();
-            if (settings == null || string.IsNullOrEmpty(settings.GoogleRefreshToken)) return;
 
             var project = string.IsNullOrEmpty(task.ProjectId)
                 ? null
@@ -68,7 +69,7 @@ public class TeamAvailabilityPublisher
                 if (string.IsNullOrEmpty(task.TeamAvailabilityEventId)) return;
                 try
                 {
-                    await _googleCalendar.DeleteEventAsync(settings.GoogleRefreshToken, teamCalId, task.TeamAvailabilityEventId);
+                    await _googleCalendar.DeleteTeamAvailabilityEventAsync(teamCalId, task.TeamAvailabilityEventId);
                 }
                 catch (Google.GoogleApiException ex) when (
                     ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound ||
@@ -93,8 +94,8 @@ public class TeamAvailabilityPublisher
                 try
                 {
                     await _googleCalendar.UpdateTeamAvailabilityEventAsync(
-                        settings.GoogleRefreshToken, teamCalId, task.TeamAvailabilityEventId,
-                        task, displayName, projectLabel, settings.TimeZone);
+                        teamCalId, task.TeamAvailabilityEventId,
+                        task, displayName, projectLabel, settings?.TimeZone);
                     return;
                 }
                 catch (Google.GoogleApiException ex) when (
@@ -109,14 +110,13 @@ public class TeamAvailabilityPublisher
             }
 
             var created = await _googleCalendar.CreateTeamAvailabilityEventAsync(
-                settings.GoogleRefreshToken, teamCalId, task,
-                displayName, projectLabel, settings.TimeZone);
+                teamCalId, task, displayName, projectLabel, settings?.TimeZone);
             task.TeamAvailabilityEventId = created.Id;
             await _taskRepository.Update(task);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to dual-publish TrackedTask {TaskId} to team availability calendar.", task.TaskId);
+            _logger.LogError(ex, "Failed to dual-publish TrackedTask {TaskId} to team availability calendar.", task.TaskId);
         }
     }
 
@@ -135,11 +135,9 @@ public class TeamAvailabilityPublisher
         {
             var teamCalId = await GetTeamAvailabilityCalendarIdAsync();
             if (teamCalId == null) return;
+            if (!_googleCalendar.IsTeamAvailabilityPublisherConfigured) return;
 
-            settings ??= (await _settingsRepository.Get(s => s.UserId == task.UserId)).FirstOrDefault();
-            if (settings == null || string.IsNullOrEmpty(settings.GoogleRefreshToken)) return;
-
-            await _googleCalendar.DeleteEventAsync(settings.GoogleRefreshToken, teamCalId, task.TeamAvailabilityEventId);
+            await _googleCalendar.DeleteTeamAvailabilityEventAsync(teamCalId, task.TeamAvailabilityEventId);
         }
         catch (Google.GoogleApiException ex) when (
             ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound ||
@@ -149,7 +147,7 @@ public class TeamAvailabilityPublisher
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to delete team-availability event for TrackedTask {TaskId}.", task.TaskId);
+            _logger.LogError(ex, "Failed to delete team-availability event for TrackedTask {TaskId}.", task.TaskId);
         }
     }
 

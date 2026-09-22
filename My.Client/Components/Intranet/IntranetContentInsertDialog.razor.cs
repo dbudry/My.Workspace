@@ -133,18 +133,23 @@ namespace My.Client.Components.Intranet
             await VisibleChanged.InvokeAsync(false);
         }
 
-        private async Task EnsureGoogleConnectedAsync()
+        private async Task<bool> TryHandleFailedDriveResponseAsync(HttpResponseMessage resp)
         {
-            if (!UserSettings.IsGoogleDriveConnected)
-            {
-                try { await UserSettings.GetSettingsAsync(); } catch { }
-            }
-            if (!UserSettings.IsGoogleDriveConnected)
+            if (resp.IsSuccessStatusCode)
+                return false;
+
+            var err = await resp.Content.ReadAsStringAsync();
+            if ((int)resp.StatusCode == 409
+                && (GoogleDriveOAuthRules.IsConsentRequiredMessage(err)
+                    || AppDriveLayoutRules.IsNotConnectedMessage(err)))
             {
                 await CloseAsync();
-                await UserSettings.InitiateGoogleDriveConnectAsync(Navigation.Uri);
-                throw new InvalidOperationException("Google not connected");
+                Snackbar.Add(AppDriveLayoutRules.NotConnectedMessage, Severity.Warning);
+                return true;
             }
+
+            errorMessage = string.IsNullOrWhiteSpace(err) ? "Couldn't complete the Drive operation." : err;
+            return true;
         }
 
         private async Task InsertUrlAsync()
@@ -233,7 +238,6 @@ namespace My.Client.Components.Intranet
             errorMessage = null;
             try
             {
-                await EnsureGoogleConnectedAsync();
                 var client = ClientFactory.CreateClient(Constants.API.ClientName);
                 var body = new
                 {
@@ -245,11 +249,8 @@ namespace My.Client.Components.Intranet
                 };
 
                 var resp = await client.PostAsJsonAsync(Constants.API.Intranet.Documents.Upload, body);
-                if (!resp.IsSuccessStatusCode)
-                {
-                    errorMessage = await resp.Content.ReadAsStringAsync();
+                if (await TryHandleFailedDriveResponseAsync(resp))
                     return;
-                }
 
                 var result = await resp.Content.ReadFromJsonAsync<UploadLibraryDocResultDto>();
                 if (result?.Document != null)
@@ -258,7 +259,7 @@ namespace My.Client.Components.Intranet
                     await OnFileInserted.InvokeAsync(result.Document);
                 }
             }
-            catch (Exception ex) when (ex.Message != "Google not connected")
+            catch (Exception ex)
             {
                 errorMessage = ex.Message;
             }
@@ -293,7 +294,6 @@ namespace My.Client.Components.Intranet
             errorMessage = null;
             try
             {
-                await EnsureGoogleConnectedAsync();
                 var client = ClientFactory.CreateClient(Constants.API.ClientName);
                 var body = new
                 {
@@ -304,11 +304,8 @@ namespace My.Client.Components.Intranet
 
                 var resp = await client.PostAsJsonAsync(
                     $"{Constants.API.Intranet.Pages.Api}/{PageId}/documents/create", body);
-                if (!resp.IsSuccessStatusCode)
-                {
-                    errorMessage = await resp.Content.ReadAsStringAsync();
+                if (await TryHandleFailedDriveResponseAsync(resp))
                     return;
-                }
 
                 var attached = await resp.Content.ReadFromJsonAsync<IntranetPageDocumentDto>();
                 if (attached != null)
@@ -325,7 +322,7 @@ namespace My.Client.Components.Intranet
                     });
                 }
             }
-            catch (Exception ex) when (ex.Message != "Google not connected")
+            catch (Exception ex)
             {
                 errorMessage = ex.Message;
             }

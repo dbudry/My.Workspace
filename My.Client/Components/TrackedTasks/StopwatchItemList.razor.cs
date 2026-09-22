@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using MudBlazor;
+using My.Client.Components.Layout;
 using My.Client.Extensions;
 using My.Client.Helpers;
 using My.Client.Models;
@@ -22,6 +23,35 @@ namespace My.Client.Components.TrackedTasks
         private CancellationTokenSource? tickCts;
         private ProjectColorSource projectColorSource = ProjectColorSource.ProjectGroup;
         private bool isSavingColorSource;
+        private ListMode listMode = ListMode.Items;
+        private DateTime weekStartMonday = WeekEntryGridRules.GetWeekStartMonday(DateTime.Today);
+        private readonly List<DayViewSection> daySections = new();
+        private readonly HashSet<string> expandedKeys = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<StopwatchDayViewRules.SessionSlice>> itemExpandSessions = new(StringComparer.Ordinal);
+        private readonly HashSet<string> loadingExpandKeys = new(StringComparer.Ordinal);
+        private bool isDayLoading;
+
+        private enum ListMode { Items, Day }
+
+        private static readonly SegmentedTab<ListMode>[] ListModeTabs =
+        [
+            new(ListMode.Items, "List"),
+            new(ListMode.Day, "Week"),
+        ];
+
+        private sealed class DayViewSection
+        {
+            public required DateTime Day { get; init; }
+            public required List<DayViewRow> Rows { get; init; }
+        }
+
+        private sealed class DayViewRow
+        {
+            public required string ExpandKey { get; init; }
+            public required StopwatchItemDto Item { get; init; }
+            public required IReadOnlyList<StopwatchDayViewRules.SessionSlice> Sessions { get; init; }
+            public TimeSpan CompletedDuration { get; init; }
+        }
 
         /// <summary>Mini pop-out: keep a real table at every width (scroll sideways if needed).</summary>
         [Parameter] public bool Compact { get; set; }
@@ -150,6 +180,8 @@ namespace My.Client.Components.TrackedTasks
 
             await PersistLocalAsync();
             await InvokeAsync(StateHasChanged);
+            if (listMode == ListMode.Day)
+                await LoadDayViewAsync();
         }
 
         private void PageChanged(int page)
@@ -173,6 +205,11 @@ namespace My.Client.Components.TrackedTasks
                 var updated = await StopwatchItemsClient.StartAsync(item.StopwatchItemId);
                 ReplaceItem(updated);
                 await PersistLocalAsync();
+                itemExpandSessions.Remove(item.StopwatchItemId);
+                if (listMode == ListMode.Day)
+                    await LoadDayViewAsync();
+                else if (expandedKeys.Contains(item.StopwatchItemId))
+                    await LoadItemExpandSessionsAsync(item.StopwatchItemId);
             }
             catch (Exception ex)
             {
@@ -201,6 +238,11 @@ namespace My.Client.Components.TrackedTasks
                 var updated = await StopwatchItemsClient.StopAsync(item.StopwatchItemId);
                 ReplaceItem(updated);
                 await PersistLocalAsync();
+                itemExpandSessions.Remove(item.StopwatchItemId);
+                if (listMode == ListMode.Day)
+                    await LoadDayViewAsync();
+                else if (expandedKeys.Contains(item.StopwatchItemId))
+                    await LoadItemExpandSessionsAsync(item.StopwatchItemId);
             }
             catch (Exception ex)
             {
@@ -313,8 +355,7 @@ namespace My.Client.Components.TrackedTasks
 
             try
             {
-                var updated = await StopwatchItemsClient.UpdateAsync(new UpdateStopwatchItemDto
-                {
+                var updated = await StopwatchItemsClient.UpdateAsync(new UpdateStopwatchItemDto {
                     StopwatchItemId = item.StopwatchItemId,
                     Details = savedName,
                     ProjectId = savedProjectId
@@ -333,7 +374,8 @@ namespace My.Client.Components.TrackedTasks
         /// Removes the item from this list only. Nothing is deleted — the item and every
         /// session under it are untouched server-side; they're still there in Tasks/Reports.
         /// Actually deleting a work item (and all its sessions) now lives inside the Sessions
-        /// dialog — see StopwatchSessionsDialog.DeleteWorkItemAsync.
+        /// dialog — see StopwatchSessionsDialog.DeleteWorkItemAsync — so it's not one accidental
+        /// click away from here.
         /// </summary>
         private async Task ClearItemAsync(StopwatchItemDto item)
         {
@@ -413,7 +455,8 @@ namespace My.Client.Components.TrackedTasks
                     try
                     {
                         await Task.Delay(1000, token);
-                        if (items.Any(i => i.IsRunning))
+                        if (items.Any(i => i.IsRunning)
+                            || daySections.SelectMany(d => d.Rows).Any(r => r.Item.IsRunning))
                             await InvokeAsync(StateHasChanged);
                     }
                     catch (TaskCanceledException)
@@ -423,6 +466,170 @@ namespace My.Client.Components.TrackedTasks
                 }
             }, tickCts.Token);
         }
+
+        private async Task SetListModeAsync(ListMode mode)
+        {
+            if (listMode == mode) return;
+            listMode = mode;
+            expandedKeys.Clear();
+            if (mode == ListMode.Day)
+                await LoadDayViewAsync();
+        }
+
+        private async Task OnWeekNavChangedAsync(DateTime monday)
+        {
+            if (monday.Date == weekStartMonday.Date) return;
+            weekStartMonday = monday.Date;
+            expandedKeys.Clear();
+            await LoadDayViewAsync();
+        }
+
+        private bool IsCurrentWeek =>
+            weekStartMonday.Date == WeekEntryGridRules.GetWeekStartMonday(DateTime.Today).Date;
+
+        private async Task LoadDayViewAsync()
+        {
+            isDayLoading = true;
+            await InvokeAsync(StateHasChanged);
+            try
+            {
+                var tz = SettingsService.GetTimeZoneInfo();
+                var fromUtc = DateTimeWire.ToUtc(weekStartMonday.Date, tz);
+                var toUtc = DateTimeWire.ToUtc(weekStartMonday.Date.AddDays(7), tz);
+                var dto = await StopwatchItemsClient.LoadDayViewAsync(fromUtc, toUtc);
+                var itemsById = dto.Items.ToDictionary(i => i.StopwatchItemId, StringComparer.Ordinal);
+                var today = DateTime.Today;
+                var weekEnd = WeekEntryGridRules.GetWeekEndSunday(weekStartMonday).Date;
+
+                var slices = new List<StopwatchDayViewRules.SessionSlice>();
+                foreach (var sessionDto in dto.Sessions)
+                {
+                    var model = new TrackedTask(sessionDto, tz);
+                    var startUtc = DateTime.SpecifyKind(sessionDto.StartDate, DateTimeKind.Utc);
+                    var day = model.StartDate.Date;
+                    if (model.IsRunning && (day < weekStartMonday.Date || day > weekEnd))
+                        day = today;
+                    slices.Add(ToSlice(model, day, startUtc));
+                }
+
+                var grouped = StopwatchDayViewRules.GroupByDayThenItem(slices);
+                daySections.Clear();
+                foreach (var section in grouped)
+                {
+                    daySections.Add(new DayViewSection
+                    {
+                        Day = section.Day,
+                        Rows = section.Items.Select(row => new DayViewRow
+                        {
+                            ExpandKey = $"{section.Day:yyyy-MM-dd}|{row.StopwatchItemId}",
+                            Item = itemsById.GetValueOrDefault(row.StopwatchItemId)
+                                ?? new StopwatchItemDto
+                                {
+                                    StopwatchItemId = row.StopwatchItemId,
+                                    Details = "Work item"
+                                },
+                            Sessions = row.Sessions,
+                            CompletedDuration = row.CompletedDuration
+                        }).ToList()
+                    });
+                }
+
+                if (IsCurrentWeek
+                    && daySections.Any(s => s.Rows.Count > 0)
+                    && daySections.All(s => s.Day.Date != today))
+                {
+                    daySections.Insert(0, new DayViewSection { Day = today, Rows = [] });
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't load the day view.");
+            }
+            finally
+            {
+                isDayLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        private async Task ToggleExpandAsync(string key, StopwatchItemDto? itemForLazyLoad = null)
+        {
+            if (!expandedKeys.Add(key))
+            {
+                expandedKeys.Remove(key);
+                return;
+            }
+
+            if (itemForLazyLoad == null || itemExpandSessions.ContainsKey(key))
+                return;
+
+            await LoadItemExpandSessionsAsync(itemForLazyLoad.StopwatchItemId);
+        }
+
+        private async Task LoadItemExpandSessionsAsync(string itemId)
+        {
+            loadingExpandKeys.Add(itemId);
+            await InvokeAsync(StateHasChanged);
+            try
+            {
+                var dtos = await StopwatchItemsClient.LoadSessionsAsync(itemId);
+                var tz = SettingsService.GetTimeZoneInfo();
+                var slices = new List<StopwatchDayViewRules.SessionSlice>();
+                foreach (var sessionDto in dtos.OrderByDescending(d => d.StartDate))
+                {
+                    var model = new TrackedTask(sessionDto, tz);
+                    var startUtc = DateTime.SpecifyKind(sessionDto.StartDate, DateTimeKind.Utc);
+                    slices.Add(ToSlice(model, model.StartDate.Date, startUtc));
+                }
+
+                itemExpandSessions[itemId] = slices;
+            }
+            catch (Exception ex)
+            {
+                expandedKeys.Remove(itemId);
+                Snackbar.AddApiError(ex, "Couldn't load sessions.");
+            }
+            finally
+            {
+                loadingExpandKeys.Remove(itemId);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        private static StopwatchDayViewRules.SessionSlice ToSlice(
+            TrackedTask model, DateTime day, DateTime startUtc)
+            => new()
+            {
+                TaskId = model.TaskId,
+                StopwatchItemId = model.StopwatchItemId ?? "",
+                Day = day.Date,
+                StartLocal = model.StartDate,
+                EndLocal = model.EndDate,
+                StartUtc = startUtc,
+                Duration = model.IsRunning ? TimeSpan.Zero : model.Duration,
+                IsLocked = model.IsLocked,
+                IsRunning = model.IsRunning
+            };
+
+        private string FormatDayTotal(DayViewRow row)
+        {
+            var total = row.CompletedDuration;
+            if (row.Item.IsRunning && row.Sessions.Any(s => s.IsRunning) && row.Item.ActiveSessionStartDate.HasValue)
+                total += StopwatchRules.ElapsedForActiveSession(row.Item.ActiveSessionStartDate.Value, null);
+            return $"{(int)total.TotalHours:00}:{total.Minutes:00}:{total.Seconds:00}";
+        }
+
+        private static string DayHeading(DateTime day)
+        {
+            var label = day.ToString("dddd, MMM d");
+            return day.Date == DateTime.Today ? $"{label} (Today)" : label;
+        }
+
+        private bool CanStart(StopwatchItemDto item) =>
+            !item.IsCleared && !string.IsNullOrEmpty(item.ProjectId);
+
+        private IReadOnlyList<StopwatchDayViewRules.SessionSlice> ItemExpandSessions(string itemId) =>
+            itemExpandSessions.TryGetValue(itemId, out var slices) ? slices : [];
 
         public void Dispose()
         {

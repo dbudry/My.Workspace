@@ -204,7 +204,7 @@ namespace My.Functions
         {
             if (!req.Headers.TryGetValues("X-Impersonate-Role", out var values)) return;
 
-            // Only the *global* Admin role can impersonate — scoped admins (e.g. Admin:Tyme)
+            // Only the *global* Admin role can impersonate — User Access holders
             // cannot. Check this against the real claim set before we modify anything.
             var hasGlobalAdmin = identity.FindAll(ClaimTypes.Role).Any(c => c.Value == Constants.Roles.Admin);
             if (!hasGlobalAdmin) return;
@@ -226,18 +226,27 @@ namespace My.Functions
 
         internal static bool IsValidRoleShape(string value)
         {
-            // Accepted forms: "Admin", "Manager", "Editor", "User", or "<base>:<scope>" where
-            // base is one of those four and scope is alphanumeric/underscore. Defends against
-            // the header being used to inject arbitrary role strings even though the caller is
-            // a real Admin.
+            // Accepted forms: "Admin" / "Manager" / "Editor" / "User", or "<base>:<scope>"
+            // where base is operational or orthogonal (not scoped Admin). Scope is
+            // alphanumeric/underscore.
             var parts = value.Split(':');
             if (parts.Length is 0 or > 2) return false;
             var baseRole = parts[0];
-            if (baseRole != Constants.Roles.Admin
-                && baseRole != Constants.Roles.Manager
-                && baseRole != Constants.Roles.Editor
-                && baseRole != Constants.Roles.User) return false;
-            if (parts.Length == 1) return true;
+            if (parts.Length == 1)
+            {
+                return baseRole is Constants.Roles.Admin
+                    or Constants.Roles.Manager
+                    or Constants.Roles.Editor
+                    or Constants.Roles.User;
+            }
+
+            if (baseRole is not (
+                Constants.Roles.Manager
+                or Constants.Roles.Editor
+                or Constants.Roles.User
+                or Constants.Roles.UserAccess
+                or Constants.Roles.Navigation))
+                return false;
             var scope = parts[1];
             if (string.IsNullOrEmpty(scope)) return false;
             foreach (var ch in scope)

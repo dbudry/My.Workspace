@@ -27,6 +27,10 @@ namespace My.DAL.Data
         public DbSet<IntranetDocument> IntranetDocuments { get; set; } = null!;
         public DbSet<IntranetPageDocument> IntranetPageDocuments { get; set; } = null!;
         public DbSet<IntranetNavigationItem> IntranetNavigationItems { get; set; } = null!;
+        public DbSet<ExpenseReport> ExpenseReports { get; set; } = null!;
+        public DbSet<ExpenseLine> ExpenseLines { get; set; } = null!;
+        public DbSet<ExpenseReceipt> ExpenseReceipts { get; set; } = null!;
+        public DbSet<AppDriveCredential> AppDriveCredentials { get; set; } = null!;
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
         {
@@ -200,6 +204,10 @@ namespace My.DAL.Data
                 .Property(p => p.DisplayName)
                 .HasMaxLength(100);
 
+            builder.Entity<Project>()
+                .Property(p => p.CountsAsTime)
+                .HasDefaultValue(true);
+
             // Project slug is the calendar tag — `[slug]` in a Google Calendar event title
             // routes to this project on inbound sync. Workspace-wide unique. SQL Server's
             // filtered-index syntax skips rows where Slug IS NULL so projects without a
@@ -275,11 +283,6 @@ namespace My.DAL.Data
                 .IsRequired();
 
             builder.Entity<TrackedTaskAlias>().HasKey(a => a.TrackedTaskAliasId);
-
-            builder.Entity<TrackedTaskAlias>()
-                .Property(x => x.Details)
-                .IsRequired()
-                .HasMaxLength(500);
 
             builder.Entity<TrackedTaskAlias>()
                 .HasOne(a => a.Task)
@@ -422,6 +425,59 @@ namespace My.DAL.Data
                 .Property(n => n.Icon)
                 .HasMaxLength(50);
 
+            builder.Entity<ExpenseReport>()
+                .HasKey(r => r.ExpenseReportId);
+
+            builder.Entity<ExpenseReport>()
+                .HasIndex(r => new { r.UserId, r.Year, r.Month })
+                .IsUnique()
+                .HasDatabaseName("IX_ExpenseReports_UserId_Year_Month");
+
+            builder.Entity<ExpenseReport>()
+                .HasOne(r => r.User)
+                .WithMany()
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<ExpenseReport>()
+                .HasOne(r => r.Department)
+                .WithMany()
+                .HasForeignKey(r => r.DepartmentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<ExpenseReport>()
+                .Property(r => r.MileageRateSnapshot)
+                .HasPrecision(18, 4);
+
+            builder.Entity<ExpenseLine>()
+                .HasKey(l => l.ExpenseLineId);
+
+            builder.Entity<ExpenseLine>()
+                .HasOne(l => l.ExpenseReport)
+                .WithMany(r => r.Lines)
+                .HasForeignKey(l => l.ExpenseReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.Amount)
+                .HasPrecision(18, 2);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.Miles)
+                .HasPrecision(18, 3);
+
+            builder.Entity<ExpenseReceipt>()
+                .HasKey(r => r.ExpenseReceiptId);
+
+            builder.Entity<ExpenseReceipt>()
+                .HasOne(r => r.ExpenseLine)
+                .WithMany(l => l.Receipts)
+                .HasForeignKey(r => r.ExpenseLineId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<AppDriveCredential>()
+                .HasKey(c => c.AppDriveCredentialId);
+
             FillDataToDB(builder);
         }
 
@@ -466,6 +522,12 @@ namespace My.DAL.Data
                 },
                 new AppSetting
                 {
+                    Key = "TymeAllowManagerSubmitOnBehalf",
+                    Value = "false",
+                    Description = "When enabled, Tyme managers and admins can submit an employee's time month on their behalf."
+                },
+                new AppSetting
+                {
                     Key = "TymeAllowUserTeamReports",
                     Value = "false",
                     Description = "When enabled, Tyme users can view other employees' time on Reports (read-only)."
@@ -476,6 +538,7 @@ namespace My.DAL.Data
                     Value = "Alias",
                     Description = "When manager correction is enabled: Alias (overlay, original preserved) or Direct (in-place edit with audit)."
                 },
+
                 new AppSetting
                 {
                     Key = "TymeCalendarBackfillDefaultDays",
@@ -511,6 +574,24 @@ namespace My.DAL.Data
                     Key = "IntranetNavigationMaxDepth",
                     Value = "10",
                     Description = "Maximum nesting depth for curated intranet sidebar navigation. Top-level menu entries count as depth 1."
+                },
+                new AppSetting
+                {
+                    Key = "HomeOrganizationId",
+                    Value = "",
+                    Description = "OrganizationId of the home company."
+                },
+                new AppSetting
+                {
+                    Key = "ExpensesMileageRatePerMile",
+                    Value = "0.555",
+                    Description = "Personal-car mileage reimbursement rate in USD per mile."
+                },
+                new AppSetting
+                {
+                    Key = "ExpensesDriveParentFolderId",
+                    Value = "",
+                    Description = "Google Drive folder ID for the private Expenses root. Not shared company-wide."
                 });
 
             builder.Entity<ApplicationRole>().HasData(
@@ -550,14 +631,6 @@ namespace My.DAL.Data
                 },
                 new ApplicationRole
                 {
-                    Id = "a2b3c4d5-e6f7-8901-a2b3-c4d5e6f78901",
-                    Name = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme),
-                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Tyme).ToUpper(),
-                    Description = "Tyme-scoped editor role (create/edit projects).",
-                    ConcurrencyStamp = "a2b3c4d5-e6f7-8901-a2b3-c4d5e6f78901"
-                },
-                new ApplicationRole
-                {
                     Id = "b2c3d4e5-f6a7-8901-b2c3-d4e5f6a78901",
                     Name = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme).ToUpper(),
@@ -566,11 +639,11 @@ namespace My.DAL.Data
                 },
                 new ApplicationRole
                 {
-                    Id = "c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012",
-                    Name = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme),
-                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme).ToUpper(),
-                    Description = "Tyme-scoped admin role.",
-                    ConcurrencyStamp = "c3d4e5f6-a7b8-9012-c3d4-e5f6a7b89012"
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345701",
+                    Name = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Tyme),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Tyme).ToUpper(),
+                    Description = "Tyme User Access — assign Tyme roles on Users. Does not operate Tyme.",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345701"
                 },
                 // Scoped roles for Intranet (knowledge base / internal pages + Drive docs)
                 new ApplicationRole
@@ -591,36 +664,75 @@ namespace My.DAL.Data
                 },
                 new ApplicationRole
                 {
-                    Id = "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345",
-                    Name = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet),
-                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Intranet).ToUpper(),
-                    Description = "Intranet-scoped admin role (full control of navigation structure and content).",
-                    ConcurrencyStamp = "f6a7b8c9-d0e1-2345-f6a7-b8c9d0e12345"
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345705",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Navigation, Constants.Scopes.Intranet),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Navigation, Constants.Scopes.Intranet).ToUpper(),
+                    Description = "Intranet Navigation — curated sidebar tree.",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345705"
                 },
-                // Organizations scope (own menu/role; Admin handles archive/delete/set-active)
                 new ApplicationRole
                 {
-                    Id = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789",
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345702",
+                    Name = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Intranet),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Intranet).ToUpper(),
+                    Description = "Intranet User Access — assign Intranet roles on Users. Does not operate Intranet.",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345702"
+                },
+                new ApplicationRole
+                {
+                    Id = "10a1b2c3-d4e5-4678-9abc-def012345601",
+                    Name = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Expenses),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Expenses).ToUpper(),
+                    Description = "Expenses-scoped user role (own reports and receipts).",
+                    ConcurrencyStamp = "10a1b2c3-d4e5-4678-9abc-def012345601"
+                },
+                new ApplicationRole
+                {
+                    Id = "10a1b2c3-d4e5-4678-9abc-def012345602",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Expenses),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Expenses).ToUpper(),
+                    Description = "Expenses-scoped manager role (team reports and unsubmit).",
+                    ConcurrencyStamp = "10a1b2c3-d4e5-4678-9abc-def012345602"
+                },
+                new ApplicationRole
+                {
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345704",
+                    Name = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Expenses),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Expenses).ToUpper(),
+                    Description = "Expenses User Access — assign Expenses roles on Users. Does not operate Expenses.",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345704"
+                },
+                new ApplicationRole
+                {
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345707",
                     Name = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Organizations).ToUpper(),
-                    Description = "Organizations-scoped user role (view organizations and departments).",
-                    ConcurrencyStamp = "01a2b3c4-d5e6-4789-81a2-b3c4d5e64789"
+                    Description = "Organizations-scoped user role (view).",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345707"
                 },
                 new ApplicationRole
                 {
-                    Id = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890",
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345708",
                     Name = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Organizations).ToUpper(),
                     Description = "Organizations-scoped editor role (create/edit organizations and departments).",
-                    ConcurrencyStamp = "02b3c4d5-e6f7-4890-92b3-c4d5e6f74890"
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345708"
                 },
                 new ApplicationRole
                 {
-                    Id = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901",
-                    Name = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations),
-                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Organizations).ToUpper(),
-                    Description = "Organizations-scoped admin role (archive/delete/set active and assign Organizations roles).",
-                    ConcurrencyStamp = "03c4d5e6-f7a8-4901-a3c4-d5e6f7a84901"
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345706",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Organizations).ToUpper(),
+                    Description = "Organizations-scoped manager role (archive, delete, set active/inactive; includes edit).",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345706"
+                },
+                new ApplicationRole
+                {
+                    Id = "20a1b2c3-d4e5-4678-9abc-def012345703",
+                    Name = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations).ToUpper(),
+                    Description = "Organizations User Access — assign Organizations roles on Users.",
+                    ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345703"
                 });
 
             // Note: If you add/remove roles, AppSettings, or other HasData here,

@@ -1,8 +1,8 @@
 @page "/organizations"
-@* Organizations is its own scope, independent of Tyme.
+@* Organizations is its own scope, independent of Tyme — see My.Shared.Constants.Scopes.Organizations.
    Open to User+:Organizations only (Organizations:User:Scoped). Global Admin does not pass.
    Read-only for User:Organizations. Edit is Editor:Organizations. Archive/delete/set-active
-   is Admin:Organizations (canManage). There is no Manager:Organizations tier. *@
+   is Manager:Organizations (canManage). *@
 @attribute [Authorize(Policy = "Organizations:User:Scoped")]
 
 @using My.Client.Models
@@ -76,7 +76,7 @@
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(() => AddDepartment(org))">Add department</MudMenuItem>
                             }
-                            @* Set active/inactive, archive, and delete are Admin:Organizations.
+                            @* Set active/inactive, archive, and delete are Manager:Organizations.
                                Editor:Organizations can create/edit but not these. *@
                             @if (canManage)
                             {

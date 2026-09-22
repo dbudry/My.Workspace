@@ -101,7 +101,8 @@ namespace My.Client.Services
                 TymeEventColorId = current.TymeEventColorId,
                 TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
                 ProjectColorSource = source,
-                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>()
+                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>(),
+                ExpenseHomeAddress = current.ExpenseHomeAddress
             });
         }
 
@@ -127,7 +128,8 @@ namespace My.Client.Services
                 TymeEventColorId = current.TymeEventColorId,
                 TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
                 ProjectColorSource = current.ProjectColorSource,
-                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>()
+                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>(),
+                ExpenseHomeAddress = current.ExpenseHomeAddress
             });
         }
 
@@ -206,7 +208,8 @@ namespace My.Client.Services
                     TymeEventColorId = _cachedSettings.TymeEventColorId,
                     TymeUnmatchedEventColorId = _cachedSettings.TymeUnmatchedEventColorId,
                     ProjectColorSource = _cachedSettings.ProjectColorSource,
-                    FavoriteIntranetPageIds = _cachedSettings.FavoriteIntranetPageIds ?? new List<string>()
+                    FavoriteIntranetPageIds = _cachedSettings.FavoriteIntranetPageIds ?? new List<string>(),
+                    ExpenseHomeAddress = _cachedSettings.ExpenseHomeAddress
                 });
             }
             catch
@@ -248,7 +251,8 @@ namespace My.Client.Services
                 TymeEventColorId = current.TymeEventColorId,
                 TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
                 ProjectColorSource = current.ProjectColorSource,
-                FavoriteIntranetPageIds = list
+                FavoriteIntranetPageIds = list,
+                ExpenseHomeAddress = current.ExpenseHomeAddress
             };
 
             await UpdateSettingsAsync(dto);
@@ -286,6 +290,19 @@ namespace My.Client.Services
                 "Couldn't start Google Drive connect",
                 "Server did not return a Google Drive sign-in URL.",
                 returnUrlAfterConnect);
+
+        /// <summary>
+        /// Workspace Admin Connect for the App Shared Drive.
+        /// Google still returns to /settings (registered redirect); we then send
+        /// the caller back to App Settings.
+        /// </summary>
+        public Task InitiateAppDriveConnectAsync() =>
+            InitiateGoogleOAuthAsync(
+                Constants.API.AppDrive.GetAuthUrl,
+                GoogleOAuthConnectKindRules.AppDrive,
+                "Couldn't start App Drive connect",
+                "Server did not return a Google sign-in URL.",
+                "/admin/appsettings");
 
         private async Task InitiateGoogleOAuthAsync(
             string authUrlRoute,

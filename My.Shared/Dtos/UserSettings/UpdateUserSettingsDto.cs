@@ -42,5 +42,8 @@ namespace My.Shared.Dtos.UserSettings
         /// also exist under the Intranet module.
         /// </summary>
         public List<string> FavoriteIntranetPageIds { get; set; } = new();
+
+        /// <summary>Home address for Form 87-43. Street, then city/state/ZIP on the next line.</summary>
+        public string? ExpenseHomeAddress { get; set; }
     }
 }

@@ -117,7 +117,8 @@ namespace My.Functions
             // (user × month) pairs derived from tracked-task history — i.e. months a user
             // actually worked. The submission table alone wouldn't surface unsubmitted months.
             var taskMonths = await _dbContext.TrackedTasks
-                .Where(t => t.StartDate < currentMonthStart)
+                .Where(t => t.StartDate < currentMonthStart
+                    && (t.Project == null || t.Project.CountsAsTime))
                 .Select(t => new { t.UserId, t.StartDate.Year, t.StartDate.Month })
                 .Distinct()
                 .ToListAsync();
@@ -219,7 +220,9 @@ namespace My.Functions
             var monthStart = new DateTime(body!.Year, body.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
             var hasTrackedTime = await _dbContext.TrackedTasks
-                .AnyAsync(t => t.UserId == userId && t.StartDate >= monthStart && t.StartDate <= monthEnd);
+                .AnyAsync(t => t.UserId == userId
+                    && t.StartDate >= monthStart && t.StartDate <= monthEnd
+                    && (t.Project == null || t.Project.CountsAsTime));
             if (!hasTrackedTime)
                 return new BadRequestObjectResult("No tracked time for that month yet — nothing to submit.");
 
@@ -287,7 +290,9 @@ namespace My.Functions
             var monthStart = new DateTime(body.Year, body.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var monthEnd = monthStart.AddMonths(1).AddTicks(-1);
             var hasTrackedTime = await _dbContext.TrackedTasks
-                .AnyAsync(t => t.UserId == targetUserId && t.StartDate >= monthStart && t.StartDate <= monthEnd);
+                .AnyAsync(t => t.UserId == targetUserId
+                    && t.StartDate >= monthStart && t.StartDate <= monthEnd
+                    && (t.Project == null || t.Project.CountsAsTime));
             if (!hasTrackedTime)
                 return new BadRequestObjectResult("No tracked time for that month yet — nothing to submit.");
 
@@ -362,11 +367,11 @@ namespace My.Functions
             var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
             // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store that) —
             // recompute from the dates instead of reading the raw column.
-            TimeSpan ActualDuration(TrackedTask t) => AllDayEntryRules.EffectiveDuration(
-                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
+            TimeSpan ActualDuration(TrackedTask t) => TeamAvailabilityHoursRules.HoursFor(
+                t.Project?.CountsAsTime, t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
             // Same idea for a Direct-correction audit's "previous" snapshot.
-            TimeSpan ActualPreviousDuration(TrackedTaskCorrectionAudit a) => AllDayEntryRules.EffectiveDuration(
-                a.PreviousIsAllDay, a.PreviousStartDate, a.PreviousEndDate, a.PreviousDuration, workdayHours);
+            TimeSpan ActualPreviousDuration(TrackedTaskCorrectionAudit a) => TeamAvailabilityHoursRules.HoursFor(
+                null, a.PreviousIsAllDay, a.PreviousStartDate, a.PreviousEndDate, a.PreviousDuration, workdayHours);
 
             var items = new List<TimeSubmissionCorrectionItemDto>();
 
@@ -575,7 +580,8 @@ namespace My.Functions
             var currentMonthStart = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
             var taskMonths = await _dbContext.TrackedTasks
-                .Where(t => t.UserId == userId && t.StartDate < currentMonthStart)
+                .Where(t => t.UserId == userId && t.StartDate < currentMonthStart
+                    && (t.Project == null || t.Project.CountsAsTime))
                 .Select(t => new { t.StartDate.Year, t.StartDate.Month })
                 .Distinct()
                 .ToListAsync();
@@ -608,7 +614,8 @@ namespace My.Functions
             var nowUtc = DateTime.UtcNow;
 
             var taskMonths = await _dbContext.TrackedTasks
-                .Where(t => t.UserId == userId)
+                .Where(t => t.UserId == userId
+                    && (t.Project == null || t.Project.CountsAsTime))
                 .Select(t => new { t.StartDate.Year, t.StartDate.Month })
                 .Distinct()
                 .ToListAsync();

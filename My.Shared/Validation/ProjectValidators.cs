@@ -39,6 +39,11 @@ namespace My.Shared.Validation
                 .Equal(false)
                 .When(x => x.IsSharedAvailability)
                 .WithMessage("Availability projects cannot be marked billable.");
+
+            RuleFor(x => x.CountsAsTime)
+                .Equal(true)
+                .When(x => !x.IsSharedAvailability)
+                .WithMessage("Only availability projects can skip Tyme hours.");
         }
     }
 
@@ -62,6 +67,11 @@ namespace My.Shared.Validation
                 .Equal(false)
                 .When(x => x.IsSharedAvailability)
                 .WithMessage("Availability projects cannot be marked billable.");
+
+            RuleFor(x => x.CountsAsTime)
+                .Equal(true)
+                .When(x => !x.IsSharedAvailability)
+                .WithMessage("Only availability projects can skip Tyme hours.");
         }
     }
 }
