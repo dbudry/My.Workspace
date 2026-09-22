@@ -1,0 +1,326 @@
+@page "/expenses/{Id}"
+@attribute [Authorize(Policy = "Expenses:User:Scoped")]
+
+@using Microsoft.AspNetCore.Components.Forms
+@using My.Shared.Dtos.Expenses
+@using My.Shared.Rules
+
+<div data-expense-editor>
+<NavigationLock ConfirmExternalNavigation="@isDirty" OnBeforeInternalNavigation="OnBeforeInternalNav" />
+
+<PageTitle>@pageTitle</PageTitle>
+
+<PageHeader Title="@pageTitle" Description="@pageDescription">
+    <Actions>
+        <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("expenses"))">Back to list</MudButton>
+        @if (report != null)
+        {
+            <ExpensePdfMenu ReportId="@report.ExpenseReportId"
+                            FileName="@PdfFileName(report)"
+                            Variant="Variant.Outlined" />
+        }
+        @if (report != null && canReimburse)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Tertiary"
+                       StartIcon="@Icons.Material.Filled.Paid"
+                       OnClick="ReimburseAsync" Disabled="@isReimbursing">
+                Mark reimbursed
+            </MudButton>
+        }
+        @if (report != null && canUndoReimburse)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                       OnClick="UndoReimburseAsync" Disabled="@isUndoingReimburse">
+                Undo reimbursed
+            </MudButton>
+        }
+        @if (report != null && canUnsubmit)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                       StartIcon="@Icons.Material.Filled.LockOpen"
+                       OnClick="UnsubmitAsync" Disabled="@isUnsubmitting">
+                Unsubmit
+            </MudButton>
+        }
+        @if (report != null && canEdit)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Save"
+                       OnClick="@(() => SaveAsync())" Disabled="@isSaving"
+                       data-expense-save="true">
+                Save
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Success"
+                       StartIcon="@Icons.Material.Filled.Send"
+                       OnClick="SubmitAsync" Disabled="@(isSaving || isSubmitting)">
+                Submit
+            </MudButton>
+        }
+    </Actions>
+</PageHeader>
+
+<PageLoader IsLoading="@isLoading">
+    @if (report == null)
+    {
+        <EmptyState Icon="@Icons.Material.Outlined.ReceiptLong"
+                    Title="Report not found"
+                    Message="This report was deleted, or you don't have access to it." />
+    }
+    else
+    {
+        <SectionCard Title="Cover period">
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker Date="report.CoverStart" DateChanged="SetCoverStart"
+                                   Label="Cover start" DateFormat="MM/dd/yyyy"
+                                   MinDate="ReportMonthStart" MaxDate="ReportMonthEnd"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   Disabled="@(!canEdit)" Error="@(coverPeriodError != null)" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudDatePicker Date="report.CoverEnd" DateChanged="SetCoverEnd"
+                                   Label="Cover end" DateFormat="MM/dd/yyyy"
+                                   MinDate="ReportMonthStart" MaxDate="ReportMonthEnd"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   Disabled="@(!canEdit)" Error="@(coverPeriodError != null)"
+                                   ErrorText="@coverPeriodError" />
+                </MudItem>
+            </MudGrid>
+        </SectionCard>
+
+        <SectionCard Title="Line items">
+            @if (canEdit)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" Class="mb-3"
+                           OnClick="AddLine" data-expense-add-line="true">Add line</MudButton>
+                <InputFile @key="receiptPickerKey" id="expense-receipt-input"
+                           OnChange="OnReceiptChosenAsync"
+                           accept=".pdf,.png,.jpg,.jpeg,.webp,.heic"
+                           multiple
+                           style="display:none" />
+            }
+            @if (report.Lines.Count == 0)
+            {
+                <EmptyState Icon="@Icons.Material.Outlined.Notes"
+                            Title="No lines yet"
+                            Message="Add a line for each expense (software, phone, meals, mileage, …)." />
+            }
+            else
+            {
+                <div class="expense-lines">
+                    <div class="expense-line expense-line--head">
+                        <span class="expense-line-date">Date</span>
+                        <span class="expense-line-desc">Description</span>
+                        <span class="expense-line-cat">Category</span>
+                        <span class="expense-line-amt">Amount</span>
+                        <span class="expense-line-attach"></span>
+                        @if (canEdit)
+                        {
+                            <span class="expense-line-del"></span>
+                        }
+                    </div>
+                    @foreach (var line in report.Lines)
+                    {
+                        var index = report.Lines.IndexOf(line);
+                        var hasDetails = ExpenseCategoryRules.HasLineDetails(line.Category);
+                        <div @key="line" class="expense-line">
+                            <div class="expense-line-date">
+                                <MudDatePicker Date="line.Date" DateChanged="d => SetLineDate(line, d)"
+                                               DateFormat="MM/dd/yyyy" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                               MinDate="ReportMonthStart" MaxDate="ReportMonthEnd"
+                                               Disabled="@(!canEdit)"
+                                               Error="@lineDateErrors.Contains(index)" />
+                            </div>
+                            <div class="expense-line-desc">
+                                <CountedTextArea Value="@line.Description"
+                                                 ValueChanged="@(v => SetLineDescription(line, v ?? ""))"
+                                                 MaxLength="@ExpenseLineRules.DescriptionMaxLength"
+                                                 Disabled="@(!canEdit)"
+                                                 Error="@lineDescriptionErrors.Contains(index)"
+                                                 Placeholder="Description"
+                                                 AriaLabel="Description" />
+                            </div>
+                            <div class="expense-line-cat">
+                                <MudSelect T="string" Value="line.Category"
+                                           ValueChanged="v => SetCategory(line, v)"
+                                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                                           Disabled="@(!canEdit)">
+                                    @foreach (var cat in contextChoices)
+                                    {
+                                        <MudSelectItem Value="@cat.Value">@cat.Label</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </div>
+                            <div class="expense-line-amt">
+                                <MudNumericField T="decimal" Value="line.Amount"
+                                                 ValueChanged="v => SetAmount(line, v)"
+                                                 Variant="Variant.Outlined" FullWidth="true"
+                                                 Adornment="Adornment.Start" AdornmentText="$"
+                                                 Margin="Margin.Dense" Min="0m" HideSpinButtons="true" Format="N2"
+                                                 Disabled="@(!canEdit || ExpenseCategoryRules.IsPersonalCar(line.Category, line.TransportationCode))" />
+                            </div>
+                            <div class="expense-line-attach">
+                                @if (canEdit)
+                                {
+                                    <MudBadge Content="@line.Receipts.Count" Overlap="true"
+                                              Visible="@(line.Receipts.Count > 0)" Color="Color.Primary">
+                                        @if (attachingLine == line)
+                                        {
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                        }
+                                        else
+                                        {
+                                            <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
+                                                           Size="Size.Small"
+                                                           Disabled="@(isSaving || attachingLine != null)"
+                                                           title="Attach receipts" aria-label="Attach receipts"
+                                                           OnClick="@(() => BeginAttach(line))" />
+                                        }
+                                    </MudBadge>
+                                }
+                                else if (line.Receipts.Count > 0)
+                                {
+                                    <MudBadge Content="@line.Receipts.Count" Overlap="true" Color="Color.Primary">
+                                        <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                                    </MudBadge>
+                                }
+                            </div>
+                            @if (canEdit)
+                            {
+                                <div class="expense-line-del">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   title="Remove line" aria-label="Remove line"
+                                                   OnClick="@(() => RemoveLineAsync(line))" />
+                                </div>
+                            }
+                            @if (hasDetails)
+                            {
+                                <div class="expense-line-details">
+                                    @if (line.Category == ExpenseCategoryRules.Mileage)
+                                    {
+                                        <MudNumericField T="decimal?" Value="line.Miles"
+                                                         ValueChanged="v => SetMiles(line, v)"
+                                                         Label="Miles" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                         Min="0m" HideSpinButtons="true" Disabled="@(!canEdit)" />
+                                    }
+                                    else if (line.Category == ExpenseCategoryRules.Transportation)
+                                    {
+                                        <MudStack Spacing="1">
+                                            <MudSelect T="string" Value="line.TransportationCode"
+                                                       ValueChanged="v => SetTransportationCode(line, v)"
+                                                       Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                       Clearable="true" Disabled="@(!canEdit)">
+                                                @foreach (var opt in transportCodes)
+                                                {
+                                                    <MudSelectItem Value="@opt.Value">@opt.Label</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            @if (ExpenseCategoryRules.IsPersonalCar(line.Category, line.TransportationCode))
+                                            {
+                                                <MudNumericField T="decimal?" Value="line.Miles"
+                                                                 ValueChanged="v => SetMiles(line, v)"
+                                                                 Label="Miles" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                                 Min="0m" HideSpinButtons="true" Disabled="@(!canEdit)" />
+                                            }
+                                        </MudStack>
+                                    }
+                                    else if (line.Category == ExpenseCategoryRules.Miscellaneous)
+                                    {
+                                        <MudSelect T="string" Value="line.MiscellaneousCode"
+                                                   ValueChanged="v => SetMiscellaneousCode(line, v)"
+                                                   Label="Code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                   Clearable="true" Disabled="@(!canEdit)">
+                                            @foreach (var opt in miscCodes)
+                                            {
+                                                <MudSelectItem Value="@opt.Value">@opt.Label</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    }
+                                    else if (line.Category == ExpenseCategoryRules.Meals)
+                                    {
+                                        <MudStack Row="true" Spacing="1">
+                                            <MudCheckBox T="bool" @bind-Value="line.MealBreakfast" Label="Breakfast" Dense="true" Disabled="@(!canEdit)" />
+                                            <MudCheckBox T="bool" @bind-Value="line.MealLunch" Label="Lunch" Dense="true" Disabled="@(!canEdit)" />
+                                            <MudCheckBox T="bool" @bind-Value="line.MealDinner" Label="Dinner" Dense="true" Disabled="@(!canEdit)" />
+                                        </MudStack>
+                                    }
+                                </div>
+                            }
+                            @if (line.Receipts.Count > 0)
+                            {
+                                <div class="expense-line-files">
+                                    @foreach (var receipt in line.Receipts)
+                                    {
+                                        @if (canEdit)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                                     Class="expense-receipt-chip"
+                                                     title="@receipt.OriginalFileName"
+                                                     OnClick="@(() => DownloadReceiptAsync(receipt))"
+                                                     OnClose="@(() => RemoveReceiptAsync(line, receipt))">
+                                                @receipt.OriginalFileName
+                                            </MudChip>
+                                        }
+                                        else
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                                     Class="expense-receipt-chip"
+                                                     title="@receipt.OriginalFileName"
+                                                     OnClick="@(() => DownloadReceiptAsync(receipt))">
+                                                @receipt.OriginalFileName
+                                            </MudChip>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </SectionCard>
+
+        <SectionCard Title="Totals" Class="mt-4">
+            @if (CategoryTotals.Count == 0)
+            {
+                <MudText Typo="Typo.body2">No amounts yet.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Bordered="false" Striped="false" Style="max-width: 24rem;">
+                    <tbody>
+                    @foreach (var total in CategoryTotals)
+                    {
+                        <tr>
+                            <td>@total.Label</td>
+                            <td style="text-align:right;">@total.Amount.ToString("C")</td>
+                        </tr>
+                    }
+                    <tr>
+                        <td><strong>Total</strong></td>
+                        <td style="text-align:right;"><strong>@GrandTotal.ToString("C")</strong></td>
+                    </tr>
+                    </tbody>
+                </MudSimpleTable>
+            }
+            @if (hasPersonalCarMiles || !string.IsNullOrEmpty(meta?.HomeOrganizationName))
+            {
+                <MudText Typo="Typo.caption" Class="mt-3" Style="color: var(--mud-palette-text-secondary);">
+                    @if (hasPersonalCarMiles)
+                    {
+                        <text>Mileage rate @report.MileageRateSnapshot.ToString("0.###") per mile</text>
+                    }
+                    @if (hasPersonalCarMiles && !string.IsNullOrEmpty(meta?.HomeOrganizationName))
+                    {
+                        <text> · </text>
+                    }
+                    @if (!string.IsNullOrEmpty(meta?.HomeOrganizationName))
+                    {
+                        <text>Reimbursed by @meta.HomeOrganizationName</text>
+                    }
+                </MudText>
+            }
+        </SectionCard>
+    }
+</PageLoader>
+</div>

@@ -19,5 +19,11 @@ namespace My.Client.Components.Dashboard
         /// shows the actual time. Also changes what the total line under the chart reads.</summary>
         [Parameter]
         public ChartValueMode ValueMode { get; set; } = ChartValueMode.Percent;
+
+        [Parameter]
+        public string ChartWidth { get; set; } = "300px";
+
+        [Parameter]
+        public string ChartHeight { get; set; } = "300px";
     }
 }

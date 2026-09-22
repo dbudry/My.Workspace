@@ -39,6 +39,16 @@ public class GoogleCalendarOAuthRulesTests
         Assert.False(GoogleCalendarOAuthRules.IsDriveScope(scope));
 
     [Theory]
+    [InlineData(null, false, false)]
+    [InlineData("", false, false)]
+    [InlineData(null, true, true)]
+    [InlineData("new-token", false, true)]
+    [InlineData("new-token", true, true)]
+    public void CanCompleteConnect_allows_reconnect_without_a_new_refresh_token(
+        string? incoming, bool hasExisting, bool expected) =>
+        Assert.Equal(expected, GoogleCalendarOAuthRules.CanCompleteConnect(incoming, hasExisting));
+
+    [Theory]
     [InlineData(null, false, false, false)]
     [InlineData("", true, false, false)]
     [InlineData("new-token", false, false, true)]
@@ -79,8 +89,7 @@ public class GoogleCalendarOAuthRulesTests
     public void AppendHostedDomainHint_adds_hd_on_query_url()
     {
         var url = GoogleCalendarOAuthRules.AppendHostedDomainHint(
-            "https://accounts.google.com/o/oauth2/v2/auth?client_id=x",
-            "example.com");
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=x", "example.com");
         Assert.Equal(
             "https://accounts.google.com/o/oauth2/v2/auth?client_id=x&hd=example.com",
             url);
@@ -91,8 +100,7 @@ public class GoogleCalendarOAuthRulesTests
     public void AppendHostedDomainHint_adds_hd_when_url_has_no_query()
     {
         var url = GoogleCalendarOAuthRules.AppendHostedDomainHint(
-            "https://accounts.google.com/o/oauth2/v2/auth",
-            "example.com");
+            "https://accounts.google.com/o/oauth2/v2/auth", "example.com");
         Assert.Equal(
             "https://accounts.google.com/o/oauth2/v2/auth?hd=example.com",
             url);

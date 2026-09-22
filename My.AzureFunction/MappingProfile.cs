@@ -57,14 +57,6 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItem))]
         public partial void UpdateTrackedTaskFromDto(UpdateTrackedTaskDto dto, TrackedTask target);
 
-        public IEnumerable<TrackedTaskDto> TrackedTasksToDtos(IEnumerable<TrackedTask> tasks)
-            => tasks.Select(t =>
-            {
-                var dto = TrackedTaskToDto(t);
-                dto.Details ??= string.Empty; // TrackedTask.Details is nullable in the DB; DTO stays non-null.
-                return dto;
-            });
-
         // Project
         [MapProperty(nameof(Project.Organization) + "." + nameof(Organization.Name), nameof(ProjectDto.OrganizationName))]
         [MapProperty(nameof(Project.Organization) + "." + nameof(Organization.Color), nameof(ProjectDto.OrganizationColor))]
@@ -236,7 +228,9 @@ namespace My.Functions
                     ? new List<string>()
                     : System.Text.Json.JsonSerializer.Deserialize<List<string>>(settings.FavoriteIntranetPageIdsJson) ?? new List<string>(),
                 CalendarBackfillPromptAcknowledged = settings.CalendarBackfillAcknowledgedUtc != null,
-                GoogleCalendarAutoConnectOptOut = settings.GoogleCalendarAutoConnectOptOut
+                GoogleCalendarAutoConnectOptOut = settings.GoogleCalendarAutoConnectOptOut,
+                HasExpenseSignature = settings.ExpenseSignature != null && settings.ExpenseSignature.Length > 0,
+                ExpenseHomeAddress = settings.ExpenseHomeAddress
             };
         }
 
@@ -255,29 +249,9 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.CalendarBackfillAcknowledgedUtc))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.GoogleCalendarAutoConnectOptOut))]
         [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.FavoriteIntranetPageIdsJson))]
+        [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.ExpenseSignature))]
+        [MapperIgnoreTarget(nameof(DAL.Models.UserSettings.ExpenseSignatureMime))]
         [MapperIgnoreSource(nameof(UpdateUserSettingsDto.FavoriteIntranetPageIds))]
         public partial void UpdateUserSettingsFromDto(UpdateUserSettingsDto dto, DAL.Models.UserSettings target);
-
-        // ApplicationUser
-        [MapProperty(nameof(ApplicationUser.UserName), nameof(ApplicationUserDto.Username))]
-        [MapperIgnoreSource(nameof(ApplicationUser.LastLoginDate))]
-        [MapperIgnoreSource(nameof(ApplicationUser.TrackedTasks))]
-        [MapperIgnoreSource(nameof(ApplicationUser.Id))]
-        [MapperIgnoreSource(nameof(ApplicationUser.NormalizedUserName))]
-        [MapperIgnoreSource(nameof(ApplicationUser.Email))]
-        [MapperIgnoreSource(nameof(ApplicationUser.NormalizedEmail))]
-        [MapperIgnoreSource(nameof(ApplicationUser.EmailConfirmed))]
-        [MapperIgnoreSource(nameof(ApplicationUser.PasswordHash))]
-        [MapperIgnoreSource(nameof(ApplicationUser.SecurityStamp))]
-        [MapperIgnoreSource(nameof(ApplicationUser.ConcurrencyStamp))]
-        [MapperIgnoreSource(nameof(ApplicationUser.PhoneNumber))]
-        [MapperIgnoreSource(nameof(ApplicationUser.PhoneNumberConfirmed))]
-        [MapperIgnoreSource(nameof(ApplicationUser.TwoFactorEnabled))]
-        [MapperIgnoreSource(nameof(ApplicationUser.LockoutEnd))]
-        [MapperIgnoreSource(nameof(ApplicationUser.LockoutEnabled))]
-        [MapperIgnoreSource(nameof(ApplicationUser.AccessFailedCount))]
-        [MapperIgnoreSource(nameof(ApplicationUser.LastSignInAt))]
-        [MapperIgnoreSource(nameof(ApplicationUser.OidcSessionInvalidatedAt))]
-        public partial ApplicationUserDto UserToDto(ApplicationUser user);
     }
 }

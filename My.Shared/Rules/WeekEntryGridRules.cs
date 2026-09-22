@@ -96,6 +96,8 @@ public static class WeekEntryGridRules
         var total = TimeSpan.Zero;
         foreach (var t in tasks)
         {
+            if (!t.CountsAsTime)
+                continue;
             if (t.StartDate.Date == d)
                 total += t.Duration;
         }
@@ -110,6 +112,8 @@ public static class WeekEntryGridRules
         var total = TimeSpan.Zero;
         foreach (var t in tasks)
         {
+            if (!t.CountsAsTime)
+                continue;
             var sd = t.StartDate.Date;
             if (sd >= f && sd <= end)
                 total += t.Duration;
@@ -677,7 +681,10 @@ public static class WeekEntryGridRules
     /// Strip leading/trailing whitespace for storage and comparison.
     /// Always use this before persisting a task name.
     /// </summary>
-    public static string SanitizeTaskDetails(string? name) => (name ?? string.Empty).Trim();
+    public static string SanitizeTaskName(string? name) => (name ?? string.Empty).Trim();
+
+    /// <summary>WS alias: task free-text is named Details in this codebase.</summary>
+    public static string SanitizeTaskDetails(string? name) => SanitizeTaskName(name);
 
     /// <summary>
     /// New Week → Day (and similar) draft rows: duration is allowed once a project
@@ -709,13 +716,16 @@ public static class WeekEntryGridRules
     /// Validate task Details for create/update. Empty is allowed.
     /// Length rules apply to the trimmed name.
     /// </summary>
-    public static string? ValidateTaskDetails(string? name)
+    public static string? ValidateTaskName(string? name)
     {
-        var trimmed = SanitizeTaskDetails(name);
+        var trimmed = SanitizeTaskName(name);
         if (trimmed.Length > MaxTaskNameLength)
             return TaskDetailsRules.MaxLengthMessage;
         return null;
     }
+
+    /// <summary>WS alias: task free-text is named Details in this codebase.</summary>
+    public static string? ValidateTaskDetails(string? name) => ValidateTaskName(name);
 
     /// <summary>
     /// Truncate a display label to fit the create name max length (e.g. project name default).
@@ -729,18 +739,21 @@ public static class WeekEntryGridRules
     }
 
     /// <summary>Trim for display/create; empty becomes empty string.</summary>
-    public static string NormalizeTaskDetailsKey(string? name) => (name ?? string.Empty).Trim();
+    public static string NormalizeTaskNameKey(string? name) => (name ?? string.Empty).Trim();
+    public static string NormalizeTaskDetailsKey(string? name) => NormalizeTaskNameKey(name);
 
     /// <summary>Case-insensitive task-name equality after trim.</summary>
     public static bool TaskNamesEqual(string? a, string? b) =>
-        string.Equals(NormalizeTaskDetailsKey(a), NormalizeTaskDetailsKey(b), StringComparison.OrdinalIgnoreCase);
+        string.Equals(NormalizeTaskNameKey(a), NormalizeTaskNameKey(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Distinct manual timed task names for a project inside [from,to] inclusive,
     /// ordered alphabetically (case-insensitive). Used to rebuild Project-view rows
     /// from existing week data plus any blank draft row the UI keeps.
     /// </summary>
-    public static IReadOnlyList<string> DistinctManualTaskDetails(
+    public static IReadOnlyList<string> DistinctManualTaskDetails(IEnumerable<WeekEntryTaskSlice> weekTasks, string projectId, DateTime from, DateTime to) => DistinctManualTaskNames(weekTasks, projectId, from, to);
+
+    public static IReadOnlyList<string> DistinctManualTaskNames(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
         string? projectId,
         DateTime from,
@@ -764,7 +777,7 @@ public static class WeekEntryGridRules
             // Details is optional — an empty name is still a real row (see the
             // matching note in WeekDayAcrossGrid.RebuildRows). All-day entries
             // belong here too so Week → Day can show their 8h and count them.
-            names.Add(NormalizeTaskDetailsKey(t.Details));
+            names.Add(NormalizeTaskNameKey(t.Details));
         }
 
         return names.ToList();
@@ -774,30 +787,36 @@ public static class WeekEntryGridRules
     /// Bind one day for the selected project from week tasks.
     /// Timed manuals are editable. All-day entries bind as <see cref="DayBindKind.AllDay"/>
     /// (read-only workday hours). Stopwatch sessions stay out of the cell.
-    /// Prefer <see cref="BindDayForTaskDetails"/> when the UI is multi-row.
+    /// Prefer <see cref="BindDayForTaskName"/> when the UI is multi-row.
     /// </summary>
     public static DayBinding BindDay(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
         string? projectId,
         DateTime day) =>
-        BindDayForTaskDetails(weekTasks, projectId, taskName: null, day, matchAnyDetails: true);
+        BindDayForTaskName(weekTasks, projectId, taskName: null, day, matchAnyName: true);
 
     /// <summary>
-    /// Bind one day for a specific task Details under a project. Empty Details is a real key
-    /// (optional name). When multiple manuals share the same project+details+day, returns
+    /// Bind one day for a specific task name under a project. Empty Details is a real key
+    /// (optional name). When multiple manuals share the same project+name+day, returns
     /// <see cref="DayBindKind.Multiple"/> (read-only sum).
     /// </summary>
     public static DayBinding BindDayForTaskDetails(
         IEnumerable<WeekEntryTaskSlice> weekTasks,
+        string projectId,
+        string? taskName,
+        DateTime day,
+        bool matchAnyDetails = false) =>
+        BindDayForTaskName(weekTasks, projectId, taskName, day, matchAnyDetails);
+
+    public static DayBinding BindDayForTaskName(
+        IEnumerable<WeekEntryTaskSlice> weekTasks,
         string? projectId,
         string? taskName,
         DateTime day,
-        bool matchAnyDetails = false)
+        bool matchAnyName = false)
     {
         if (string.IsNullOrEmpty(projectId))
             return new DayBinding(DayBindKind.Empty, null, null, null, TimeSpan.Zero, TimeSpan.Zero);
-
-        // Empty Details is a real key (optional) — do not treat blank as "no row".
 
         var dayDate = day.Date;
         var workdayHours = AllDayEntryRules.DefaultWorkdayHours;
@@ -807,7 +826,7 @@ public static class WeekEntryGridRules
                 && string.IsNullOrEmpty(t.StopwatchItemId)
                 && string.Equals(t.ProjectId, projectId, StringComparison.Ordinal)
                 && t.StartDate.Date == dayDate
-                && (matchAnyDetails || TaskNamesEqual(t.Details, taskName)))
+                && (matchAnyName || TaskNamesEqual(t.Details, taskName)))
             .OrderBy(t => t.StartDate)
             .ToList();
 
@@ -816,7 +835,7 @@ public static class WeekEntryGridRules
                 t.IsAllDay
                 && string.Equals(t.ProjectId, projectId, StringComparison.Ordinal)
                 && AllDayCoversDate(t, dayDate)
-                && (matchAnyDetails || TaskNamesEqual(t.Details, taskName)))
+                && (matchAnyName || TaskNamesEqual(t.Details, taskName)))
             .OrderBy(t => t.StartDate)
             .ToList();
 
@@ -875,6 +894,9 @@ public static class WeekEntryGridRules
         DateTime day,
         double workdayHours = AllDayEntryRules.DefaultWorkdayHours)
     {
+        if (!task.CountsAsTime)
+            return TimeSpan.Zero;
+
         var dayDate = day.Date;
         if (task.IsAllDay)
         {
@@ -938,6 +960,8 @@ public static class WeekEntryGridRules
         var project = TimeSpan.Zero;
         foreach (var t in weekTasks)
         {
+            if (!t.CountsAsTime)
+                continue;
             grand += t.Duration;
             if (!string.IsNullOrEmpty(projectId)
                 && string.Equals(t.ProjectId, projectId, StringComparison.Ordinal))
@@ -988,5 +1012,6 @@ public static class WeekEntryGridRules
         TimeSpan Duration,
         bool IsAllDay,
         string? StopwatchItemId,
-        DateTime? EndDate = null);
+        DateTime? EndDate = null,
+        bool CountsAsTime = true);
 }

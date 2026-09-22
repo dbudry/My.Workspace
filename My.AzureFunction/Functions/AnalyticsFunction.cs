@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.EntityFrameworkCore;
@@ -66,7 +67,8 @@ namespace My.Functions
             var workdayRow = await dbContext.AppSettings.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.WorkdayHours);
             var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
-            TimeSpan HoursOf(TrackedTask t) => AllDayEntryRules.EffectiveDuration(
+            TimeSpan HoursOf(TrackedTask t) => TeamAvailabilityHoursRules.HoursFor(
+                t.Project?.CountsAsTime,
                 t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
 
             // This month / last month boundaries
@@ -94,7 +96,7 @@ namespace My.Functions
                 .GroupBy(t => new
                 {
                     Id = t.ProjectId ?? "None",
-                    Details = t.Project?.Name ?? "None",
+                    Name = t.Project?.Name ?? "None",
                     OrgId = t.Project?.OrganizationId,
                     OrgName = t.Project?.Organization?.Name,
                     OrgColor = t.Project?.Organization?.Color,
@@ -105,7 +107,7 @@ namespace My.Functions
                 .Select(g => new ProjectDataItemDto
                 {
                     ProjectId = g.Key.Id,
-                    ProjectName = g.Key.Details,
+                    ProjectName = g.Key.Name,
                     Time = TimeSpan.FromSeconds(g.Sum(t => HoursOf(t).TotalSeconds)),
                     OrganizationId = g.Key.OrgId,
                     OrganizationName = g.Key.OrgName,
@@ -130,8 +132,8 @@ namespace My.Functions
 
         private AmountOfWorkTimeDto BuildMonthSummary(List<TrackedTask> tasks, double workdayHours)
         {
-            double totalSeconds = tasks.Sum(t => AllDayEntryRules.EffectiveDuration(
-                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours).TotalSeconds);
+            double totalSeconds = tasks.Sum(t => TeamAvailabilityHoursRules.HoursFor(
+                t.Project?.CountsAsTime, t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours).TotalSeconds);
             var (topName, topSeconds) = FindTopProject(tasks, workdayHours);
 
             return new AmountOfWorkTimeDto
@@ -196,14 +198,14 @@ namespace My.Functions
         }
 
         /// <summary>
-        /// Admin:Tyme entity-centric table extract — requested datasets only, with optional scope filters.
+        /// Manager:Tyme entity-centric table extract — requested datasets only, with optional scope filters.
         /// </summary>
         [Function("GetTymeDataExtraction")]
         public async Task<IActionResult> GetTymeDataExtractionAsync(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "analytics/dataextraction")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Admin) is IActionResult unauth)
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth)
                 return unauth;
 
             if (!TymeDataExtractionRules.TryParseEntities(req.Query["Entities"], out var entities, out var parseError))
@@ -243,7 +245,6 @@ namespace My.Functions
 
             return new OkObjectResult(export);
         }
-
         /// <summary>
         /// Read-only other-users' tasks for Reports. SQL-filters by the requested user ids
         /// (intersected with Tyme team visibility). Empty UserIds returns the caller's rows only.
@@ -291,7 +292,8 @@ namespace My.Functions
             {
                 var dto = mapper.TrackedTaskToDto(task);
                 dto.Details ??= string.Empty;
-                dto.Duration = AllDayEntryRules.EffectiveDuration(
+                dto.Duration = TeamAvailabilityHoursRules.DisplayDuration(
+                    task.Project?.CountsAsTime,
                     task.IsAllDay, task.StartDate, task.EndDate, task.Duration, workdayHours);
                 dto.IsMonthSubmitted = submittedSet.Contains((task.UserId, task.StartDate.Year, task.StartDate.Month));
                 dto.User = ToUserDto(task.User);
@@ -323,7 +325,8 @@ namespace My.Functions
             var tasks = (await trackedTaskRepository.Get(
                 filter: task =>
                     (from == null || task.StartDate >= from) &&
-                    (to == null || task.StartDate <= to),
+                    (to == null || task.StartDate <= to) &&
+                    (task.Project == null || task.Project.CountsAsTime),
                 includeProperties: "Project.Organization,Project.ProjectGroup,User")).ToList();
 
             // Overlay manager-created aliases on top of the originals.
@@ -365,11 +368,18 @@ namespace My.Functions
             var workdayHours = AllDayEntryRules.ParseWorkdayHours(workdayRow?.Value);
             // task.Duration is 0 for all-day entries of 24h+ (SQL time cannot store that) —
             // always read the real value through EffectiveDuration, never the raw column.
-            TimeSpan ActualDuration(TrackedTask t) => AllDayEntryRules.EffectiveDuration(
-                t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
+            TimeSpan ActualDuration(TrackedTask t) => TeamAvailabilityHoursRules.HoursFor(
+                t.Project?.CountsAsTime, t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours);
             // Same idea for a Direct-correction audit's "previous" snapshot.
-            TimeSpan ActualPreviousDuration(TrackedTaskCorrectionAudit a) => AllDayEntryRules.EffectiveDuration(
-                a.PreviousIsAllDay, a.PreviousStartDate, a.PreviousEndDate, a.PreviousDuration, workdayHours);
+            TimeSpan ActualPreviousDuration(TrackedTaskCorrectionAudit a)
+            {
+                bool? counts = null;
+                if (!string.IsNullOrEmpty(a.PreviousProjectId)
+                    && prevProjectsById.TryGetValue(a.PreviousProjectId, out var prevProject))
+                    counts = prevProject.CountsAsTime;
+                return TeamAvailabilityHoursRules.HoursFor(
+                    counts, a.PreviousIsAllDay, a.PreviousStartDate, a.PreviousEndDate, a.PreviousDuration, workdayHours);
+            }
 
             var result = tasks.Where(task =>
             {
@@ -478,14 +488,14 @@ namespace My.Functions
                 .GroupBy(t => t.ProjectId)
                 .Select(g => new
                 {
-                    Details = g.First().Project?.Name ?? "None",
-                    Seconds = g.Sum(t => AllDayEntryRules.EffectiveDuration(
-                        t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours).TotalSeconds)
+                    Name = g.First().Project?.Name ?? "None",
+                    Seconds = g.Sum(t => TeamAvailabilityHoursRules.HoursFor(
+                        t.Project?.CountsAsTime, t.IsAllDay, t.StartDate, t.EndDate, t.Duration, workdayHours).TotalSeconds)
                 })
                 .OrderByDescending(p => p.Seconds)
                 .FirstOrDefault();
 
-            return top != null ? (top.Details, top.Seconds) : ("None", 0);
+            return top != null ? (top.Name, top.Seconds) : ("None", 0);
         }
 
         private static string GetAmountWorkTimeFormatted(double secondsSum)

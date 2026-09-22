@@ -1,0 +1,25 @@
+@typeparam TValue
+
+<div class="@Class" role="tablist" aria-label="@AriaLabel">
+    @foreach (var tab in Tabs)
+    {
+        var selected = EqualityComparer<TValue>.Default.Equals(tab.Value, Value);
+        <button type="button"
+                role="tab"
+                class="@(selected ? "is-active" : null)"
+                aria-selected="@selected"
+                disabled="@Disabled"
+                @onclick="@(() => ValueChanged.InvokeAsync(tab.Value))">
+            @tab.Label
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public TValue Value { get; set; } = default!;
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<SegmentedTab<TValue>> Tabs { get; set; } = [];
+    [Parameter] public string Class { get; set; } = "tasks-search-views";
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+}

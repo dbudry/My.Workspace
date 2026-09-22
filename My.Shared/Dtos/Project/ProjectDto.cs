@@ -24,6 +24,12 @@ namespace My.Shared.Dtos.Project
         public bool IsSharedAvailability { get; set; }
 
         /// <summary>
+        /// When false on a shared-availability project, entries publish to Team
+        /// Availability but do not count as Tyme hours. Default true.
+        /// </summary>
+        public bool CountsAsTime { get; set; } = true;
+
+        /// <summary>
         /// When true, time logged against this project is marked billable. Manager-set
         /// on the project edit form.
         /// </summary>

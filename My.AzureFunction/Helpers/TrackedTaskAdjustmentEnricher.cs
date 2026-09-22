@@ -113,7 +113,12 @@ internal static class TrackedTaskAdjustmentEnricher
         // hold 24h+ — see AllDayEntryRules.EffectiveDuration). Recompute the real
         // value from PreviousStartDate/PreviousEndDate/PreviousIsAllDay instead of
         // trusting the raw column, same as a live TrackedTask.
-        dto.Duration = My.Shared.Rules.AllDayEntryRules.EffectiveDuration(
+        bool? prevCountsAsTime = null;
+        if (!string.IsNullOrEmpty(audit.PreviousProjectId)
+            && context.ProjectsById.TryGetValue(audit.PreviousProjectId, out var previousProject))
+            prevCountsAsTime = previousProject.CountsAsTime;
+        dto.Duration = My.Shared.Rules.TeamAvailabilityHoursRules.DisplayDuration(
+            prevCountsAsTime,
             audit.PreviousIsAllDay, audit.PreviousStartDate, audit.PreviousEndDate, audit.PreviousDuration, workdayHours);
         dto.EndDate = audit.PreviousIsAllDay
             ? audit.PreviousEndDate

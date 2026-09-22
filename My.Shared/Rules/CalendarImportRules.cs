@@ -72,7 +72,7 @@ public static class CalendarImportRules
     /// Tagged events whose start is after now + <see cref="ImportLookahead"/> are not
     /// imported (and not updated). Past and near-future events still import.
     /// </summary>
-    public static bool ShouldImportByStart(DateTime startUtc, DateTime utcNow) =>
+    public static bool ShouldImportByStart(System.DateTime startUtc, System.DateTime utcNow) =>
         startUtc <= utcNow + ImportLookahead;
 
     /// <summary>
@@ -92,13 +92,51 @@ public static class CalendarImportRules
         return false;
     }
 
+    /// <summary>
+    /// Same calendar occurrence: all-day by date, timed within 2 minutes.
+    /// Used to relink a recurring instance whose Google id changed after an organizer update.
+    /// </summary>
+    public static bool IsSameOccurrence(System.DateTime a, System.DateTime b, bool allDay)
+    {
+        if (allDay)
+            return a.Date == b.Date;
+        return System.Math.Abs((a - b).TotalMinutes) < 2;
+    }
+
+    /// <summary>
+    /// Tyme-exported events carry <c>source=tyme</c>. If no TrackedTask is linked yet,
+    /// importing them would clone our own export (invite → Tyme → new Google copy → Tyme again).
+    /// </summary>
+    public static bool ShouldSkipUnlinkedTymeExport(bool isTymeSourced, bool existingFound) =>
+        isTymeSourced && !existingFound;
+
+    /// <summary>
+    /// Unlinked leftover from a cancelled series instance vs a brand-new tagged event.
+    /// Same project + time is not enough (two legitimate entries that day). Require a
+    /// recurring Google instance and the same display name (slug already stripped).
+    /// </summary>
+    public static bool CanRelinkUnlinkedSeriesInstance(
+        bool isRecurringInstance, string? unlinkedGoogleEventId, string? taskName, string? googleCleanName) =>
+        isRecurringInstance
+        && string.IsNullOrEmpty(unlinkedGoogleEventId)
+        && NamesMatchForRelink(taskName, googleCleanName);
+
+    public static bool NamesMatchForRelink(string? taskName, string? googleCleanName)
+    {
+        static string Norm(string? s) => (s ?? "").Trim();
+        var a = Norm(taskName);
+        var b = Norm(googleCleanName);
+        return a.Length > 0 && b.Length > 0
+            && string.Equals(a, b, System.StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IdsEqualOrInstanceOf(string taskGoogleEventId, string? seriesOrInstanceId)
     {
         if (string.IsNullOrEmpty(seriesOrInstanceId))
             return false;
-        if (string.Equals(taskGoogleEventId, seriesOrInstanceId, StringComparison.Ordinal))
+        if (string.Equals(taskGoogleEventId, seriesOrInstanceId, System.StringComparison.Ordinal))
             return true;
-        return taskGoogleEventId.StartsWith(seriesOrInstanceId + "_", StringComparison.Ordinal);
+        return taskGoogleEventId.StartsWith(seriesOrInstanceId + "_", System.StringComparison.Ordinal);
     }
 
     /// <summary>

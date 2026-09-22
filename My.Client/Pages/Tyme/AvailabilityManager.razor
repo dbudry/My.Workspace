@@ -9,7 +9,7 @@
 <PageTitle>Availability</PageTitle>
 
 <PageHeader Title="Availability Categories"
-            Description="Projects flagged as team availability. Employees pick these when logging Vacation, OOO, Sick, or any other time off. Each entry dual-publishes a sanitized event to the workspace Team Availability calendar." />
+            Description="Projects flagged as team availability. Employees pick these when logging Vacation, OOO, Sick, Unavailable, or other presence. Time-off categories count as Tyme hours; presence-only categories publish to the team calendar without adding hours." />
 
 @* Action buttons live above the table so they don't compete with the filter row for
    horizontal space. The MudTable's own ToolBarContent keeps the filter switches and
@@ -39,6 +39,7 @@
     <HeaderContent>
         <MudTh>Internal name</MudTh>
         <MudTh>Team calendar name</MudTh>
+        <MudTh Style="width:140px;">Tyme hours</MudTh>
         <MudTh Style="width:120px;">Slug</MudTh>
         <MudTh Style="width:160px;">Group</MudTh>
         <MudTh Style="width:160px;">Organization</MudTh>
@@ -67,6 +68,16 @@
             else
             {
                 <span style="color: var(--mud-palette-text-secondary);" title="No override set — falls back to the internal name">@context.Name</span>
+            }
+        </MudTd>
+        <MudTd DataLabel="Tyme hours">
+            @if (context.CountsAsTime)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Success">Counts</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">Busy only</MudChip>
             }
         </MudTd>
         <MudTd DataLabel="Slug">
@@ -124,7 +135,7 @@
     <NoRecordsContent>
         <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center">
             No availability categories yet. Click <strong>Add Category</strong> to create one
-            (e.g. Vacation, OOO, Sick).
+            (e.g. Vacation, OOO, Sick, Unavailable).
         </MudText>
     </NoRecordsContent>
 </MudTable>

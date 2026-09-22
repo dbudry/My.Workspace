@@ -4,17 +4,19 @@
 <head>
     <meta charset="utf-8" />
     <script>
-        // Dev-only: LOCAL bar + no-cache on localhost debug ports only (7047/5047/11256).
+        // Dev-only: discourage browser from caching index.html itself. Without this,
+        // an old index (or service worker) can keep serving stale _framework integrity hashes.
         (function () {
             var host = (location.hostname || '').toLowerCase();
             var port = String(location.port || '');
-            if (host.endsWith('.azurestaticapps.net') || host.endsWith('.azurewebsites.net'))
+            if (false /* deployed hostname branding removed */
+                || host.endsWith('.azurestaticapps.net') || host.endsWith('.azurewebsites.net'))
                 return;
             var loopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
             var localPort = port === '7047' || port === '5047' || port === '11256';
             if (!(loopback && localPort)) return;
 
-            var hideKey = 'ws.localEnvBannerHiddenUntil';
+            var hideKey = 'pp.localEnvBannerHiddenUntil';
             var hideMs = 5 * 60 * 1000;
             var restoreTimer;
 
@@ -119,11 +121,13 @@
 
 <body>
     <div id="app">
-        <svg class="loading-progress">
-            <circle r="40%" cx="50%" cy="50%" />
-            <circle r="40%" cx="50%" cy="50%" />
-        </svg>
-        <div class="loading-progress-text"></div>
+        <div class="loading-progress-host">
+            <svg class="loading-progress" aria-hidden="true">
+                <circle r="40%" cx="50%" cy="50%" />
+                <circle r="40%" cx="50%" cy="50%" />
+            </svg>
+            <div class="loading-progress-text"></div>
+        </div>
     </div>
 
     <div id="blazor-error-ui">
@@ -133,12 +137,20 @@
     </div>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="_content/Microsoft.AspNetCore.Components.WebAssembly.Authentication/AuthenticationService.js"></script>
+    <script src="js/console-brand.js"></script>
     <script src="js/browser-timezone.js"></script>
     <script src="js/header-search.js"></script>
     <script src="js/intranet-media.js"></script>
     <script src="js/quill-editor.js"></script>
     <script src="js/file-drop.js"></script>
     <script src="js/project-autocomplete.js"></script>
+    <script src="js/task-details-field.js"></script>
+    <script src="js/counted-textarea.js"></script>
+    <script src="js/calendar-day-totals.js"></script>
+    <script src="js/keyboard-page-nav.js"></script>
+    <script src="js/dashboard-layout.js"></script>
+    <script src="js/signature-pad.js"></script>
+    <script src="js/file-save.js"></script>
     <script>
         // On localhost, tear down any PWA service worker + caches BEFORE loading Blazor.
         // A stale SW or cached boot manifest can still cause SRI / 404 failures after rebuilds.
@@ -146,7 +158,8 @@
         // asset fingerprinting (see My.Client.csproj), so filenames are stable and a stale boot
         // manifest resolves to a real file instead of 404'ing into an empty-body integrity error.
         (async function () {
-            var isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            var bootHost = (location.hostname || '').toLowerCase();
+            var isLocal = bootHost === 'localhost' || bootHost === '127.0.0.1' || bootHost === '[::1]' || bootHost === '::1';
 
             function showBootHelp(message) {
                 var ui = document.getElementById('blazor-error-ui');
@@ -173,7 +186,28 @@
                     await Promise.all(keys.map(function (k) { return caches.delete(k); }));
                 }
             } else if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('service-worker.js');
+                // After a deploy the new worker skipWaiting+claims. Reload once so
+                // this tab actually runs the new bits instead of a mix of old JS
+                // and new hashed DLLs. Skip the first controller (initial install).
+                var hadController = !!navigator.serviceWorker.controller;
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    if (!hadController) {
+                        hadController = true;
+                        return;
+                    }
+                    location.reload();
+                });
+
+                navigator.serviceWorker.register('service-worker.js').then(function (reg) {
+                    function checkForUpdate() {
+                        reg.update().catch(function () { });
+                    }
+                    document.addEventListener('visibilitychange', function () {
+                        if (document.visibilityState === 'visible')
+                            checkForUpdate();
+                    });
+                    setInterval(checkForUpdate, 15 * 60 * 1000);
+                });
             }
 
             var blazor = document.createElement('script');
@@ -184,7 +218,6 @@
             document.body.appendChild(blazor);
         })();
     </script>
-    <script src="js/keyboard-page-nav.js"></script>
-    </body>
+</body>
 
 </html>

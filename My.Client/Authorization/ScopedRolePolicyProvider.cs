@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
+using My.Shared.Constants;
 
 namespace My.Client.Authorization;
 
@@ -35,8 +36,9 @@ public class ScopedRolePolicyProvider : IAuthorizationPolicyProvider
             if (parts.Length == 3 && !scopedOnly)
                 return _fallback.GetPolicyAsync(policyName);
 
-            var validRoles = new[] { "User", "Editor", "Manager", "Admin" };
-            if (validRoles.Contains(minRole))
+            var isValidRole = Constants.Roles.OperationalHierarchy.Contains(minRole)
+                || Constants.Roles.OrthogonalRoles.Contains(minRole);
+            if (isValidRole)
             {
                 var policy = new AuthorizationPolicyBuilder()
                     .AddRequirements(new ScopedRoleRequirement(scope, minRole, scopedOnly))

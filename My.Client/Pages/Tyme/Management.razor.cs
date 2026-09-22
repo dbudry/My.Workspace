@@ -439,22 +439,7 @@ namespace My.Client.Pages.Tyme
                     allTasks = JsonSerializer.Deserialize<List<AdminTaskItem>>(json, options) ?? new();
 
                     MergeTaskUsersIntoEmployeeOptions();
-
-                    // Build project options (with parent org and group for cascading)
-                    projectOptions = allTasks
-                        .Where(t => !string.IsNullOrEmpty(t.ProjectId))
-                        .Select(t => new FilterOption
-                        {
-                            Id = t.ProjectId!,
-                            Name = t.ProjectName,
-                            Slug = t.ProjectSlug,
-                            ParentId = t.OrganizationId,
-                            GroupId = t.ProjectGroupId
-                        })
-                        .DistinctBy(p => p.Id)
-                        .OrderBy(p => p.Name)
-                        .ToList();
-
+                    RebuildProjectOptionsFromLoadedTasks();
                     ApplyClientFilters();
                 }
             }
@@ -484,6 +469,7 @@ namespace My.Client.Pages.Tyme
             }
 
             SyncEmployeeSelectionState();
+            RebuildProjectOptionsFromLoadedTasks();
             ApplyClientFilters();
             _ = PersistFilterPrefsAsync();
         }
@@ -497,6 +483,7 @@ namespace My.Client.Pages.Tyme
                 selectedUserIds = new HashSet<string>();
             }
 
+            RebuildProjectOptionsFromLoadedTasks();
             ApplyClientFilters();
             _ = PersistFilterPrefsAsync();
         }
@@ -530,8 +517,39 @@ namespace My.Client.Pages.Tyme
             }
 
             selectedUserIds = selectedUserIds.ToHashSet();
+            RebuildProjectOptionsFromLoadedTasks();
             ApplyClientFilters();
             _ = PersistFilterPrefsAsync();
+        }
+
+        /// <summary>
+        /// Project picker lists only projects that have time in the loaded date range
+        /// for the currently selected employees. Presence-only availability is already
+        /// excluded from <see cref="allTasks"/>.
+        /// </summary>
+        private void RebuildProjectOptionsFromLoadedTasks()
+        {
+            IEnumerable<AdminTaskItem> source = allTasks;
+            if (selectedUserIds.Count > 0)
+                source = source.Where(t => selectedUserIds.Contains(t.UserId));
+
+            projectOptions = source
+                .Where(t => !string.IsNullOrEmpty(t.ProjectId))
+                .Select(t => new FilterOption
+                {
+                    Id = t.ProjectId!,
+                    Name = t.ProjectName,
+                    Slug = t.ProjectSlug,
+                    ParentId = t.OrganizationId,
+                    GroupId = t.ProjectGroupId
+                })
+                .DistinctBy(p => p.Id)
+                .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!string.IsNullOrEmpty(selectedProjectId)
+                && projectOptions.All(p => p.Id != selectedProjectId))
+                selectedProjectId = null;
         }
 
         private void MergeTaskUsersIntoEmployeeOptions()
@@ -614,6 +632,18 @@ namespace My.Client.Pages.Tyme
                 })
                 .OrderByDescending(u => u.TotalTimeSeconds)
                 .ToList();
+        }
+
+        private Task OnDateFromChanged(DateTime? value)
+        {
+            dateFrom = value;
+            return ApplyFilters();
+        }
+
+        private Task OnDateToChanged(DateTime? value)
+        {
+            dateTo = value;
+            return ApplyFilters();
         }
 
         private async Task ApplyFilters()

@@ -1,4 +1,5 @@
 @namespace My.Client.Components.Availability
+@using My.Client.Components.Layout
 @using My.Client.Components.Projects
 @using My.Client.Models
 @using My.Shared.Rules
@@ -9,7 +10,7 @@
             <DialogFormStack>
                 <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
                     These projects are the categories employees pick when logging Vacation, OOO,
-                    Sick, or any other availability entry. Time logged against them dual-publishes
+                    Sick, Unavailable, or any other availability entry. Each entry dual-publishes
                     to the workspace Team Availability calendar.
                 </MudText>
 
@@ -28,6 +29,16 @@
                               Placeholder="@(string.IsNullOrWhiteSpace(Model.Name) ? "e.g. Out of Office" : Model.Name)"
                               HelperText="Leave blank to use the internal name shown above on the Team Availability calendar."
                               MaxLength="100" Immediate="true" />
+
+                <DialogFormGroup>
+                    <MudSwitch T="bool" @bind-Value="Model.CountsAsTime" Label="Counts as Tyme hours"
+                               Color="Color.Primary" />
+                    <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                        On for Vacation, Sick, and other time off. Off for Unavailable or Busy:
+                        the team calendar still shows the event, and it does not add hours or
+                        make the month submittable. Employees can still log real work that day.
+                    </MudText>
+                </DialogFormGroup>
 
                 <MudTextField @bind-Value="Model.Slug" For="@(() => Model.Slug)"
                               Label="Slug (optional)"

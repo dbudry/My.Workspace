@@ -1,6 +1,6 @@
 // Global ArrowLeft/ArrowRight shortcut: advances a paged MudTable to the next/previous
 // page, or (on the Tasks page's Weekly/Project week views) steps to the next/previous
-// week. Pure DOM click-through ΓÇö no .NET interop needed, so it works on every page that
+// week. Pure DOM click-through — no .NET interop needed, so it works on every page that
 // has one of these controls without each page having to wire it up itself.
 (function () {
     function isTypingIntoField(target) {
@@ -14,7 +14,7 @@
     function isInsideExcludedRegion(target) {
         if (!target || !target.closest) return false;
         // Dialogs, date-picker calendars, and open dropdowns/menus already use arrow
-        // keys for their own navigation (day-to-day, month-to-month, option-to-option) ΓÇö
+        // keys for their own navigation (day-to-day, month-to-month, option-to-option) —
         // don't hijack those.
         return !!target.closest('.mud-dialog, .mud-picker-content, .mud-popover, .mud-calendar, .mud-menu');
     }
@@ -29,6 +29,25 @@
     }
 
     function handleKeydown(e) {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && document.querySelector('[data-expense-editor]')) {
+            if (e.key === 's' || e.key === 'S') {
+                var save = firstEnabledVisible('[data-expense-save]');
+                if (save) {
+                    e.preventDefault();
+                    save.click();
+                }
+                return;
+            }
+            if (e.key === 'n' || e.key === 'N') {
+                var add = firstEnabledVisible('[data-expense-add-line]');
+                if (add) {
+                    e.preventDefault();
+                    add.click();
+                }
+                return;
+            }
+        }
+
         if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
         if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
         if (isTypingIntoField(e.target) || isInsideExcludedRegion(e.target)) return;
@@ -36,7 +55,7 @@
         var forward = e.key === 'ArrowRight';
 
         // Week navigation (Tasks page) takes priority over a table pager on the off
-        // chance both are ever present on the same page ΓÇö it's the more specific control.
+        // chance both are ever present on the same page — it's the more specific control.
         var weekBtn = firstEnabledVisible(forward
             ? 'button[aria-label="Next week"]'
             : 'button[aria-label="Previous week"]');

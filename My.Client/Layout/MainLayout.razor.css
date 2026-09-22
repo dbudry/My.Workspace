@@ -78,6 +78,14 @@
     margin-left: 0.5rem;
 }
 
+.page-title-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+    color: var(--mud-palette-appbar-text);
+}
+
 .page-title::before {
     content: "/";
     margin-right: 0.75rem;

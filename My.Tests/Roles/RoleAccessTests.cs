@@ -42,8 +42,8 @@ public class RoleAccessTests
 
         Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.User));
         Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.Manager));
-        Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.Admin));
-        Assert.True(Constants.Roles.HasAccess(principal, UnrelatedScope, Constants.Roles.Admin));
+        Assert.True(Constants.Roles.HasAccess(principal, UnrelatedScope, Constants.Roles.User));
+        Assert.False(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.UserAccess));
     }
 
     // Note: global Manager and global User aren't assignable roles in this system
@@ -53,13 +53,22 @@ public class RoleAccessTests
     // ---------- Scoped roles only grant their own scope ----------
 
     [Fact]
-    public void AdminInTyme_can_access_Tyme_only()
+    public void ManagerInTyme_does_not_leak_to_other_scopes()
     {
-        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, TymeScope));
+        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Manager, TymeScope));
 
-        Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.Admin));
-        Assert.False(Constants.Roles.HasAccess(principal, UnrelatedScope, Constants.Roles.Admin));
+        Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.Manager));
         Assert.False(Constants.Roles.HasAccess(principal, UnrelatedScope, Constants.Roles.User));
+    }
+
+    [Fact]
+    public void UserAccess_does_not_operate_the_module()
+    {
+        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.UserAccess, TymeScope));
+
+        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.User));
+        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Manager));
+        Assert.True(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.UserAccess));
     }
 
     [Fact]
@@ -85,11 +94,11 @@ public class RoleAccessTests
     // ---------- Role hierarchy ordering ----------
 
     [Fact]
-    public void Admin_satisfies_Manager_minimum()
+    public void Manager_satisfies_User_minimum()
     {
-        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, TymeScope));
+        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Manager, TymeScope));
 
-        Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.Manager));
+        Assert.True(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.User));
     }
 
     [Fact]
@@ -113,10 +122,10 @@ public class RoleAccessTests
     [Fact]
     public void Role_in_other_scope_is_denied()
     {
-        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, UnrelatedScope));
+        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Manager, UnrelatedScope));
 
         Assert.False(Constants.Roles.HasAccess(principal, TymeScope, Constants.Roles.User));
-        Assert.True(Constants.Roles.HasAccess(principal, UnrelatedScope, Constants.Roles.Admin));
+        Assert.True(Constants.Roles.HasAccess(principal, UnrelatedScope, Constants.Roles.Manager));
     }
 
     // ---------- Default minimum is User ----------
@@ -132,7 +141,7 @@ public class RoleAccessTests
     // ---------- Scoped() formatting ----------
 
     [Theory]
-    [InlineData(Constants.Roles.Admin, "Tyme", "Admin:Tyme")]
+    [InlineData(Constants.Roles.UserAccess, "Tyme", "UserAccess:Tyme")]
     [InlineData(Constants.Roles.Manager, "Tyme", "Manager:Tyme")]
     [InlineData(Constants.Roles.User, "Tyme", "User:Tyme")]
     [InlineData(Constants.Roles.Admin, null, Constants.Roles.Admin)]
@@ -156,7 +165,7 @@ public class RoleAccessTests
 
         Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.User));
         Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Manager));
-        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Admin));
+        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.UserAccess));
     }
 
     [Fact]
@@ -166,25 +175,25 @@ public class RoleAccessTests
 
         Assert.True(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.User));
         Assert.True(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Manager));
-        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Admin));
+        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.UserAccess));
     }
 
     [Fact]
-    public void HasScopedAccess_AdminInTyme_satisfies_Manager_in_Tyme()
+    public void HasScopedAccess_UserAccess_does_not_satisfy_Manager()
     {
-        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, TymeScope));
+        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.UserAccess, TymeScope));
 
-        Assert.True(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Manager));
-        Assert.True(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Admin));
+        Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.Manager));
+        Assert.True(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.UserAccess));
     }
 
     [Fact]
     public void HasScopedAccess_scoped_role_does_not_leak_across_scopes()
     {
-        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Admin, UnrelatedScope));
+        var principal = PrincipalWithRoles(Constants.Roles.Scoped(Constants.Roles.Manager, UnrelatedScope));
 
         Assert.False(Constants.Roles.HasScopedAccess(principal, TymeScope, Constants.Roles.User));
-        Assert.True(Constants.Roles.HasScopedAccess(principal, UnrelatedScope, Constants.Roles.Admin));
+        Assert.True(Constants.Roles.HasScopedAccess(principal, UnrelatedScope, Constants.Roles.Manager));
     }
 
     [Fact]

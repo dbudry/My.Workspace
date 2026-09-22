@@ -1,0 +1,215 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using My.Client.Extensions
+@using My.Shared.Constants
+@using My.Shared.Dtos.Expenses
+@using My.Shared.Rules
+@inject IJSRuntime Js
+@inject IHttpClientFactory ClientFactory
+@inject ISnackbar Snackbar
+
+<div>
+    @if (!string.IsNullOrEmpty(previewSrc))
+    {
+        <MudText Typo="Typo.caption" Class="mb-1" Style="color: var(--mud-palette-text-secondary);">
+            Saved signature
+        </MudText>
+        <div class="mb-3">
+            <img src="@previewSrc" alt="Saved signature"
+                 style="max-height: 72px; max-width: 280px; background: white; padding: 4px; border: 1px solid var(--mud-palette-lines-default);" />
+        </div>
+    }
+
+    <canvas @ref="canvas" width="420" height="140"
+            style="width: 100%; max-width: 420px; height: 140px; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; background: white; touch-action: none; cursor: crosshair;"
+            class="mb-2">
+    </canvas>
+
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="flex-wrap">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Save"
+                   Disabled="@isBusy" OnClick="SaveDrawnAsync">
+            @(isBusy ? "Saving…" : "Save drawing")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.Backspace"
+                   OnClick="ClearCanvas">
+            Clear pad
+        </MudButton>
+        <InputFile id="@fileInputId" OnChange="OnFileAsync" accept=".png,.jpg,.jpeg,.webp"
+                   style="display:none" />
+        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.UploadFile"
+                   Disabled="@isBusy" OnClick="PickFileAsync">
+            Upload image
+        </MudButton>
+        @if (HasSignature)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Delete"
+                       Disabled="@isBusy" OnClick="DeleteAsync">
+                Remove
+            </MudButton>
+        }
+    </MudStack>
+    <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
+        Upload a PNG, JPEG, or WebP — 200 KB or smaller.
+    </MudText>
+</div>
+
+@code {
+    [Parameter] public string MediaUrl { get; set; } = "";
+    [Parameter] public string PutUrl { get; set; } = "";
+    [Parameter] public string DeleteUrl { get; set; } = "";
+    [Parameter] public bool HasSignature { get; set; }
+    [Parameter] public EventCallback<bool> HasSignatureChanged { get; set; }
+
+    private ElementReference canvas;
+    private bool isBusy;
+    private string? previewSrc;
+    private string? committedPreviewSrc;
+    private HttpClient client = null!;
+    private readonly string fileInputId = $"signature-file-{Guid.NewGuid():N}";
+
+    protected override void OnInitialized()
+    {
+        client = ClientFactory.CreateClient(Constants.API.ClientName);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (isBusy)
+            return;
+        if (HasSignature && string.IsNullOrEmpty(previewSrc) && !string.IsNullOrEmpty(MediaUrl))
+            await LoadPreviewAsync();
+        else if (!HasSignature && committedPreviewSrc == null)
+            previewSrc = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await Js.InvokeVoidAsync("signaturePad.init", canvas);
+    }
+
+    private async Task ClearCanvas() =>
+        await Js.InvokeVoidAsync("signaturePad.clear", canvas);
+
+    private async Task PickFileAsync() =>
+        await Js.InvokeVoidAsync("eval", $"document.getElementById('{fileInputId}')?.click()");
+
+    private async Task SaveDrawnAsync()
+    {
+        var b64 = await Js.InvokeAsync<string>("signaturePad.toPng", canvas);
+        if (string.IsNullOrWhiteSpace(b64))
+        {
+            Snackbar.Add("Draw a signature first, or attach an image.", Severity.Warning);
+            return;
+        }
+
+        await UploadAsync("signature.png", "image/png", b64);
+    }
+
+    private async Task OnFileAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        if (!ExpenseSignatureRules.TryValidate(file.Name, file.ContentType, (int)Math.Min(file.Size, int.MaxValue), out var error))
+        {
+            Snackbar.Add(error ?? "Couldn't use that file.", Severity.Warning);
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(ExpenseSignatureRules.MaxBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        await UploadAsync(file.Name, file.ContentType, Convert.ToBase64String(ms.ToArray()));
+    }
+
+    private async Task UploadAsync(string fileName, string mime, string base64)
+    {
+        var previousPreview = previewSrc;
+        isBusy = true;
+        previewSrc = $"data:{ExpenseSignatureRules.NormalizeMime(mime, fileName)};base64,{base64}";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var payload = new UploadExpenseSignatureDto
+            {
+                FileName = fileName,
+                MimeType = mime,
+                ContentBase64 = base64
+            };
+            var response = await client.PutAsJsonAsync(PutUrl, payload);
+            if (!response.IsSuccessStatusCode)
+            {
+                previewSrc = previousPreview;
+                var body = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(body) ? "Couldn't save the signature." : body, Severity.Error);
+                return;
+            }
+
+            HasSignature = true;
+            committedPreviewSrc = previewSrc;
+            await HasSignatureChanged.InvokeAsync(true);
+            Snackbar.Add("Signature saved.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            previewSrc = previousPreview;
+            Snackbar.AddApiError(ex, "Couldn't save the signature.");
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task LoadPreviewAsync()
+    {
+        try
+        {
+            using var response = await client.GetAsync(MediaUrl);
+            if (!response.IsSuccessStatusCode)
+                return;
+            var mime = response.Content.Headers.ContentType?.MediaType ?? "image/png";
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            if (bytes.Length == 0)
+                return;
+            previewSrc = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+            committedPreviewSrc = previewSrc;
+        }
+        catch
+        {
+            // Preview is optional; the signature is still stored on the profile.
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        isBusy = true;
+        try
+        {
+            var response = await client.DeleteAsync(DeleteUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Couldn't remove the signature.", Severity.Error);
+                return;
+            }
+
+            HasSignature = false;
+            previewSrc = null;
+            committedPreviewSrc = null;
+            await HasSignatureChanged.InvokeAsync(false);
+            await ClearCanvas();
+            Snackbar.Add("Signature removed.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't remove the signature.");
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+}

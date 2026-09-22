@@ -13,7 +13,8 @@ public static class WeeklyTimeTotalsRules
         /// <summary>Null when there is no manager Alias/Direct correction.</summary>
         TimeSpan? AdjustedDuration,
         bool IsAllDay = false,
-        DateTime? EndDate = null);
+        DateTime? EndDate = null,
+        bool CountsAsTime = true);
 
     /// <summary>
     /// <see cref="ShowAdjustedSeparately"/> is true only in <see cref="EmployeeTimeDisplayMode.Both"/>
@@ -45,6 +46,9 @@ public static class WeeklyTimeTotalsRules
 
         foreach (var t in tasks)
         {
+            if (!t.CountsAsTime)
+                continue;
+
             TimeSpan orig;
             TimeSpan adj;
             if (t.IsAllDay)

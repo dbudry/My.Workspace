@@ -255,7 +255,7 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
-            var pageCheck = await EnsureCanEditPageAsync(principal, pageId, userId);
+            var pageCheck = await EnsureCanEditPageAsync(pageId, userId);
             if (pageCheck.Error is { } permError) return permError;
             var page = pageCheck.Page!;
 
@@ -328,7 +328,7 @@ namespace My.Functions
             if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Editor) is { } gateFail)
                 return gateFail;
 
-            var pageCheck = await EnsureCanEditPageAsync(principal, pageId, userId);
+            var pageCheck = await EnsureCanEditPageAsync(pageId, userId);
             if (pageCheck.Error is { } permError) return permError;
             var page = pageCheck.Page!;
 
@@ -374,7 +374,7 @@ namespace My.Functions
             if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Editor) is { } gateFail)
                 return gateFail;
 
-            var pageCheck = await EnsureCanEditPageAsync(principal, pageId, userId);
+            var pageCheck = await EnsureCanEditPageAsync(pageId, userId);
             if (pageCheck.Error is { } permError) return permError;
             var page = pageCheck.Page!;
 
@@ -431,7 +431,7 @@ namespace My.Functions
             if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Editor) is { } gateFail)
                 return gateFail;
 
-            var pageCheck = await EnsureCanEditPageAsync(principal, pageId, userId);
+            var pageCheck = await EnsureCanEditPageAsync(pageId, userId);
             if (pageCheck.Error is { } permError) return permError;
             var page = pageCheck.Page!;
 
@@ -481,7 +481,7 @@ namespace My.Functions
             if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Editor) is { } gateFail)
                 return gateFail;
 
-            var pageCheck = await EnsureCanEditPageAsync(principal, pageId, userId);
+            var pageCheck = await EnsureCanEditPageAsync(pageId, userId);
             if (pageCheck.Error is { } permError) return permError;
 
             var ct = req.FunctionContext.CancellationToken;
@@ -675,16 +675,9 @@ namespace My.Functions
             if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Editor) is { } gateFail)
                 return gateFail;
 
-            var page = await dbContext.IntranetPages.FirstOrDefaultAsync(p => p.PageId == pageId);
-            if (page == null)
-                return new NotFoundObjectResult("Page not found.");
-
-            // Permission: owner or admin if restricted
-            if (page.RestrictEditingToOwner && !string.Equals(page.CreatedByUserId, userId, StringComparison.Ordinal))
-            {
-                if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Intranet, Constants.Roles.Admin))
-                    return new StatusCodeResult(403);
-            }
+            var pageCheck = await EnsureCanEditPageAsync(pageId, userId);
+            if (pageCheck.Error is { } deletePermError) return deletePermError;
+            var page = pageCheck.Page!;
 
             // Reparent direct children (or could fail if strict hierarchy desired)
             var children = await dbContext.IntranetPages.Where(p => p.ParentPageId == pageId).ToListAsync();
@@ -748,16 +741,9 @@ namespace My.Functions
                 return validationError;
 
             var moveBody = body!;
-            var page = await dbContext.IntranetPages.FirstOrDefaultAsync(p => p.PageId == moveBody.PageId);
-            if (page == null)
-                return new NotFoundObjectResult("Page not found.");
-
-            // Permission check
-            if (page.RestrictEditingToOwner && !string.Equals(page.CreatedByUserId, userId, StringComparison.Ordinal))
-            {
-                if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Intranet, Constants.Roles.Admin))
-                    return new StatusCodeResult(403);
-            }
+            var pageCheck = await EnsureCanEditPageAsync(moveBody.PageId, userId);
+            if (pageCheck.Error is { } movePermError) return movePermError;
+            var page = pageCheck.Page!;
 
             if (!string.IsNullOrEmpty(moveBody.NewParentPageId)
                 && await WouldCreatePageCycleAsync(moveBody.PageId, moveBody.NewParentPageId, req.FunctionContext.CancellationToken))
@@ -805,7 +791,7 @@ namespace My.Functions
             var canViewDrafts = CanViewUnpublishedIntranetPages(principal);
             var visible = FilterNavigationForViewer(roots, canViewDrafts);
 
-            var isNavAdmin = Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Intranet, Constants.Roles.Admin);
+            var isNavAdmin = Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Intranet, Constants.Roles.Navigation);
             if (!isNavAdmin)
             {
                 var maxDepth = await GetIntranetNavigationMaxDepthAsync(req.FunctionContext.CancellationToken);
@@ -920,7 +906,7 @@ namespace My.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "intranet/navigation")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Admin) is { } gateFail)
+            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Navigation) is { } gateFail)
                 return gateFail;
 
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, createNavValidator);
@@ -970,7 +956,7 @@ namespace My.Functions
             string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Admin) is { } gateFail)
+            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Navigation) is { } gateFail)
                 return gateFail;
 
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, updateNavValidator);
@@ -1018,7 +1004,7 @@ namespace My.Functions
             string id)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out _, Constants.Roles.Admin) is { } gateFail)
+            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out _, Constants.Roles.Navigation) is { } gateFail)
                 return gateFail;
 
             var item = await dbContext.IntranetNavigationItems.FirstOrDefaultAsync(i => i.Id == id);
@@ -1038,7 +1024,7 @@ namespace My.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "intranet/navigation/reorder")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Admin) is { } gateFail)
+            if (AuthGates.RequireScoped(principal, Constants.Scopes.Intranet, out var userId, Constants.Roles.Navigation) is { } gateFail)
                 return gateFail;
 
             var (body, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, reorderNavValidator);
@@ -1454,6 +1440,11 @@ namespace My.Functions
             var tokenResult = await GetUserDriveTokenAsync(userId);
             if (tokenResult.Error != null) return tokenResult.Error;
 
+            var intranetRootId = await GetIntranetDriveParentFolderIdAsync();
+            if (string.IsNullOrWhiteSpace(intranetRootId)
+                || !await drive.IsUnderFolderAsync(tokenResult.Encrypted, trimmedId, intranetRootId, ct))
+                return new NotFoundObjectResult("Drive file not found or not accessible.");
+
             try
             {
                 var (content, mimeType) = await drive.DownloadFileContentAsync(tokenResult.Encrypted, trimmedId, ct);
@@ -1491,12 +1482,13 @@ namespace My.Functions
                 return gateFail;
 
             var ct = req.FunctionContext.CancellationToken;
-            var parentFolderId = await GetIntranetDriveParentFolderIdAsync();
-            if (string.IsNullOrWhiteSpace(parentFolderId))
-                return new BadRequestObjectResult("Intranet Drive parent folder is not configured in App Settings.");
-
             var tokenResult = await GetUserDriveTokenAsync(userId);
             if (tokenResult.Error != null) return tokenResult.Error;
+
+            var parentFolderId = await GetIntranetDriveParentFolderIdAsync();
+            if (string.IsNullOrWhiteSpace(parentFolderId))
+                return new BadRequestObjectResult(
+                    "The Intranet folder is not configured. A workspace Admin should open App Settings → Drive and click Apply configuration.");
 
             var search = req.Query["search"];
             var fileType = req.Query["fileType"];
@@ -1645,8 +1637,8 @@ namespace My.Functions
             {
                 logger.LogWarning(ex, "BrowseIntranetDriveFolder failed: configured folder not found");
                 return new BadRequestObjectResult(
-                    "The Intranet Drive folder in App Settings was not found or you no longer have access. " +
-                    "Open App Settings and set Intranet Drive Parent Folder ID to the root Intranet folder you can open in Drive.");
+                    "The Intranet folder on App Drive was not found or the app cannot access it. " +
+                    "A workspace Admin should open App Settings → Drive and click Apply configuration.");
             }
             catch (Exception ex)
             {
@@ -1716,7 +1708,7 @@ namespace My.Functions
 
                 if (!string.IsNullOrWhiteSpace(body.PageId))
                 {
-                    var pageCheck = await EnsureCanEditPageAsync(principal, body.PageId.Trim(), userId);
+                    var pageCheck = await EnsureCanEditPageAsync(body.PageId.Trim(), userId);
                     if (pageCheck.Error is { } permError) return permError;
                     var attached = await RegisterDriveFileAndAttachAsync(body.PageId.Trim(), uploaded, body.Caption, ct);
                     return new OkObjectResult(new UploadLibraryDocResultDto
@@ -1740,7 +1732,7 @@ namespace My.Functions
 
         // ---------- Helpers ----------
 
-        private async Task<(IntranetPage? Page, IActionResult? Error)> EnsureCanEditPageAsync(ClaimsPrincipal principal, string pageId, string userId)
+        private async Task<(IntranetPage? Page, IActionResult? Error)> EnsureCanEditPageAsync(string pageId, string userId)
         {
             var page = await dbContext.IntranetPages
                 .FirstOrDefaultAsync(p => p.PageId == pageId);
@@ -1748,29 +1740,68 @@ namespace My.Functions
             if (page == null)
                 return (null, new NotFoundObjectResult("Page not found."));
 
+            // Admin:Intranet is gone. Navigation is sidebar-only; UserAccess assigns
+            // roles. Owner-restricted pages are owner-only.
             if (page.RestrictEditingToOwner && !string.Equals(page.CreatedByUserId, userId, StringComparison.Ordinal))
-            {
-                if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Intranet, Constants.Roles.Admin))
-                    return (null, new StatusCodeResult(403));
-            }
+                return (null, new StatusCodeResult(403));
 
             return (page, null);
         }
 
+        /// <summary>
+        /// Intranet files live on App Shared Drive Shared Drive (App Drive token),
+        /// not employee Drive. Pages themselves are SQL; this is images/docs only.
+        /// </summary>
         private async Task<(string Encrypted, IActionResult? Error)> GetUserDriveTokenAsync(string userId)
         {
             if (!drive.IsConfigured)
                 return (string.Empty, new ObjectResult("Google integration is not configured on the server.") { StatusCode = 503 });
 
-            var settings = await dbContext.UserSettings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.UserId == userId);
+            var app = await dbContext.AppDriveCredentials
+                .FirstOrDefaultAsync(c => c.AppDriveCredentialId == AppDriveLayoutRules.CredentialId);
+            if (app == null || string.IsNullOrEmpty(app.EncryptedRefreshToken))
+                return (string.Empty, new ObjectResult(AppDriveLayoutRules.NotConnectedMessage) { StatusCode = 409 });
 
-            var hasToken = settings != null && !string.IsNullOrEmpty(settings.GoogleRefreshToken);
-            if (GoogleDriveOAuthRules.NeedsDriveConsent(hasToken, settings?.GoogleDriveGranted ?? false))
-                return (string.Empty, new ObjectResult(GoogleDriveOAuthRules.ConsentRequiredMessage) { StatusCode = 409 });
+            var sharedId = app.SharedDriveId ?? AppDriveLayoutRules.SharedDriveId;
+            try
+            {
+                var intranet = await drive.FindOrCreateFolderAsync(
+                    app.EncryptedRefreshToken, sharedId, AppDriveLayoutRules.IntranetFolderName);
+                if (!string.IsNullOrEmpty(intranet.Id))
+                    await PersistIntranetFolderIdAsync(intranet.Id);
+            }
+            catch (Exception ex)
+            {
+                // Images already in page HTML download by file id and only need the App Drive token.
+                logger.LogWarning(ex, "Could not resolve Intranet folder on App Drive.");
+            }
 
-            return (settings!.GoogleRefreshToken!, null);
+            return (app.EncryptedRefreshToken, null);
+        }
+
+        private async Task PersistIntranetFolderIdAsync(string folderId)
+        {
+            var existing = await GetIntranetDriveParentFolderIdAsync();
+            if (string.Equals(existing, folderId, StringComparison.Ordinal))
+                return;
+
+            var row = await dbContext.AppSettings
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.IntranetDriveParentFolderId);
+            if (row == null)
+            {
+                dbContext.AppSettings.Add(new AppSetting
+                {
+                    Key = Constants.SettingKeys.IntranetDriveParentFolderId,
+                    Value = folderId,
+                    Description = "Google Drive folder ID for the Intranet root under App Shared Drive."
+                });
+            }
+            else
+            {
+                row.Value = folderId;
+            }
+
+            await dbContext.SaveChangesAsync();
         }
 
         private async Task<IntranetMediaPolicy> LoadIntranetMediaPolicyAsync(CancellationToken ct)
@@ -1797,7 +1828,7 @@ namespace My.Functions
         {
             var row = await dbContext.AppSettings
                 .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Key == "IntranetDriveParentFolderId");
+                .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.IntranetDriveParentFolderId);
 
             return string.IsNullOrWhiteSpace(row?.Value) ? null : row.Value.Trim();
         }
@@ -1861,8 +1892,8 @@ namespace My.Functions
             if (message.Contains("File not found", StringComparison.OrdinalIgnoreCase)
                 || message.Contains("notFound", StringComparison.OrdinalIgnoreCase))
             {
-                return "The Intranet Drive folder in App Settings was not found or you no longer have access. " +
-                       "Update Intranet Drive Parent Folder ID to a valid folder.";
+                return "The Intranet folder on App Drive was not found or the app cannot access it. " +
+                       "A workspace Admin should open App Settings → Drive and click Apply configuration.";
             }
 
             return "Failed to browse Drive folder. Check application logs for details.";

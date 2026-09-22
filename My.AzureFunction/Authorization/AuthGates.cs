@@ -39,14 +39,38 @@ public static class AuthGates
         => RequireScopedTyme(principal, out _, minRole);
 
     /// <summary>
-    /// Generalized variant. Most callers want <see cref="RequireScopedTyme(ClaimsPrincipal, out string, string)"/>.
+    /// Gate for Expenses module surfaces. Scoped-only: global Admin does not pass.
     /// </summary>
+    public static IActionResult? RequireScopedExpenses(
+        ClaimsPrincipal principal,
+        out string userId,
+        string minRole = Constants.Roles.User)
+        => RequireScoped(principal, Constants.Scopes.Expenses, out userId, minRole);
+
+    /// <summary>
+    /// Convenience overload when the caller does not need the user id from the gate.
+    /// </summary>
+    public static IActionResult? RequireScopedExpenses(
+        ClaimsPrincipal principal,
+        string minRole = Constants.Roles.User)
+        => RequireScopedExpenses(principal, out _, minRole);
+
     /// <summary>Authenticated caller only — no module role check.</summary>
     public static IActionResult? RequireAuthenticated(ClaimsPrincipal principal, out string userId)
     {
         userId = principal.FindFirstValue(Constants.Claims.UserId) ?? string.Empty;
         if (string.IsNullOrEmpty(userId))
             return new UnauthorizedResult();
+        return null;
+    }
+
+    /// <summary>Global Admin only (Users / App Settings). Scoped admins do not pass.</summary>
+    public static IActionResult? RequireGlobalAdmin(ClaimsPrincipal principal, out string userId)
+    {
+        if (RequireAuthenticated(principal, out userId) is { } unauth)
+            return unauth;
+        if (!Constants.Roles.IsGlobalAdmin(principal))
+            return new StatusCodeResult(403);
         return null;
     }
 
@@ -75,7 +99,7 @@ public static class AuthGates
     /// Gate for Organizations/Departments/Contacts mutations and the management page.
     /// Requires an Organizations-scoped role at or above <paramref name="minRole"/>.
     /// Global Admin does <b>not</b> pass — same as Tyme/Intranet; they impersonate
-    /// <c>Admin:Organizations</c> (or hold that role). Read-only lookups
+    /// <c>Manager:Organizations</c> (or hold that role). Read-only lookups
     /// (GetOrganizations etc.) do NOT use this gate — they're open to any authenticated
     /// user via <see cref="RequireAuthenticated"/>, since Project/Availability pickers
     /// outside this scope still need to resolve org names.
@@ -95,7 +119,7 @@ public static class AuthGates
 
     /// <summary>
     /// Structural Organizations changes (archive, delete, org set-active).
-    /// <c>Admin:Organizations</c> only. Editor:Organizations can create/edit but not
+    /// <c>Manager:Organizations</c> only. Editor:Organizations can create/edit but not
     /// these. Global Admin does not pass.
     /// </summary>
     public static IActionResult? RequireOrganizationsAdminOnly(ClaimsPrincipal principal, out string userId)
@@ -103,7 +127,7 @@ public static class AuthGates
         userId = principal.FindFirstValue(Constants.Claims.UserId) ?? string.Empty;
         if (string.IsNullOrEmpty(userId))
             return new UnauthorizedResult();
-        if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Organizations, Constants.Roles.Admin))
+        if (!Constants.Roles.HasScopedAccess(principal, Constants.Scopes.Organizations, Constants.Roles.Manager))
             return new StatusCodeResult(403);
         return null;
     }

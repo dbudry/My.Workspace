@@ -21,11 +21,26 @@
             <Authorized>
                 <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
 
-                @* Entire Tyme group (and all its pages) is gated on a *scoped* Tyme role
-                   (Tyme:User / Manager / Admin). Users with only global Admin (or no Tyme
-                   scope at all) do not see the Tyme menu or have permission to the pages,
-                   even though they are global Admin. This is exactly the same model as
-                   Intranet. Global Admin is reserved for Users / AppSettings / Logs / etc. *@
+                @if (hasExpensesReader)
+                {
+                    @if (hasExpensesManager)
+                    {
+                        <MudNavGroup Title="Expenses" Icon="@Icons.Material.Filled.ReceiptLong" Class="nav-top-level"
+                                     Expanded="@navAccordion.IsBuiltInExpanded(SidebarNavAccordionState.BuiltInExpensesKey)"
+                                     ExpandedChanged="@(e => OnNavGroupExpanded(SidebarNavAccordionState.BuiltInExpensesKey, e))">
+                            <MudNavLink Href="expenses" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.ReceiptLong">Expenses</MudNavLink>
+                            <MudNavLink Href="expenses/data" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Download">Data</MudNavLink>
+                            <MudNavLink Href="expenses/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Tune">Settings</MudNavLink>
+                        </MudNavGroup>
+                    }
+                    else
+                    {
+                        <MudNavLink Href="expenses" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ReceiptLong" Class="nav-top-level">Expenses</MudNavLink>
+                    }
+                }
+
+                @* Tyme menu is scoped-only (User / Editor / Manager / UserAccess).
+                   Global Admin does not see Tyme. Same model as Intranet. *@
                 <ScopedAuthorizeView Scope="Tyme" ScopedOnly="true">
                     <Authorized>
                         <MudNavGroup Title="Tyme" Icon="@Icons.Material.Filled.AccessTime" Class="nav-top-level"
@@ -60,9 +75,9 @@
                                     <MudNavLink Href="tyme/management" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.SupervisorAccount">Management</MudNavLink>
                                 </Authorized>
                             </ScopedAuthorizeView>
-                            <ScopedAuthorizeView Scope="Tyme" MinimumRole="Admin" ScopedOnly="true">
+                            <ScopedAuthorizeView Scope="Tyme" MinimumRole="Manager" ScopedOnly="true">
                                 <Authorized>
-                                    <MudNavLink Href="tyme/dataextraction" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Storage">Data Extraction</MudNavLink>
+                                    <MudNavLink Href="tyme/data" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Storage">Data</MudNavLink>
                                 </Authorized>
                             </ScopedAuthorizeView>
                         </MudNavGroup>
@@ -84,18 +99,24 @@
                                         OnNavGroupExpanded="HandleCuratedNavGroupExpanded" />
                     }
 
-                    @* Maintenance tools under Intranet (editors/admins only — not shown to regular readers). *@
-                    @if (hasIntranetMaintenance)
+                    @* Maintenance tools under Intranet (editors / navigation — not shown to regular readers). *@
+                    @if (hasIntranetMaintenance || hasIntranetNavigation)
                     {
                         <MudNavGroup Title="Intranet" Icon="@Icons.Material.Filled.EditNote" Class="nav-top-level"
                                      Expanded="@navAccordion.IsBuiltInExpanded(SidebarNavAccordionState.BuiltInIntranetMaintenanceKey)"
                                      ExpandedChanged="@(e => OnNavGroupExpanded(SidebarNavAccordionState.BuiltInIntranetMaintenanceKey, e))">
-                            <MudNavLink Href="intranet/pages" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.List">Manage Pages</MudNavLink>
-                            @if (hasIntranetAdmin)
+                            @if (hasIntranetMaintenance)
+                            {
+                                <MudNavLink Href="intranet/pages" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.List">Manage Pages</MudNavLink>
+                            }
+                            @if (hasIntranetNavigation)
                             {
                                 <MudNavLink Href="intranet/navigation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree">Navigation</MudNavLink>
                             }
-                            <MudNavLink Href="intranet/documents" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AttachFile">Documents Library</MudNavLink>
+                            @if (hasIntranetMaintenance)
+                            {
+                                <MudNavLink Href="intranet/documents" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AttachFile">Documents Library</MudNavLink>
+                            }
                         </MudNavGroup>
                     }
                 }
@@ -163,9 +184,11 @@
     private bool isAnyAdmin;
     private bool isGlobalAdmin;
     private bool hasOrganizationsReader;
+    private bool hasExpensesReader;
+    private bool hasExpensesManager;
     private bool hasIntranetReader;
     private bool hasIntranetMaintenance;
-    private bool hasIntranetAdmin;
+    private bool hasIntranetNavigation;
     private int overdueCount;
     private bool overdueLoaded;
     private bool _eventsHooked;
@@ -234,9 +257,11 @@
             isAnyAdmin = Constants.Roles.IsAnyAdmin(user);
             isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
             hasOrganizationsReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations);
+            hasExpensesReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses);
+            hasExpensesManager = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses, Constants.Roles.Manager);
             hasIntranetReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
             hasIntranetMaintenance = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Editor);
-            hasIntranetAdmin = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Admin);
+            hasIntranetNavigation = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet, Constants.Roles.Navigation);
             _canViewDraftNavItems = hasIntranetMaintenance;
 
             if (!overdueLoaded && Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme))
@@ -269,9 +294,11 @@
             isAnyAdmin = false;
             isGlobalAdmin = false;
             hasOrganizationsReader = false;
+            hasExpensesReader = false;
+            hasExpensesManager = false;
             hasIntranetReader = false;
             hasIntranetMaintenance = false;
-            hasIntranetAdmin = false;
+            hasIntranetNavigation = false;
             _canViewDraftNavItems = false;
             overdueCount = 0;
             overdueLoaded = false;
@@ -445,6 +472,10 @@
         else if (SidebarNavExpansionRules.IsIntranetMaintenanceRoute(relativePath))
         {
             navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInIntranetMaintenanceKey, null, null);
+        }
+        else if (SidebarNavExpansionRules.IsExpensesRoute(relativePath))
+        {
+            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInExpensesKey, null, null);
         }
         else if (SidebarNavExpansionRules.TryGetCuratedExpansion(intranetNavItems, relativePath, out var topKey, out var nestedKeys)
                  && !string.IsNullOrEmpty(topKey))

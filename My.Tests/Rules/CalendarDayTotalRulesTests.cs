@@ -70,6 +70,21 @@ public class CalendarDayTotalRulesTests
     }
 
     [Fact]
+    public void Presence_only_chip_contributes_zero_even_when_all_day()
+    {
+        var chips = new[]
+        {
+            new CalendarDayTotalRules.Chip(
+                new DateTime(2026, 8, 13), TimeSpan.FromHours(8), true, false, "busy", CountsAsTime: false),
+            new CalendarDayTotalRules.Chip(
+                new DateTime(2026, 8, 13, 8, 0, 0), TimeSpan.FromHours(8), false, false, "work")
+        };
+
+        var totals = CalendarDayTotalRules.SumByDay(chips, 8);
+        Assert.Equal(TimeSpan.FromHours(8), totals[new DateOnly(2026, 8, 13)]);
+    }
+
+    [Fact]
     public void Format_matches_week_grid_style()
     {
         Assert.Equal("8h", CalendarDayTotalRules.Format(TimeSpan.FromHours(8)));

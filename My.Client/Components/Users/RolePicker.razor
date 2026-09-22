@@ -1,8 +1,8 @@
-@* Search-and-add role picker used by AddUser and EditUserDialog. Replaces a flat
-   MudSelect(MultiSelection) ΓÇö which has no built-in search or grouping ΓÇö with a
+@* Search-and-add role picker used by AddUserDialog and EditUserDialog. Replaces a flat
+   MudSelect(MultiSelection) — which has no built-in search or grouping — with a
    MudAutocomplete for finding a role by scope or role name, plus a row of removable
    chips for what's currently selected. Chips and the autocomplete's display text both
-   use FormatRole, which reads "{Scope} ΓÇö {Role}" (or "Global ΓÇö {Role}"), so scopes are
+   use FormatRole, which reads "{Scope} — {Role}" (or "Global — {Role}"), so scopes are
    visually grouped/categorized in the search results without needing real optgroup
    support (MudSelect/MudAutocomplete don't have one). *@
 @using My.Shared.Constants
@@ -10,9 +10,10 @@
 <MudAutocomplete T="string" @ref="_autocomplete" Label="@Label" Variant="Variant.Outlined" Dense="true"
                   Value="@_pendingRole" ValueChanged="OnRoleChosenAsync"
                   SearchFunc="SearchRoles" ToStringFunc="FormatRole"
-                  Placeholder="Search by scope or roleΓÇª"
+                  Placeholder="Search by scope or role…"
                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                   Clearable="true" ResetValueOnEmptyText="true" CoerceText="true"
+                  MaxItems="50" OpenOnFocus="true"
                   Class="@Class" />
 
 <div class="d-flex flex-wrap gap-2 mt-2">
@@ -86,14 +87,14 @@
             await SelectedRolesChanged.InvokeAsync(updated);
 
             // MudAutocomplete doesn't clear its own displayed text just because the bound
-            // Value goes back to null ΓÇö ClearAsync() resets both the text and the value so
+            // Value goes back to null — ClearAsync() resets both the text and the value so
             // the box reads empty and ready for the next search instead of sitting on the
             // role that was just picked. (Reentrant-safe: ClearAsync raises ValueChanged with
             // null, which re-enters this method but skips this branch since role is null.)
             await _autocomplete.ClearAsync();
             return;
         }
-        // Reset immediately so the box is empty and ready for the next search ΓÇö the
+        // Reset immediately so the box is empty and ready for the next search — the
         // selected role now lives in the chip row below, not in the search box.
         _pendingRole = null;
     }
@@ -111,18 +112,17 @@
     private IEnumerable<string> SortedLockedRoles() =>
         LockedRoles.OrderBy(RoleSortKey, StringComparer.Ordinal);
 
-    // Groups by scope ΓÇö Global first, then the same order scopes are introduced in
-    // Constants.Roles.Assignable() (Intranet, Organizations, Tyme) ΓÇö then by role rank
-    // within each scope (Admin > Manager > Editor > User). Keeps both the search
-    // dropdown and the selected-chip row reading as organized categories.
+    // Groups by scope — Global first, then the same order scopes are introduced in
+    // Constants.Roles.Assignable() — then by role rank within each scope.
     private static readonly string[] ScopeOrder =
     {
-        string.Empty, Constants.Scopes.Intranet, Constants.Scopes.Organizations, Constants.Scopes.Tyme
+        string.Empty, Constants.Scopes.Intranet, Constants.Scopes.Organizations, Constants.Scopes.Tyme, Constants.Scopes.Expenses
     };
 
     private static readonly string[] RoleRank =
     {
-        Constants.Roles.Admin, Constants.Roles.Manager, Constants.Roles.Editor, Constants.Roles.User
+        Constants.Roles.UserAccess, Constants.Roles.Navigation,
+        Constants.Roles.Manager, Constants.Roles.Editor, Constants.Roles.User, Constants.Roles.Admin
     };
 
     private static string RoleSortKey(string role)
@@ -141,20 +141,17 @@
         return parts.Length == 2 ? (parts[0], parts[1]) : (parts[0], string.Empty);
     }
 
-    private static string FormatRole(string? role)
-    {
-        if (string.IsNullOrEmpty(role)) return string.Empty;
-        var (roleName, scope) = Split(role);
-        return string.IsNullOrEmpty(scope) ? $"Global ΓÇö {roleName}" : $"{scope} ΓÇö {roleName}";
-    }
+    private static string FormatRole(string? role) => Constants.Roles.FormatRole(role);
 
-    // Matches UserManager.razor.cs's GetRoleColor ΓÇö kept local since this component
+    // Matches UserManager.razor.cs's GetRoleColor — kept local since this component
     // needs to color its own chips and UserManager's copy is private to that page.
     private static Color GetRoleColor(string role)
     {
         var (roleName, _) = Split(role);
         if (roleName == Constants.Roles.Admin) return Color.Error;
-        if (roleName == Constants.Roles.Manager) return Color.Warning;
+        if (roleName == Constants.Roles.UserAccess) return Color.Secondary;
+        if (roleName is Constants.Roles.Manager or Constants.Roles.Navigation)
+            return Color.Warning;
         return Color.Info;
     }
 }

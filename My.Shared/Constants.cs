@@ -8,6 +8,10 @@ namespace My.Shared.Constants
             public const string Manager = "Manager";
             public const string Editor = "Editor";
             public const string User = "User";
+            /// <summary>Orthogonal: assign operational roles in a scope. Does not operate the module.</summary>
+            public const string UserAccess = "UserAccess";
+            /// <summary>Orthogonal: Intranet curated sidebar. Does not stack over Editor.</summary>
+            public const string Navigation = "Navigation";
 
             /// <summary>
             /// Sentinel value used in <see cref="AdministeredScopes"/> to mean
@@ -15,29 +19,54 @@ namespace My.Shared.Constants
             /// </summary>
             public const string GlobalScopeWildcard = "*";
 
+            /// <summary>Day-to-day module ladder. Admin is global-only and is not stacked here.</summary>
+            public static readonly string[] OperationalHierarchy = [User, Editor, Manager];
+
+            /// <summary>Exact-match roles — they do not satisfy User/Editor/Manager gates.</summary>
+            public static readonly string[] OrthogonalRoles = [UserAccess, Navigation];
+
             /// <summary>
-            /// Formats a scoped role, e.g. "Admin:Tyme". Pass null scope for a global role.
+            /// Formats a scoped role, e.g. "Manager:Tyme". Pass null scope for a global role.
             /// </summary>
             public static string Scoped(string role, string? scope) =>
                 string.IsNullOrEmpty(scope) ? role : $"{role}:{scope}";
 
+            public static bool IsOperationalRole(string? roleName) =>
+                roleName is User or Editor or Manager;
+
+            public static bool IsOrthogonalRole(string? roleName) =>
+                roleName is UserAccess or Navigation;
+
+            /// <summary>Picker/chip label: "Expenses — User Access", "Global — Admin".</summary>
+            public static string FormatRole(string? role)
+            {
+                if (string.IsNullOrEmpty(role)) return string.Empty;
+                var i = role.IndexOf(':');
+                var roleName = i < 0 ? role : role[..i];
+                var scope = i < 0 ? string.Empty : role[(i + 1)..];
+                if (roleName == UserAccess) roleName = "User Access";
+                return string.IsNullOrEmpty(scope) ? $"Global — {roleName}" : $"{scope} — {roleName}";
+            }
+
             /// <summary>
-            /// Permissive scope check: global roles (no scope) also satisfy. Reserve for
-            /// cross-cutting/system-level checks. Module surfaces should use
-            /// <see cref="HasScopedAccess"/> so global Admin doesn't automatically pick up
-            /// module permissions — they use impersonation when they need module access.
+            /// Permissive scope check: global Admin satisfies operational minimums.
+            /// Module surfaces should use <see cref="HasScopedAccess"/>.
             /// </summary>
             public static bool HasAccess(System.Security.Claims.ClaimsPrincipal principal, string scope, string minimumRole = User)
             {
-                var roleHierarchy = new[] { User, Editor, Manager, Admin };
-                int requiredLevel = Array.IndexOf(roleHierarchy, minimumRole);
+                if (IsOrthogonalRole(minimumRole))
+                    return principal.IsInRole(Scoped(minimumRole, scope));
 
-                foreach (var role in roleHierarchy.Skip(requiredLevel))
+                if (IsGlobalAdmin(principal) && IsOperationalRole(minimumRole))
+                    return true;
+
+                var requiredLevel = Array.IndexOf(OperationalHierarchy, minimumRole);
+                if (requiredLevel < 0) return false;
+
+                foreach (var role in OperationalHierarchy.Skip(requiredLevel))
                 {
-                    // Global role (e.g. "Admin") grants access to everything
                     if (principal.IsInRole(role))
                         return true;
-                    // Scoped role (e.g. "Admin:Tyme") grants access to that scope
                     if (principal.IsInRole(Scoped(role, scope)))
                         return true;
                 }
@@ -47,16 +76,20 @@ namespace My.Shared.Constants
 
             /// <summary>
             /// Default gate for module surfaces: only a scoped role inside <paramref name="scope"/>
-            /// satisfies the check; global roles do not. A global Admin who needs module
-            /// access uses impersonation (X-Impersonate-Role) to assume a scoped role.
+            /// satisfies the check; global roles do not. Orthogonal roles (User Access,
+            /// Navigation) match exactly and do not stack.
             /// </summary>
             public static bool HasScopedAccess(System.Security.Claims.ClaimsPrincipal principal, string scope, string minimumRole = User)
             {
                 if (string.IsNullOrEmpty(scope)) return false;
-                var roleHierarchy = new[] { User, Editor, Manager, Admin };
-                int requiredLevel = Array.IndexOf(roleHierarchy, minimumRole);
 
-                foreach (var role in roleHierarchy.Skip(requiredLevel))
+                if (IsOrthogonalRole(minimumRole))
+                    return principal.IsInRole(Scoped(minimumRole, scope));
+
+                var requiredLevel = Array.IndexOf(OperationalHierarchy, minimumRole);
+                if (requiredLevel < 0) return false;
+
+                foreach (var role in OperationalHierarchy.Skip(requiredLevel))
                 {
                     if (principal.IsInRole(Scoped(role, scope)))
                         return true;
@@ -68,34 +101,27 @@ namespace My.Shared.Constants
             /// <summary>
             /// Roles that can currently be assigned to a user. Global Manager/User are
             /// intentionally hidden — only scoped variants are offered for now.
+            /// User Access is orthogonal (Users directory for that scope). Navigation is
+            /// Intranet-only. Organizations uses Manager for archive/delete (same ladder as Tyme).
             /// </summary>
             public static IReadOnlyList<string> Assignable() => new[]
             {
                 Admin,
-                // Tyme: User (track time), Editor (create/edit projects only — no delete/archive/
-                // group management, no team surfaces), Manager (team reports/availability + full
-                // project management), Admin (projects). Organizations moved out of Tyme's scope —
-                // see the Organizations block below; Admin:Tyme/Manager:Tyme no longer manage orgs.
-                Scoped(Admin, Scopes.Tyme),
+                Scoped(UserAccess, Scopes.Tyme),
                 Scoped(Manager, Scopes.Tyme),
                 Scoped(Editor, Scopes.Tyme),
                 Scoped(User, Scopes.Tyme),
-                // Intranet scope (for the company knowledge base / mini site + Drive attachments).
-                // For a small company (~20 people) with no approval workflows, we only expose
-                // User / Editor / Admin. Manager:Intranet is intentionally omitted because
-                // Editor is the practical "content contributor" role and Admin controls the
-                // navigation structure. We do not want confusing duplicate roles that do the same thing.
-                Scoped(Admin, Scopes.Intranet),
+                Scoped(UserAccess, Scopes.Intranet),
+                Scoped(Navigation, Scopes.Intranet),
                 Scoped(Editor, Scopes.Intranet),
                 Scoped(User, Scopes.Intranet),
-                // Organizations scope: independent of Tyme. User (view), Editor (create/edit orgs
-                // and departments), Admin (archive/delete/set active, and assign Organizations
-                // roles). Global Admin does not open this module — same as Tyme/Intranet.
-                // There is no Manager:Organizations. See AuthGates.RequireOrganizations /
-                // RequireOrganizationsAdminOnly.
-                Scoped(Admin, Scopes.Organizations),
+                Scoped(UserAccess, Scopes.Organizations),
+                Scoped(Manager, Scopes.Organizations),
                 Scoped(Editor, Scopes.Organizations),
                 Scoped(User, Scopes.Organizations),
+                Scoped(UserAccess, Scopes.Expenses),
+                Scoped(Manager, Scopes.Expenses),
+                Scoped(User, Scopes.Expenses),
             };
 
             /// <summary>True when <paramref name="role"/> is in <see cref="Assignable"/>.</summary>
@@ -115,30 +141,36 @@ namespace My.Shared.Constants
                     .Where(r =>
                     {
                         var i = r.IndexOf(':');
-                        return i > 0 && scopes.Contains(r.Substring(i + 1));
+                        if (i <= 0) return false;
+                        if (!scopes.Contains(r.Substring(i + 1))) return false;
+                        // Only global Admin may grant User Access.
+                        if (string.Equals(r[..i], UserAccess, StringComparison.Ordinal))
+                            return false;
+                        return true;
                     })
                     .ToList();
             }
 
             /// <summary>
-            /// True if the principal has the global Admin role or any Admin:scope role.
-            /// Use this to gate user-management UI/endpoints.
+            /// True if the principal has the global Admin role or any UserAccess:scope role.
+            /// Use this to gate the Users directory.
             /// </summary>
             public static bool IsAnyAdmin(System.Security.Claims.ClaimsPrincipal principal)
             {
                 if (principal == null) return false;
+                if (IsGlobalAdmin(principal)) return true;
+                var prefix = UserAccess + ":";
                 foreach (var c in principal.Claims)
                 {
                     if (c.Type != System.Security.Claims.ClaimTypes.Role) continue;
-                    if (c.Value == Admin) return true;
-                    if (c.Value.StartsWith(Admin + ":", StringComparison.Ordinal)) return true;
+                    if (c.Value.StartsWith(prefix, StringComparison.Ordinal)) return true;
                 }
                 return false;
             }
 
             /// <summary>
-            /// True only if the principal has the unscoped global Admin role. Scoped admins
-            /// (Admin:Tyme etc.) return false. Use this for actions that should never be
+            /// True only if the principal has the unscoped global Admin role. User Access
+            /// holders return false. Use this for actions that should never be
             /// delegated to a scope owner — e.g. creating/deleting any user, purging another
             /// user's OIDC token or Google grant.
             /// </summary>
@@ -167,8 +199,8 @@ namespace My.Shared.Constants
                     if (c.Type != System.Security.Claims.ClaimTypes.Role) continue;
                     var v = c.Value;
                     if (v == Admin) hasGlobal = true;
-                    else if (v.StartsWith(Admin + ":", StringComparison.Ordinal))
-                        scopes.Add(v.Substring(Admin.Length + 1));
+                    else if (v.StartsWith(UserAccess + ":", StringComparison.Ordinal))
+                        scopes.Add(v.Substring(UserAccess.Length + 1));
                 }
                 return hasGlobal ? new[] { GlobalScopeWildcard } : (IReadOnlyCollection<string>)scopes;
             }
@@ -176,7 +208,7 @@ namespace My.Shared.Constants
             /// <summary>
             /// Does the user appear in the admin's filtered list?
             ///
-            /// Any admin — global or scoped (e.g. Admin:Tyme) — can see every user in the
+            /// Any admin — global or User Access (e.g. UserAccess:Tyme) — can see every user in the
             /// directory, including users who also hold a global or out-of-scope role.
             /// Visibility is intentionally wide open so a scoped admin can find anyone.
             /// Role updates use <see cref="TryMergeRoleUpdate"/> (only the caller's module
@@ -218,10 +250,12 @@ namespace My.Shared.Constants
 
             /// <summary>
             /// Should this user appear in manager Tyme team surfaces (Management,
-            /// team submissions, etc.)? Scoped admins use <see cref="IsVisibleTo"/>.
-            /// Scoped Managers (Manager:Tyme who are not any Admin) see every user with
-            /// at least one Tyme-scoped role. <see cref="CanManageUser"/> is wrong here —
-            /// it only applies to admins and would hide the whole team from Managers.
+            /// team submissions, etc.)? User-directory visibility (<see cref="IsVisibleTo"/>)
+            /// is wider — any admin can see every account on Users. Team surfaces stay
+            /// Tyme-scoped: a global Admin sees everyone; everyone else (scoped Admin or
+            /// Manager:Tyme) sees users who have at least one Tyme-scoped role.
+            /// <see cref="CanManageUser"/> is wrong here — it only applies to admins and
+            /// would hide the whole team from Managers.
             /// </summary>
             public static bool IsVisibleInTymeTeamView(
                 System.Security.Claims.ClaimsPrincipal viewer,
@@ -230,7 +264,7 @@ namespace My.Shared.Constants
                 if (IsGlobalAdmin(viewer))
                     return true;
 
-                return HasRoleInScope(targetRoles, Scopes.Tyme);
+                return HasOperationalRoleInScope(targetRoles, Scopes.Tyme);
             }
 
             /// <summary>
@@ -263,8 +297,25 @@ namespace My.Shared.Constants
             }
 
             /// <summary>
-            /// Is the admin allowed to assign the given role to a user? Global Admin can
-            /// assign anything; a scoped Admin can only assign roles in their scopes.
+            /// True when the list includes an operational (User/Editor/Manager) role in
+            /// <paramref name="scope"/>. User Access / Navigation do not count.
+            /// </summary>
+            public static bool HasOperationalRoleInScope(IEnumerable<string> roles, string scope)
+            {
+                foreach (var role in roles)
+                {
+                    var i = role.IndexOf(':');
+                    if (i <= 0) continue;
+                    if (!string.Equals(role[(i + 1)..], scope, StringComparison.Ordinal)) continue;
+                    if (IsOperationalRole(role[..i])) return true;
+                }
+
+                return false;
+            }
+
+            /// <summary>
+            /// Global Admin can assign anything. User Access in a scope can assign operational
+            /// and orthogonal-work roles in that scope, but cannot grant User Access itself.
             /// </summary>
             public static bool CanAssignRole(System.Security.Claims.ClaimsPrincipal admin, string role)
             {
@@ -273,15 +324,17 @@ namespace My.Shared.Constants
                 if (scopes.Count == 0) return false;
                 if (scopes.Contains(GlobalScopeWildcard)) return true;
                 var i = role.IndexOf(':');
-                if (i < 0) return false; // global role requires global admin
-                return scopes.Contains(role.Substring(i + 1));
+                if (i < 0) return false;
+                if (string.Equals(role[..i], UserAccess, StringComparison.Ordinal))
+                    return false;
+                return scopes.Contains(role[(i + 1)..]);
             }
 
             /// <summary>
             /// Builds the role set to persist for an admin's user update.
             /// <paramref name="requestedRoles"/> replaces only roles the caller
             /// <see cref="CanAssignRole">may assign</see>. Current roles outside that
-            /// set stay so a Tyme admin can add <c>Admin:Tyme</c> without stripping
+            /// set stay so Tyme User Access can add <c>Manager:Tyme</c> without stripping
             /// Organizations or Intranet. A global Admin may drop catalog-unknown
             /// leftovers (true legacy). Returns false if the caller is not an admin, if
             /// any requested role is outside their assignable set, or if the result
@@ -336,7 +389,10 @@ namespace My.Shared.Constants
             public const string AllowProjectDelete = "AllowProjectDelete";
             public const string TymeSubmissionMonthInterval = "TymeSubmissionMonthInterval";
             public const string TymeAllowManagerTimeCorrection = "TymeAllowManagerTimeCorrection";
-            /// <summary>When true, Manager:Tyme+ can submit a month on behalf of another user (team scope).</summary>
+            /// <summary>
+            /// When true, Manager:Tyme / Admin:Tyme can submit an employee's month on their behalf.
+            /// Default off until enabled under App Settings → Tyme.
+            /// </summary>
             public const string TymeAllowManagerSubmitOnBehalf = "TymeAllowManagerSubmitOnBehalf";
             /// <summary>
             /// When true, any Tyme user can pick other employees on Reports (read-only).
@@ -345,10 +401,10 @@ namespace My.Shared.Constants
             public const string TymeAllowUserTeamReports = "TymeAllowUserTeamReports";
             /// <summary>Alias or Direct — workspace uses one mode only.</summary>
             public const string TymeManagerCorrectionMode = "TymeManagerCorrectionMode";
+
             /// <summary>
-            /// Employee-facing view for Tasks/Calendar/Reports:
+            /// Employee-facing default for Tasks/Calendar/Reports:
             /// their | adjusted | both (see <c>EmployeeTimeDisplayModeRules</c>).
-            /// Workspace-wide App Setting only — no per-page toggle.
             /// </summary>
             public const string TymeEmployeeTimeDisplayMode = "TymeEmployeeTimeDisplayMode";
             public const string TymeCalendarBackfillDefaultDays = "TymeCalendarBackfillDefaultDays";
@@ -394,6 +450,24 @@ namespace My.Shared.Constants
             public const string IntranetNavigationMaxDepth = "IntranetNavigationMaxDepth";
             /// <summary>Allowed editor file types and max upload sizes in MB, e.g. png:5,pdf:25,docx:15.</summary>
             public const string IntranetImageMaxMegabytesByExtension = "IntranetImageMaxMegabytesByExtension";
+
+            /// <summary>
+            /// OrganizationId of the home company. Set by workspace Admin under
+            /// App Settings → Organizations. Used wherever the app needs the home company.
+            /// </summary>
+            public const string HomeOrganizationId = "HomeOrganizationId";
+
+            /// <summary>
+            /// Personal-car mileage reimbursement rate (USD per mile). Default 0.555.
+            /// </summary>
+            public const string ExpensesMileageRatePerMile = "ExpensesMileageRatePerMile";
+
+            /// <summary>
+            /// Google Drive folder ID for the private Expenses root. Not the Intranet folder.
+            /// </summary>
+            public const string ExpensesDriveParentFolderId = "ExpensesDriveParentFolderId";
+            public const string ExpensesApprovalSignature = "ExpensesApprovalSignature";
+            public const string ExpensesApprovalSignatureMime = "ExpensesApprovalSignatureMime";
         }
 
         public static class Scopes
@@ -408,6 +482,12 @@ namespace My.Shared.Constants
             /// and mutations. See AuthGates.RequireOrganizations.
             /// </summary>
             public const string Organizations = "Organizations";
+
+            /// <summary>
+            /// Employee expense reports and receipts. Independent of Tyme — reimbursements
+            /// against the home company, not client/project time. Global Admin does not pass.
+            /// </summary>
+            public const string Expenses = "Expenses";
         }
 
         public static class Claims
@@ -415,9 +495,7 @@ namespace My.Shared.Constants
             public const string UserId = "sub";
             /// <summary>AspNetUsers.Id from provision — distinct from Google's "sub".</summary>
             public const string AppUserId = "app_user_id";
-            public const string LastLogin = "LastLogin";
             public const string Fullname = "FullName";
-            public const string Role = "Role";
 
         }
 
@@ -425,6 +503,12 @@ namespace My.Shared.Constants
         {
             public const string ClientName = "My.Workspace.API";
 
+            /// <summary>
+            /// Unified Tasks list — server-merged, sorted, and paged stopwatch work items + manual
+            /// entries. A dedicated top-level route (not a trackedtasks/... sibling) so it never
+            /// collides with the trackedtasks/{id} route.
+            /// </summary>
+            
             public static class Setup
             {
                 public const string Api = "setup";
@@ -436,11 +520,6 @@ namespace My.Shared.Constants
                 public const string Configure = $"{Api}/configure";
             }
 
-            /// <summary>
-            /// Unified Tasks list — server-merged, sorted, and paged stopwatch work items + manual
-            /// entries. A dedicated top-level route (not a trackedtasks/... sibling) so it never
-            /// collides with the trackedtasks/{id} route.
-            /// </summary>
             public static class TaskList
             {
                 public const string Api = "tasklist";
@@ -481,6 +560,9 @@ namespace My.Shared.Constants
                 public const string Api = "stopwatchitems";
 
                 public const string Get = Api;
+
+                /// <summary>GET — sessions in a from/to UTC range plus their work items, for Day view.</summary>
+                public const string GetDay = $"{Api}/day";
 
                 public const string Create = Api;
 
@@ -573,8 +655,6 @@ namespace My.Shared.Constants
                 public const string Api = "contacts";
 
                 public const string Get = Api;
-
-                public const string GetById = $"{Api}/";
 
                 public const string Create = Api;
 
@@ -691,6 +771,7 @@ namespace My.Shared.Constants
                 /// <summary>DELETE — unsubmit by id (Manager:Tyme / Admin:Tyme only). Global Admin does not satisfy this gate.</summary>
                 public const string Delete = $"{Api}/";
 
+
                 /// <summary>GET — alias/direct corrections for a submission month (manager reconciliation wizard).</summary>
                 public const string GetCorrections = $"{Api}/";
 
@@ -719,6 +800,103 @@ namespace My.Shared.Constants
                 public const string Get = Api;
 
                 public const string Update = Api;
+            }
+
+            public static class Expenses
+            {
+                public const string Api = "expenses";
+                public const string Context = $"{Api}/context";
+                public const string Settings = $"{Api}/settings";
+                public const string Reports = $"{Api}/reports";
+                public const string ReportById = $"{Api}/reports/";
+                public const string Team = $"{Api}/team";
+                public const string Data = $"{Api}/data";
+
+                public static string LineReceipts(string reportId, string lineId) =>
+                    $"{Api}/reports/{reportId}/lines/{lineId}/receipts";
+
+                public static string ReceiptMedia(string receiptId) =>
+                    $"{Api}/receipts/{receiptId}/media";
+
+                public static string ReceiptById(string receiptId) =>
+                    $"{Api}/receipts/{receiptId}";
+
+                public static string Submit(string reportId) =>
+                    $"{Api}/reports/{reportId}/submit";
+
+                public static string Unsubmit(string reportId) =>
+                    $"{Api}/reports/{reportId}/unsubmit";
+
+                public static string Reimburse(string reportId) =>
+                    $"{Api}/reports/{reportId}/reimburse";
+
+                public static string UndoReimburse(string reportId) =>
+                    $"{Api}/reports/{reportId}/undo-reimburse";
+
+                public static string Pdf(string reportId, bool legacy = false) =>
+                    legacy
+                        ? $"{Api}/reports/{reportId}/pdf?layout=legacy"
+                        : $"{Api}/reports/{reportId}/pdf";
+
+                public const string Signature = $"{Api}/settings/signature";
+                public const string SignatureMedia = $"{Api}/settings/signature/media";
+                public const string MySignature = $"{Api}/signature";
+                public const string MySignatureMedia = $"{Api}/signature/media";
+
+                public static string ConstructUrlForTeam(
+                    string status = "all",
+                    string? userId = null,
+                    int? year = null,
+                    int? month = null,
+                    IEnumerable<int>? years = null,
+                    IEnumerable<int>? months = null)
+                {
+                    var parts = new List<string>
+                    {
+                        $"status={Uri.EscapeDataString(status)}"
+                    };
+                    if (!string.IsNullOrWhiteSpace(userId))
+                        parts.Add($"userId={Uri.EscapeDataString(userId)}");
+                    var yearList = (years ?? [])
+                        .Concat(year is int y ? [y] : Array.Empty<int>())
+                        .Where(v => v > 0)
+                        .Distinct()
+                        .ToList();
+                    var monthList = (months ?? [])
+                        .Concat(month is int m ? [m] : Array.Empty<int>())
+                        .Where(v => v is >= 1 and <= 12)
+                        .Distinct()
+                        .ToList();
+                    if (yearList.Count > 0)
+                        parts.Add($"years={string.Join(",", yearList)}");
+                    if (monthList.Count > 0)
+                        parts.Add($"months={string.Join(",", monthList)}");
+                    return $"{Team}?{string.Join("&", parts)}";
+                }
+
+                public static string ConstructUrlForData(
+                    IEnumerable<string> entities,
+                    string status,
+                    int? year,
+                    int? month,
+                    IEnumerable<string>? userIds = null)
+                {
+                    var parts = new List<string>
+                    {
+                        $"Entities={string.Join(",", entities)}",
+                        $"Status={Uri.EscapeDataString(status)}"
+                    };
+                    if (year.HasValue) parts.Add($"Year={year.Value}");
+                    if (month.HasValue) parts.Add($"Month={month.Value}");
+                    if (userIds is not null)
+                    {
+                        var ids = userIds.Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
+                        if (ids.Count > 0)
+                            parts.Add($"UserIds={string.Join(",", ids.Select(Uri.EscapeDataString))}");
+                    }
+
+                    return $"{Data}?{string.Join("&", parts)}";
+                }
             }
 
             public static class GoogleCalendar
@@ -798,6 +976,16 @@ namespace My.Shared.Constants
                 public const string Callback = $"{Api}/callback";
             }
 
+            public static class AppDrive
+            {
+                public const string Api = "appdrive";
+                public const string Status = $"{Api}/status";
+                public const string GetAuthUrl = $"{Api}/authurl";
+                public const string Callback = $"{Api}/callback";
+                public const string Disconnect = $"{Api}/disconnect";
+                public const string EnsureLayout = $"{Api}/ensurelayout";
+            }
+
             public static class Analytics
             {
                 public const string Api = "analytics";
@@ -813,7 +1001,7 @@ namespace My.Shared.Constants
                 /// <summary>GET — other users' tasks for Reports when team-report viewing is allowed.</summary>
                 public const string GetTeamReports = $"{Api}/teamreports";
 
-                /// <summary>GET — Admin:Tyme entity-centric table extract for Data Extraction.</summary>
+                /// <summary>GET — Manager:Tyme entity-centric table extract for Data Extraction.</summary>
                 public const string GetTymeDataExtraction = $"{Api}/dataextraction";
 
                 public static string ConstructUrlForAllUsersTasks(DateTime? from, DateTime? to) =>

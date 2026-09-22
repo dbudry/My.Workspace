@@ -91,6 +91,20 @@ public class WeeklyTimeTotalsRulesTests
     }
 
     [Fact]
+    public void Presence_only_is_excluded_from_week_totals()
+    {
+        var tasks = new[]
+        {
+            Slice(Mon, hours: 8),
+            new WeeklyTimeTotalsRules.TaskDurationSlice(
+                Mon, TimeSpan.FromHours(8), null, IsAllDay: true, EndDate: Mon, CountsAsTime: false)
+        };
+
+        var r = WeeklyTimeTotalsRules.Compute(tasks, Mon, Sun, EmployeeTimeDisplayMode.TheirTime);
+        Assert.Equal(TimeSpan.FromHours(8), r.PrimaryTotal);
+    }
+
+    [Fact]
     public void Outside_week_is_excluded()
     {
         var tasks = new[]

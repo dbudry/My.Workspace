@@ -38,11 +38,20 @@ namespace My.DAL.Models
         public bool IsSharedAvailability { get; set; }
 
         /// <summary>
+        /// When true, entries against this project contribute to Tyme hour totals
+        /// (reports, dashboard, Submit, calendar footer). Default true so client work
+        /// and time-off categories (Vacation, Sick) keep counting. Manager can turn
+        /// this off only on <see cref="IsSharedAvailability"/> projects so a Busy /
+        /// Unavailable category can publish to Team Availability without adding hours.
+        /// </summary>
+        public bool CountsAsTime { get; set; } = true;
+
+        /// <summary>
         /// When true, time logged against this project is marked billable on each
         /// <see cref="TrackedTask"/>. Manager-set on the project edit form; employees
         /// do not choose billable per entry. Mutually exclusive with
         /// <see cref="IsSharedAvailability"/> (availability/PTO projects are never billable).
         /// </summary>
-         public bool IsBillable { get; set; }
+        public bool IsBillable { get; set; }
     }
 }

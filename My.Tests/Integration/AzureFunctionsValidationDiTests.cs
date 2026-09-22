@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using My.Shared.Dtos;
 using My.Shared.Dtos.Contact;
+using My.Shared.Dtos.Expenses;
 using My.Shared.Dtos.Intranet;
 using My.Shared.Dtos.Project;
 using My.Shared.Dtos.StopwatchItem;
@@ -50,5 +51,8 @@ public class AzureFunctionsValidationDiTests
         Assert.IsType<UpdateAppSettingsRequestValidator>(provider.GetRequiredService<IValidator<List<AppSettingDto>>>());
         Assert.IsType<CreateIntranetPageDtoValidator>(provider.GetRequiredService<IValidator<CreateIntranetPageDto>>());
         Assert.IsType<ReorderPagesRequestValidator>(provider.GetRequiredService<ReorderPagesRequestValidator>());
+        Assert.IsType<CreateExpenseReportDtoValidator>(provider.GetRequiredService<IValidator<CreateExpenseReportDto>>());
+        Assert.IsType<UpdateExpenseReportDtoValidator>(provider.GetRequiredService<IValidator<UpdateExpenseReportDto>>());
+        Assert.IsType<UpdateExpenseSettingsDtoValidator>(provider.GetRequiredService<IValidator<UpdateExpenseSettingsDto>>());
     }
 }

@@ -74,4 +74,31 @@ public class ProjectPermissionRulesTests
         Assert.True(ProjectPermissionRules.CanSetSharedAvailability(true, false, callerHasManagerAccess: true));
         Assert.True(ProjectPermissionRules.CanSetSharedAvailability(false, true, callerHasManagerAccess: true));
     }
+
+    [Fact]
+    public void Editor_cannot_turn_counts_as_time_off_on_create()
+    {
+        Assert.False(ProjectPermissionRules.CanSetCountsAsTime(
+            requestedCountsAsTime: false,
+            currentCountsAsTime: true,
+            callerHasManagerAccess: false));
+    }
+
+    [Fact]
+    public void Editor_can_round_trip_counts_as_time()
+    {
+        Assert.True(ProjectPermissionRules.CanSetCountsAsTime(
+            requestedCountsAsTime: false,
+            currentCountsAsTime: false,
+            callerHasManagerAccess: false));
+    }
+
+    [Fact]
+    public void Manager_can_turn_counts_as_time_off()
+    {
+        Assert.True(ProjectPermissionRules.CanSetCountsAsTime(
+            requestedCountsAsTime: false,
+            currentCountsAsTime: true,
+            callerHasManagerAccess: true));
+    }
 }

@@ -7,7 +7,7 @@ namespace My.DAL.Models
         [Key, MaxLength(100)]
         public string Key { get; set; } = null!;
 
-        [Required, MaxLength(500)]
+        [Required]
         public string Value { get; set; } = null!;
 
         [MaxLength(200)]

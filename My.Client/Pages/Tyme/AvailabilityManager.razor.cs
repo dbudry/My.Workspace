@@ -60,8 +60,7 @@ namespace My.Client.Pages.Tyme
                 return;
             }
 
-            canManage = authState.User.IsInRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Tyme))
-                     || authState.User.IsInRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Tyme));
+            canManage = Constants.Roles.HasScopedAccess(authState.User, Constants.Scopes.Tyme, Constants.Roles.Manager);
 
             client = ClientFactory.CreateClient(Constants.API.ClientName);
             SetPageTitle?.Invoke("Availability");
@@ -201,6 +200,7 @@ namespace My.Client.Pages.Tyme
             var model = new Project
             {
                 IsSharedAvailability = true,
+                CountsAsTime = true,
                 ProjectGroupId = defaultGroup?.ProjectGroupId,
                 TeamDisplayName = My.Shared.Rules.TeamAvailabilityEventRules.DefaultDisplayName
             };
@@ -229,7 +229,8 @@ namespace My.Client.Pages.Tyme
                     OrganizationId = edited.OrganizationId,
                     DepartmentId = edited.DepartmentId,
                     ProjectGroupId = edited.ProjectGroupId,
-                    IsSharedAvailability = true
+                    IsSharedAvailability = true,
+                    CountsAsTime = edited.CountsAsTime
                 };
                 var response = await client.PostAsJsonAsync(Constants.API.Project.Create, dto);
                 if (!response.IsSuccessStatusCode)
@@ -268,7 +269,8 @@ namespace My.Client.Pages.Tyme
                 ProjectGroupName = category.ProjectGroupName,
                 IsActive = category.IsActive,
                 IsArchived = category.IsArchived,
-                IsSharedAvailability = true
+                IsSharedAvailability = true,
+                CountsAsTime = category.CountsAsTime
             };
 
             var parameters = new DialogParameters<AvailabilityDialog>
@@ -296,7 +298,8 @@ namespace My.Client.Pages.Tyme
                     OrganizationId = edited.OrganizationId,
                     DepartmentId = edited.DepartmentId,
                     ProjectGroupId = edited.ProjectGroupId,
-                    IsSharedAvailability = true
+                    IsSharedAvailability = true,
+                    CountsAsTime = edited.CountsAsTime
                 };
                 var response = await client.PutAsJsonAsync(Constants.API.Project.Update, dto);
                 if (!response.IsSuccessStatusCode)

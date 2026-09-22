@@ -10,6 +10,8 @@ namespace My.Shared.Dtos.Project
         public string? DepartmentId { get; set; }
         public string? ProjectGroupId { get; set; }
         public bool IsSharedAvailability { get; set; }
+        /// <summary>Default true. False is valid only with <see cref="IsSharedAvailability"/>.</summary>
+        public bool CountsAsTime { get; set; } = true;
         public bool IsBillable { get; set; }
     }
 }

@@ -46,6 +46,14 @@ namespace My.Client.Pages.Settings
         private ProjectColorSource projectColorSource;
         private bool isGoogleBusy;
         private string? googleError;
+        private bool hasExpensesAccess;
+        private bool hasExpenseSignature;
+        private string expenseHomeStreet = "";
+        private string expenseHomeCityLine = "";
+
+        private string settingsDescription => hasExpensesAccess
+            ? "General applies everywhere. Tyme is time tracking and Google Calendar. Expenses is your home address and reimbursement signature."
+            : "General applies everywhere. Tyme is time tracking and Google Calendar.";
 
         // "Pull missed events from Google" state — date range defaults to last 30 days.
         private DateTime? pullFromDate = DateTime.Today.AddDays(-30);
@@ -93,6 +101,8 @@ namespace My.Client.Pages.Settings
             }
 
             SetPageTitle?.Invoke("Settings");
+            hasExpensesAccess = Constants.Roles.HasScopedAccess(
+                authState.User, Constants.Scopes.Expenses);
 
             await Theme.InitAsync();
             Theme.Changed += OnThemeChanged;
@@ -133,6 +143,11 @@ namespace My.Client.Pages.Settings
 
         private void ApplySettingsToUi(UserSettingsDto settings)
         {
+            if (settings.IsGoogleCalendarConnected
+                && googleError != null
+                && googleError.Contains("Could not complete Google Calendar connection", StringComparison.OrdinalIgnoreCase))
+                googleError = null;
+
             use24HourTime = settings.Use24HourTime;
             defaultStartTime = DefaultStartTimeRules.Resolve(settings.DefaultStartTimeMinutes);
             selectedTimeZone = settings.TimeZone;
@@ -146,9 +161,22 @@ namespace My.Client.Pages.Settings
             matchedColorId = settings.TymeEventColorId;
             unmatchedColorId = settings.TymeUnmatchedEventColorId;
             projectColorSource = settings.ProjectColorSource;
+            hasExpenseSignature = settings.HasExpenseSignature;
+            (expenseHomeStreet, expenseHomeCityLine) = ExpenseReportRules.SplitHomeAddress(settings.ExpenseHomeAddress);
         }
 
-        private Task PersistNow() => PersistPreferenceAsync(debounce: false);
+        private Task PersistNow()
+        {
+            if (!publishToGoogle && !importFromGoogle)
+                availabilityOnlySync = false;
+            return PersistPreferenceAsync(debounce: false);
+        }
+
+        private Task OnAvailabilityOnlyChanged(bool value)
+        {
+            availabilityOnlySync = value;
+            return PersistNow();
+        }
 
         private Task PersistDebounced() => PersistPreferenceAsync(debounce: true);
 
@@ -231,12 +259,13 @@ namespace My.Client.Pages.Settings
                 TimeZone = timeZone,
                 PublishToGoogleCalendar = publishToGoogle,
                 ImportFromGoogleCalendar = importFromGoogle,
-                GoogleCalendarAvailabilityOnly = availabilityOnlySync,
+                GoogleCalendarAvailabilityOnly = (publishToGoogle || importFromGoogle) && availabilityOnlySync,
                 GoogleCalendarRemoveExcludedEvents = removeExcludedEvents,
                 TymeEventColorId = matchedColorId,
                 TymeUnmatchedEventColorId = unmatchedColorId,
                 ProjectColorSource = projectColorSource,
-                FavoriteIntranetPageIds = SettingsService.FavoriteIntranetPageIds
+                FavoriteIntranetPageIds = SettingsService.FavoriteIntranetPageIds,
+                ExpenseHomeAddress = ExpenseReportRules.CombineHomeAddress(expenseHomeStreet, expenseHomeCityLine)
             };
         }
 
@@ -274,7 +303,7 @@ namespace My.Client.Pages.Settings
         private async Task DisconnectGoogle()
         {
             var parameters = new DialogParameters<DisconnectGoogleDialog>();
-            var dialog = await DialogService.ShowAsync<DisconnectGoogleDialog>("Disconnect Google Calendar", parameters,
+            var dialog = await DialogService.ShowAsync<DisconnectGoogleDialog>("Stop Calendar sync", parameters,
                 new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
             var result = await dialog.Result;
             if (result is null || result.Canceled)
@@ -290,7 +319,7 @@ namespace My.Client.Pages.Settings
                 {
                     googleError = await resp.Content.ReadAsStringAsync();
                     if (string.IsNullOrWhiteSpace(googleError))
-                        googleError = "Couldn't disconnect Google Calendar.";
+                        googleError = "Couldn't stop Calendar sync.";
                     Snackbar.Add(googleError, Severity.Error);
                 }
                 else
@@ -300,7 +329,7 @@ namespace My.Client.Pages.Settings
                     // copies and wiped Tyme. Manual Connect from this page still works.
                     await SettingsService.MarkGoogleCalendarDisconnectedAsync();
                     SettingsService.InvalidateCache();
-                    Snackbar.Add("Disconnected from Google Calendar.", Severity.Success);
+                    Snackbar.Add("Calendar sync stopped.", Severity.Success);
                     await LoadSettings();
                 }
             }
@@ -378,10 +407,12 @@ namespace My.Client.Pages.Settings
             activeTab = 1;
             bool navigateToSettings = true;
             var isDrive = false;
+            var isAppDrive = false;
             try
             {
                 var kind = await JS.InvokeAsync<string?>("localStorage.getItem", GoogleOAuthConnectKindRules.LocalStorageKey);
                 isDrive = GoogleOAuthConnectKindRules.IsDrive(kind);
+                isAppDrive = GoogleOAuthConnectKindRules.IsAppDrive(kind);
                 await JS.InvokeVoidAsync("localStorage.removeItem", GoogleOAuthConnectKindRules.LocalStorageKey);
             }
             catch { /* prerender / blocked storage — treat as Calendar */ }
@@ -389,9 +420,11 @@ namespace My.Client.Pages.Settings
             try
             {
                 var client = ClientFactory.CreateClient(Constants.API.ClientName);
-                var callback = isDrive
-                    ? Constants.API.GoogleDrive.Callback
-                    : Constants.API.GoogleCalendar.Callback;
+                var callback = isAppDrive
+                    ? Constants.API.AppDrive.Callback
+                    : isDrive
+                        ? Constants.API.GoogleDrive.Callback
+                        : Constants.API.GoogleCalendar.Callback;
                 var resp = await client.PostAsJsonAsync(callback, new
                 {
                     code,
@@ -400,7 +433,11 @@ namespace My.Client.Pages.Settings
 
                 if (resp.IsSuccessStatusCode)
                 {
-                    if (isDrive)
+                    if (isAppDrive)
+                    {
+                        Snackbar.Add("App Drive connected.", Severity.Success);
+                    }
+                    else if (isDrive)
                     {
                         Snackbar.Add("Google Drive connected.", Severity.Success);
                         SettingsService.InvalidateCache();
@@ -435,7 +472,7 @@ namespace My.Client.Pages.Settings
                         await RunBackfillIfConfiguredAsync(client);
                     }
 
-                    // Route 2: return to dashboard / Intranet instead of stranding on Settings.
+                    // Route 2: return to dashboard / Intranet / App Settings instead of stranding here.
                     try
                     {
                         var returnUrl = await JS.InvokeAsync<string?>("localStorage.getItem", "postGoogleConnectReturnUrl");
@@ -444,6 +481,11 @@ namespace My.Client.Pages.Settings
                             await JS.InvokeVoidAsync("localStorage.removeItem", "postGoogleConnectReturnUrl");
                             navigateToSettings = false;
                             Navigation.NavigateTo(returnUrl, replace: true);
+                        }
+                        else if (isAppDrive)
+                        {
+                            navigateToSettings = false;
+                            Navigation.NavigateTo("/admin/appsettings", replace: true);
                         }
                     }
                     catch { /* ignore, fall through to normal settings landing */ }

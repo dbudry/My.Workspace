@@ -107,6 +107,77 @@ namespace My.Functions
             });
         }
 
+        /// <summary>
+        /// Sessions whose start falls in <c>from</c> (inclusive) .. <c>to</c> (exclusive),
+        /// plus the work items they belong to. The client groups by the user's local day.
+        /// </summary>
+        [Function("GetStopwatchDayView")]
+        public async Task<IActionResult> GetStopwatchDayViewAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "stopwatchitems/day")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, out var userId) is IActionResult unauth) return unauth;
+
+            if (!StopwatchDayViewRules.TryParseUtcRange(req.Query["from"], req.Query["to"], out var fromUtc, out var toUtc, out var rangeError))
+                return new BadRequestObjectResult(rangeError);
+
+            var sessionQuery = dbContext.TrackedTasks.AsNoTracking()
+                .Include(t => t.Project!).ThenInclude(p => p.ProjectGroup)
+                .Include(t => t.Project!).ThenInclude(p => p.Organization);
+            var inRange = await sessionQuery
+                .Where(t => t.UserId == userId
+                    && t.StopwatchItemId != null
+                    && t.StartDate >= fromUtc
+                    && t.StartDate < toUtc)
+                .ToListAsync();
+            var running = await sessionQuery
+                .Where(t => t.UserId == userId
+                    && t.StopwatchItemId != null
+                    && t.EndDate == null
+                    && !t.IsAllDay)
+                .ToListAsync();
+            var sessions = inRange
+                .Concat(running)
+                .DistinctBy(t => t.TaskId)
+                .OrderBy(t => t.StartDate)
+                .ToList();
+
+            var itemIds = sessions
+                .Select(s => s.StopwatchItemId!)
+                .Distinct()
+                .ToList();
+            var items = itemIds.Count == 0
+                ? new List<StopwatchItem>()
+                : await dbContext.StopwatchItems.AsNoTracking()
+                    .Include(i => i.Project!).ThenInclude(p => p.ProjectGroup)
+                    .Include(i => i.Project!).ThenInclude(p => p.Organization)
+                    .Where(i => i.UserId == userId && itemIds.Contains(i.StopwatchItemId))
+                    .ToListAsync();
+
+            var sessionsByItem = sessions.GroupBy(s => s.StopwatchItemId!)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            var submitted = await GetSubmittedMonthsAsync(userId);
+
+            var itemDtos = items.Select(i => ToListDto(
+                i,
+                sessionsByItem.GetValueOrDefault(i.StopwatchItemId) ?? [],
+                submitted)).ToList();
+
+            var sessionDtos = sessions.Select(t =>
+            {
+                var dto = mapper.TrackedTaskToDto(t);
+                dto.Details ??= string.Empty;
+                dto.IsMonthSubmitted = submitted.Contains((t.StartDate.Year, t.StartDate.Month));
+                return dto;
+            }).ToList();
+
+            return new OkObjectResult(new StopwatchDayViewDto
+            {
+                Items = itemDtos,
+                Sessions = sessionDtos
+            });
+        }
+
         [Function("CreateStopwatchItem")]
         public async Task<IActionResult> CreateStopwatchItemAsync(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "stopwatchitems")] HttpRequestData req)
@@ -123,8 +194,7 @@ namespace My.Functions
                 return new BadRequestObjectResult(projectIssue);
 
             var now = DateTime.UtcNow;
-            var item = new StopwatchItem
-            {
+            var item = new StopwatchItem {
                 UserId = userId,
                 Details = dto.Details.Trim(),
                 ProjectId = dto.ProjectId,
@@ -162,8 +232,7 @@ namespace My.Functions
                 await IsMonthSubmittedAsync(userId, now.Year, now.Month));
             if (!createDecision.IsAllowed) return new BadRequestObjectResult(createDecision.Reason!);
 
-            var item = new StopwatchItem
-            {
+            var item = new StopwatchItem {
                 UserId = userId,
                 Details = dto.Details.Trim(),
                 ProjectId = dto.ProjectId,
@@ -206,15 +275,15 @@ namespace My.Functions
                     "Cannot change work item name or project while any session is in a submitted month. You can still edit duration on unlocked sessions.");
             }
 
-            var details = dto.Details.Trim();
-            item.Details = details;
+            var name = dto.Details.Trim();
+            item.Details = name;
             item.ProjectId = dto.ProjectId;
             await itemRepository.Update(item);
 
             // Propagate identity to every session (none are locked if we got here).
             foreach (var session in sessions)
             {
-                session.Details = details;
+                session.Details = name;
                 session.ProjectId = dto.ProjectId;
                 await taskRepository.Update(session);
             }
@@ -371,7 +440,7 @@ namespace My.Functions
             var dtos = sessions.Select(t =>
             {
                 var dto = mapper.TrackedTaskToDto(t);
-                dto.Details ??= string.Empty; // TrackedTask.Details is nullable in the DB; DTO stays non-null.
+                dto.Details ??= string.Empty; // trackedTask.Details is nullable in the DB; DTO stays non-null.
                 dto.IsMonthSubmitted = submitted.Contains((t.StartDate.Year, t.StartDate.Month));
                 return dto;
             }).ToList();
@@ -422,9 +491,10 @@ namespace My.Functions
         /// <summary>
         /// Removes a work item from the user's Work Items list without touching it or its
         /// sessions — the destructive "delete everything" action lives at DeleteStopwatchItem
-        /// instead (moved to the Sessions dialog client-side). Blocked while a session is
-        /// actively running: a cleared item drops out of GetStopwatchItems, so a running timer
-        /// on it would otherwise become unreachable from the list with no way to stop it.
+        /// instead (moved to the Sessions dialog client-side, since a stray click here shouldn't
+        /// be able to erase logged hours). Blocked while a session is actively running: a cleared
+        /// item drops out of GetStopwatchItems, so a running timer on it would otherwise become
+        /// unreachable from the list with no way to stop it.
         /// </summary>
         [Function("ClearStopwatchItem")]
         public async Task<IActionResult> ClearStopwatchItemAsync(
@@ -493,7 +563,8 @@ namespace My.Functions
                 ActiveSessionStartDate = active?.StartDate,
                 LastWorkedAt = item.LastWorkedAt,
                 CreatedAt = item.CreatedAt,
-                HasLockedSessions = hasLocked
+                HasLockedSessions = hasLocked,
+                IsCleared = item.IsCleared
             };
         }
 
@@ -507,7 +578,15 @@ namespace My.Functions
         {
             session.EndDate = endUtc;
             var elapsed = StopwatchRules.ElapsedForActiveSession(session.StartDate, endUtc);
-            session.Duration = StopwatchRules.RoundUpToMinute(elapsed);
+            var rounded = StopwatchRules.RoundUpToMinute(elapsed);
+            var clamped = StopwatchRules.ClampForStorage(rounded);
+            if (clamped != rounded)
+            {
+                logger.LogWarning(
+                    "Stopwatch session {TaskId} ran {Elapsed} — clamped to {Clamped} for storage. Started {StartDate}.",
+                    session.TaskId, rounded, clamped, session.StartDate);
+            }
+            session.Duration = clamped;
             await taskRepository.Update(session);
             if (syncCalendar)
                 await TryPushCreateAsync(session);
@@ -562,7 +641,7 @@ namespace My.Functions
             try
             {
                 var s = await GetSettingsAsync(task.UserId);
-                if (s == null || !s.PublishToGoogleCalendar
+                if (s == null
                     || string.IsNullOrEmpty(s.GoogleRefreshToken) || string.IsNullOrEmpty(s.GoogleCalendarId))
                 {
                     await TryPushTeamAvailabilityAsync(task, s);
@@ -570,6 +649,12 @@ namespace My.Functions
                 }
 
                 var project = await GetProjectAsync(task.ProjectId);
+                if (!CanPublishPersonal(s, project))
+                {
+                    await TryPushTeamAvailabilityAsync(task, s);
+                    return;
+                }
+
                 var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                 task.GoogleEventId = ev.Id;
                 task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
@@ -597,7 +682,41 @@ namespace My.Functions
                 var project = await GetProjectAsync(task.ProjectId);
                 if (!string.IsNullOrEmpty(task.GoogleEventId))
                 {
-                    if (!s.PublishToGoogleCalendar)
+                    if (ShouldUnlinkPersonal(s, project))
+                    {
+                        // Availability-only sync was turned on (or the project's flag changed)
+                        // after this event was already published — the personal-calendar copy
+                        // is no longer allowed to exist. Always unlink so Tyme stops overwriting
+                        // an event it shouldn't touch anymore; only delete it on Google when the
+                        // user opted in (GoogleCalendarRemoveExcludedEvents) — Settings otherwise
+                        // promises existing events are left alone.
+                        // Export-off is not this path: keep GoogleEventId so turning export
+                        // back on updates the same event instead of creating a duplicate.
+                        if (s.GoogleCalendarRemoveExcludedEvents)
+                        {
+                            try
+                            {
+                                await googleCalendar.DeleteEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId);
+                            }
+                            catch (Google.GoogleApiException ex) when (
+                                ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound ||
+                                ex.HttpStatusCode == System.Net.HttpStatusCode.Gone)
+                            {
+                                // Already gone.
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogWarning(ex, "Failed to remove now-disallowed Google event for stopwatch session {TaskId}.", task.TaskId);
+                            }
+                        }
+                        task.GoogleEventId = null;
+                        task.GoogleEventUpdatedUtc = null;
+                        await taskRepository.Update(task);
+                        await TryPushTeamAvailabilityAsync(task, s);
+                        return;
+                    }
+
+                    if (!CanPublishPersonal(s, project))
                     {
                         await TryPushTeamAvailabilityAsync(task, s);
                         return;
@@ -610,7 +729,7 @@ namespace My.Functions
                     return;
                 }
 
-                if (s.PublishToGoogleCalendar)
+                if (CanPublishPersonal(s, project))
                 {
                     var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                     task.GoogleEventId = ev.Id;
@@ -645,6 +764,18 @@ namespace My.Functions
 
             await teamAvailabilityPublisher.DeleteSisterEventAsync(task, s);
         }
+
+        private static bool CanPublishPersonal(UserSettings s, Project? project) =>
+            GoogleCalendarAvailabilitySyncRules.ShouldPublishToPersonalCalendar(
+                s.PublishToGoogleCalendar,
+                s.GoogleCalendarAvailabilityOnly,
+                project?.IsSharedAvailability == true);
+
+        private static bool ShouldUnlinkPersonal(UserSettings s, Project? project) =>
+            GoogleCalendarAvailabilitySyncRules.ShouldUnlinkPersonalEvent(
+                s.PublishToGoogleCalendar,
+                s.GoogleCalendarAvailabilityOnly,
+                project?.IsSharedAvailability == true);
 
         private Task TryPushTeamAvailabilityAsync(TrackedTask task, UserSettings? settings) =>
             teamAvailabilityPublisher.PublishAsync(task, settings);

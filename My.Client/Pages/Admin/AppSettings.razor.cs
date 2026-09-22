@@ -5,8 +5,10 @@ using System.Net.Http.Json;
 using My.Client.Extensions;
 using My.Client.Services;
 using Microsoft.AspNetCore.Components.Web;
+using My.Client.Models;
 using My.Shared.Constants;
 using My.Shared.Dtos;
+using My.Shared.Dtos.Expenses;
 using My.Shared.Dtos.Intranet;
 using My.Shared.Rules;
 using My.Shared;
@@ -42,7 +44,13 @@ namespace My.Client.Pages.Admin
         /// <summary>When true, Tyme dialogs/grids collect start time of day (default).</summary>
         private bool trackTimeOfDay = TymeTimeOfDayRules.DefaultTrackTimeOfDay;
         private string teamAvailabilityCalendarId = string.Empty;
+        private string homeOrganizationId = string.Empty;
+        private List<Organization> homeOrganizationChoices = [];
         private string intranetDriveParentFolderId = string.Empty;
+        private string expensesDriveParentFolderId = string.Empty;
+        private AppDriveStatusDto? appDriveStatus;
+        private bool appDriveStatusLoaded;
+        private bool isAppDriveBusy;
         private List<IntranetUploadLimitDto> intranetUploadLimits = new();
         private string newUploadExtension = string.Empty;
         private int newUploadMaxMegabytes = 5;
@@ -73,6 +81,12 @@ namespace My.Client.Pages.Admin
 
         [Inject]
         private IntranetMediaPolicyService MediaPolicy { get; set; } = null!;
+
+        [Inject]
+        private OrganizationsCache OrganizationsCache { get; set; } = null!;
+
+        [Inject]
+        private UserSettingsService SettingsService { get; set; } = null!;
 
         protected override async Task OnInitializedAsync()
         {
@@ -169,9 +183,17 @@ namespace My.Client.Pages.Admin
                     if (teamCalVal != null)
                         teamAvailabilityCalendarId = teamCalVal.Value ?? string.Empty;
 
+                    var homeOrgVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.HomeOrganizationId);
+                    if (homeOrgVal != null)
+                        homeOrganizationId = homeOrgVal.Value ?? string.Empty;
+
                     var driveFolderVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.IntranetDriveParentFolderId);
                     if (driveFolderVal != null)
                         intranetDriveParentFolderId = driveFolderVal.Value ?? string.Empty;
+
+                    var expensesDriveVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.ExpensesDriveParentFolderId);
+                    if (expensesDriveVal != null)
+                        expensesDriveParentFolderId = expensesDriveVal.Value ?? string.Empty;
 
                     var navDepthVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.IntranetNavigationMaxDepth);
                     if (navDepthVal != null)
@@ -196,6 +218,18 @@ namespace My.Client.Pages.Admin
                 {
                     contactTypeUsage = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 }
+
+                try
+                {
+                    var page = await OrganizationsCache.LookupActivePageAsync();
+                    homeOrganizationChoices = page.Items.ToList();
+                }
+                catch
+                {
+                    homeOrganizationChoices = [];
+                }
+
+                await LoadAppDriveStatusAsync();
             }
             catch (Exception ex)
             {
@@ -203,6 +237,95 @@ namespace My.Client.Pages.Admin
             }
 
             isLoading = false;
+        }
+
+        private async Task LoadAppDriveStatusAsync()
+        {
+            try
+            {
+                var status = await client.GetFromJsonAsync<AppDriveStatusDto>(Constants.API.AppDrive.Status);
+                appDriveStatus = status;
+                appDriveStatusLoaded = status != null;
+                if (!string.IsNullOrWhiteSpace(status?.IntranetFolderId))
+                    intranetDriveParentFolderId = status.IntranetFolderId;
+                if (!string.IsNullOrWhiteSpace(status?.ExpensesFolderId))
+                    expensesDriveParentFolderId = status.ExpensesFolderId;
+            }
+            catch
+            {
+                appDriveStatus = null;
+                appDriveStatusLoaded = false;
+            }
+        }
+
+        private async Task ConnectAppDriveAsync()
+        {
+            isAppDriveBusy = true;
+            try
+            {
+                await SettingsService.InitiateAppDriveConnectAsync();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't start App Drive connect.");
+                isAppDriveBusy = false;
+            }
+        }
+
+        private async Task EnsureAppDriveLayoutAsync()
+        {
+            isAppDriveBusy = true;
+            try
+            {
+                var response = await client.PostAsync(Constants.API.AppDrive.EnsureLayout, null);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    Snackbar.Add(string.IsNullOrWhiteSpace(body)
+                        ? "Couldn't create App Drive folders."
+                        : body, Severity.Error);
+                    return;
+                }
+
+                await LoadAppDriveStatusAsync();
+                Snackbar.Add("Drive configuration applied.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't create App Drive folders.");
+            }
+            finally
+            {
+                isAppDriveBusy = false;
+            }
+        }
+
+        private async Task DisconnectAppDriveAsync()
+        {
+            isAppDriveBusy = true;
+            try
+            {
+                var response = await client.PostAsync(Constants.API.AppDrive.Disconnect, null);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    Snackbar.Add(string.IsNullOrWhiteSpace(body)
+                        ? "Couldn't disconnect App Drive."
+                        : body, Severity.Error);
+                    return;
+                }
+
+                await LoadAppDriveStatusAsync();
+                Snackbar.Add("App Drive disconnected. Personal Calendar is unchanged.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't disconnect App Drive.");
+            }
+            finally
+            {
+                isAppDriveBusy = false;
+            }
         }
 
         private async Task SaveSettings()
@@ -339,7 +462,19 @@ namespace My.Client.Pages.Admin
                         Value = IntranetMediaPolicyRules.SerializeUploadLimits(intranetUploadLimits),
                         Description = "Allowed intranet editor file types and max upload sizes (JSON array)."
                     },
-                    new() { Key = Constants.SettingKeys.ContactTypes, Value = ContactTypeRules.Serialize(contactTypes) }
+                    new() { Key = Constants.SettingKeys.ContactTypes, Value = ContactTypeRules.Serialize(contactTypes) },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.HomeOrganizationId,
+                        Value = (homeOrganizationId ?? string.Empty).Trim(),
+                        Description = "OrganizationId of the home company. Workspace-wide home company for Organizations."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.ExpensesDriveParentFolderId,
+                        Value = (expensesDriveParentFolderId ?? string.Empty).Trim(),
+                        Description = "Google Drive folder ID for the private Expenses root."
+                    }
                 };
 
                 var response = await client.PutAsJsonAsync(Constants.API.AppSettings.Update, payload);
@@ -361,6 +496,29 @@ namespace My.Client.Pages.Admin
                 Snackbar.AddApiError(ex, "Couldn't save app settings.");
             }
             isSaving = false;
+        }
+
+        private static string FolderReadyLabel(string? folderId) =>
+            string.IsNullOrWhiteSpace(folderId) ? "not created yet" : "ready";
+
+        private bool? GoogleSettingMatches(AppDriveGoogleSetting setting)
+        {
+            if (setting.ApiProperty == null || appDriveStatus == null)
+                return null;
+
+            var live = setting.ApiProperty switch
+            {
+                "DomainUsersOnly" => appDriveStatus.DomainUsersOnly,
+                "DriveMembersOnly" => appDriveStatus.DriveMembersOnly,
+                "SharingFoldersRequiresOrganizerPermission" =>
+                    appDriveStatus.SharingFoldersRequiresOrganizerPermission,
+                "CopyRequiresWriterPermission" => appDriveStatus.CopyRequiresWriterPermission,
+                "RestrictedForWriters" => appDriveStatus.RestrictedForWriters,
+                _ => null
+            };
+            if (live == null)
+                return null;
+            return live == setting.ApiValue;
         }
 
         private static int ReadRateLimitInt(IEnumerable<AppSettingDto> settings, string key, int fallback)

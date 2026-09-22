@@ -1,21 +1,148 @@
 [
   {
     "version": "1.0.0",
-    "date": "2026-09-08",
+    "date": "2026-09-22",
     "changes": [
-      { "type": "Fixed", "text": "Google Calendar Connect is Calendar-only. Intranet Drive uses a separate consent so Google's consent page no longer returns Backend Error for some Workspace accounts." },
-      { "type": "Added", "text": "Settings → General and Tyme tabs, with auto-save. Favorites are no longer cleared when saving Tyme settings." },
-      { "type": "Added", "text": "Only Availability projects and optional remove of leftover Google events when a project stops syncing. Export-off keeps the GoogleEventId so turning export back on does not duplicate." },
-      { "type": "Added", "text": "Resume live import when the push watch expired. Calendar reconnect messaging when Drive needs a separate reconnect or sync did not start." },
-      { "type": "Fixed", "text": "All-day multi-day spans show inclusive dates and this week's hours (not 23:59). Week empty state is full width. Submitted-month dialog links to Submit." },
-      { "type": "Added", "text": "Projects Download CSV of names and calendar slugs. Project name max length is 100." },
-      { "type": "Added", "text": "LOCAL bar on localhost debug ports only (7047 / 5047 / 11256), with Hide 5 min." },
-      { "type": "Added", "text": "Help → Availability covers manager-defined categories and Only Availability personal sync." },
-      { "type": "Fixed", "text": "A repeating Google Calendar event with a project [slug] no longer imports every week for decades. Tyme only takes tagged events in the next 90 days. Each night it fills the next 90 days." },
-      { "type": "Fixed", "text": "Submit no longer lists far-future months from those repeating events — through next month only." },
-      { "type": "Fixed", "text": "Cancelling a repeating Google series matches every imported week, not only one instance." },
-      { "type": "Fixed", "text": "Week → List shows a lock on stopwatch sessions in a submitted month, same as other tasks." },
-      { "type": "Changed", "text": "Product version display stays at 1.0.0 (greenfield). GitHub release tags increment separately." }
+      {
+        "type": "Added",
+        "text": "Expenses: draft, submit, and reimburse reports with receipts on App Shared Drive. Submit files a statement PDF under Expenses / Filed that is kept if the person is later deleted."
+      },
+      {
+        "type": "Added",
+        "text": "Stopwatch List / Week: week view groups time by day; a tab under each row shows start, stop, and duration."
+      },
+      {
+        "type": "Changed",
+        "text": "Intranet files use App Shared Drive (same App Drive as Expenses), not a pasted IT Resources folder or a personal Drive token."
+      },
+      {
+        "type": "Changed",
+        "text": "Organizations Maintenance role is now Manager. Admin is global-only; User Access assigns roles and does not operate a module."
+      },
+      {
+        "type": "Added",
+        "text": "Expenses roles: User:Expenses, Manager:Expenses, and UserAccess:Expenses for role assignment."
+      },
+      {
+        "type": "Fixed",
+        "text": "App Drive refresh no longer shrinks the Shared Drive token. Stopwatch Week dates stay in UTC. User delete respects recent expense reports."
+      },
+      {
+        "type": "Added",
+        "text": "Regression tests that fail CI if App Drive refresh uses employee Drive scopes, Stopwatch Week dates are not UTC, same-name people share an expense folder, User Access is treated as Manager, or user delete ignores recent expenses."
+      },
+      {
+        "type": "Fixed",
+        "text": "Dashboard Favorite pages is available whenever you have Intranet access, even with none starred yet. Add and remove pages on the tile."
+      },
+      {
+        "type": "Fixed",
+        "text": "Expense line Description can be typed again. Category Code sits next to Category, not under Date."
+      },
+      {
+        "type": "Fixed",
+        "text": "Intranet images load from App Drive even if the Intranet folder lookup fails. App Drive token refresh no longer sends an empty scope list."
+      },
+      {
+        "type": "Changed",
+        "text": "Google Calendar settings are grouped (Connection, What syncs, Event colors, Pull missed events). Stop Calendar sync ends import/export without forgetting the Google credential."
+      },
+      {
+        "type": "Fixed",
+        "text": "Calendar reconnect no longer reports a failed connect when live import cannot start (localhost has no public webhook). Disconnect keeps the stored token so Google missing refresh_token on reconnect does not 400."
+      },
+      {
+        "type": "Fixed",
+        "text": "Only OOO/PTO is ignored and shown off when both export and import are off. Connect dialog copy matches Settings."
+      },
+      {
+        "type": "Fixed",
+        "text": "Intranet Drive images only load if the file is under the Intranet folder on App Shared Drive, so expense receipts cannot be streamed via a page."
+      },
+      {
+        "type": "Fixed",
+        "text": "Google Calendar pull no longer stacks duplicate Tyme rows when an organizer updates a recurring invite. Unlinked leftovers only relink for the same series, time, and name."
+      },
+      {
+        "type": "Added",
+        "text": "Availability categories can be busy-only: they still show on Team Availability, and they do not count as Tyme hours. Vacation and Sick keep counting. Only a Tyme manager can turn hours off."
+      },
+      {
+        "type": "Fixed",
+        "text": "Tasks Week and Project views no longer treat a busy-only all-day block as 8 hours."
+      },
+      {
+        "type": "Fixed",
+        "text": "Management hides busy-only rows. Changing From or To reloads the Project list from time actually logged in that range for the selected employees."
+      },
+      {
+        "type": "Fixed",
+        "text": "Google Calendar Connect is Calendar-only. Intranet Drive uses a separate consent so Google's consent page no longer returns Backend Error for some Workspace accounts."
+      },
+      {
+        "type": "Added",
+        "text": "Settings → General and Tyme tabs, with auto-save. Favorites are no longer cleared when saving Tyme settings."
+      },
+      {
+        "type": "Added",
+        "text": "Only Availability projects and optional remove of leftover Google events when a project stops syncing. Export-off keeps the GoogleEventId so turning export back on does not duplicate."
+      },
+      {
+        "type": "Added",
+        "text": "Resume live import when the push watch expired. Calendar reconnect messaging when Drive needs a separate reconnect or sync did not start."
+      },
+      {
+        "type": "Fixed",
+        "text": "All-day multi-day spans show inclusive dates and this week's hours (not 23:59). Week empty state is full width. Submitted-month dialog links to Submit."
+      },
+      {
+        "type": "Added",
+        "text": "Projects Download CSV of names and calendar slugs. Project name max length is 100."
+      },
+      {
+        "type": "Added",
+        "text": "LOCAL bar on localhost debug ports only (7047 / 5047 / 11256), with Hide 5 min."
+      },
+      {
+        "type": "Added",
+        "text": "Help → Availability covers manager-defined categories and Only Availability personal sync."
+      },
+      {
+        "type": "Fixed",
+        "text": "A repeating Google Calendar event with a project [slug] no longer imports every week for decades. Tyme only takes tagged events in the next 90 days. Each night it fills the next 90 days."
+      },
+      {
+        "type": "Fixed",
+        "text": "Submit no longer lists far-future months from those repeating events — through next month only."
+      },
+      {
+        "type": "Fixed",
+        "text": "Cancelling a repeating Google series matches every imported week, not only one instance."
+      },
+      {
+        "type": "Fixed",
+        "text": "Week → List shows a lock on stopwatch sessions in a submitted month, same as other tasks."
+      },
+      {
+        "type": "Changed",
+        "text": "Product version display stays at 1.0.0 (greenfield). GitHub release tags increment separately."
+      },
+      {
+        "type": "Added",
+        "text": "Settings ΓåÆ General and Tyme tabs, with auto-save. Favorites are no longer cleared when saving Tyme settings."
+      },
+      {
+        "type": "Added",
+        "text": "Help ΓåÆ Availability covers manager-defined categories and Only Availability personal sync."
+      },
+      {
+        "type": "Fixed",
+        "text": "Submit no longer lists far-future months from those repeating events ΓÇö through next month only."
+      },
+      {
+        "type": "Fixed",
+        "text": "Week ΓåÆ List shows a lock on stopwatch sessions in a submitted month, same as other tasks."
+      }
     ]
   }
 ]

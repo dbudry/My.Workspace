@@ -17,8 +17,8 @@
     Reusable manager view of (user × month) submission rows.
 
     Two consumers:
-      - /tyme/submit page: ShowFilters=true, DefaultStatusFilter="all", no MaxRows.
-      - Dashboard widget:  ShowFilters=false, DefaultStatusFilter="unsubmitted", MaxRows=10.
+      - /tyme/submit page: ShowFilters=true, ShowActions=true, DefaultStatusFilter="all", no MaxRows.
+      - Dashboard widget:  ShowFilters=false, ShowActions=false, DefaultStatusFilter="unsubmitted", MaxRows=10.
 
     The component self-fetches via GET /api/timesubmissions/team and re-fetches
     whenever filters change. Any Unsubmit action refreshes the underlying list.
@@ -82,7 +82,10 @@
                 <MudTh>Employee</MudTh>
                 <MudTh Style="width:160px;">Month</MudTh>
                 <MudTh Style="width:140px;">Status</MudTh>
-                <MudTh Style="width:200px; text-align:right;">Actions</MudTh>
+                @if (ShowActions)
+                {
+                    <MudTh Style="width:200px; text-align:right;">Actions</MudTh>
+                }
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Employee">@context.UserName</MudTd>
@@ -101,27 +104,30 @@
                         </MudChip>
                     }
                 </MudTd>
-                <MudTd DataLabel="Actions" Style="text-align:right;">
-                    @if (!context.IsSubmitted && allowManagerSubmitOnBehalf)
-                    {
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                   StartIcon="@Icons.Material.Filled.Send"
-                                   OnClick="@(() => SubmitOnBehalfAsync(context))"
-                                   Disabled="@(busyKey == BusyKeyFor(context))"
-                                   Class="mr-1">
-                            Submit
-                        </MudButton>
-                    }
-                    else if (context.IsSubmitted && !string.IsNullOrEmpty(context.TimeSubmissionId))
-                    {
-                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
-                                   StartIcon="@Icons.Material.Filled.LockOpen"
-                                   OnClick="@(() => UnsubmitAsync(context))"
-                                   Disabled="@(busyKey == BusyKeyFor(context))">
-                            Unsubmit
-                        </MudButton>
-                    }
-                </MudTd>
+                @if (ShowActions)
+                {
+                    <MudTd DataLabel="Actions" Style="text-align:right;">
+                        @if (!context.IsSubmitted && allowManagerSubmitOnBehalf)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Send"
+                                       OnClick="@(() => SubmitOnBehalfAsync(context))"
+                                       Disabled="@(busyKey == BusyKeyFor(context))"
+                                       Class="mr-1">
+                                Submit
+                            </MudButton>
+                        }
+                        else if (context.IsSubmitted && !string.IsNullOrEmpty(context.TimeSubmissionId))
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.LockOpen"
+                                       OnClick="@(() => UnsubmitAsync(context))"
+                                       Disabled="@(busyKey == BusyKeyFor(context))">
+                                Unsubmit
+                            </MudButton>
+                        }
+                    </MudTd>
+                }
             </RowTemplate>
 
         </MudTable>
@@ -129,7 +135,7 @@
         @if (MaxRows.HasValue && allRows.Count > MaxRows.Value)
         {
             <MudText Typo="Typo.caption" Class="mt-2" Style="color: var(--mud-palette-text-secondary);">
-                Showing @visibleRows.Count of @allRows.Count rows. Visit Submit to see and filter the full list.
+                Showing @visibleRows.Count of @allRows.Count. Open Team for the rest.
             </MudText>
         }
     }
@@ -138,6 +144,9 @@
 @code {
     /// <summary>When true, render the filter bar above the table. Hide on dashboard.</summary>
     [Parameter] public bool ShowFilters { get; set; } = true;
+
+    /// <summary>When false, the table is awareness-only (no Submit/Unsubmit). Dashboard uses this.</summary>
+    [Parameter] public bool ShowActions { get; set; } = true;
 
     /// <summary>Initial status filter ("all" | "submitted" | "unsubmitted").</summary>
     [Parameter] public string DefaultStatusFilter { get; set; } = "all";
@@ -215,16 +224,20 @@
         StateHasChanged();
         try
         {
-            try
+            allowManagerSubmitOnBehalf = false;
+            if (ShowActions)
             {
-                var settings = await AppSettingsCache.GetAsync();
-                var row = settings.FirstOrDefault(s =>
-                    string.Equals(s.Key, Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf, StringComparison.Ordinal));
-                allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(row?.Value);
-            }
-            catch
-            {
-                allowManagerSubmitOnBehalf = false;
+                try
+                {
+                    var settings = await AppSettingsCache.GetAsync();
+                    var row = settings.FirstOrDefault(s =>
+                        string.Equals(s.Key, Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf, StringComparison.Ordinal));
+                    allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(row?.Value);
+                }
+                catch
+                {
+                    allowManagerSubmitOnBehalf = false;
+                }
             }
 
             var qs = new List<string> { $"status={Uri.EscapeDataString(statusFilter)}" };

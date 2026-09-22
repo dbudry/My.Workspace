@@ -166,4 +166,38 @@ public class CalendarImportRulesTests
         Assert.False(CalendarImportRules.GoogleEventIdMatchesCancel(instance, "other", recurringEventId: null));
         Assert.False(CalendarImportRules.GoogleEventIdMatchesCancel(null, series, series));
     }
+
+    [Fact]
+    public void IsSameOccurrence_timed_within_two_minutes()
+    {
+        var a = new DateTime(2026, 10, 5, 14, 0, 0, DateTimeKind.Utc);
+        Assert.True(CalendarImportRules.IsSameOccurrence(a, a.AddMinutes(1), allDay: false));
+        Assert.False(CalendarImportRules.IsSameOccurrence(a, a.AddMinutes(5), allDay: false));
+        Assert.True(CalendarImportRules.IsSameOccurrence(a.Date, a.Date.AddHours(3), allDay: true));
+    }
+
+    [Fact]
+    public void ShouldSkipUnlinkedTymeExport_blocks_echo_clones()
+    {
+        Assert.True(CalendarImportRules.ShouldSkipUnlinkedTymeExport(isTymeSourced: true, existingFound: false));
+        Assert.False(CalendarImportRules.ShouldSkipUnlinkedTymeExport(isTymeSourced: true, existingFound: true));
+        Assert.False(CalendarImportRules.ShouldSkipUnlinkedTymeExport(isTymeSourced: false, existingFound: false));
+    }
+
+    [Fact]
+    public void CanRelinkUnlinkedSeriesInstance_requires_series_unlinked_and_same_name()
+    {
+        Assert.True(CalendarImportRules.CanRelinkUnlinkedSeriesInstance(
+            isRecurringInstance: true, unlinkedGoogleEventId: null,
+            taskName: "PN5 Check-In", googleCleanName: "PN5 Check-In"));
+        Assert.False(CalendarImportRules.CanRelinkUnlinkedSeriesInstance(
+            isRecurringInstance: false, unlinkedGoogleEventId: null,
+            taskName: "PN5 Check-In", googleCleanName: "PN5 Check-In"));
+        Assert.False(CalendarImportRules.CanRelinkUnlinkedSeriesInstance(
+            isRecurringInstance: true, unlinkedGoogleEventId: "abc",
+            taskName: "PN5 Check-In", googleCleanName: "PN5 Check-In"));
+        Assert.False(CalendarImportRules.CanRelinkUnlinkedSeriesInstance(
+            isRecurringInstance: true, unlinkedGoogleEventId: null,
+            taskName: "Other work", googleCleanName: "PN5 Check-In"));
+    }
 }

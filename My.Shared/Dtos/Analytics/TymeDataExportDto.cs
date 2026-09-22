@@ -62,13 +62,14 @@ public sealed class ProjectExportRow
     public bool IsActive { get; set; }
     public bool IsArchived { get; set; }
     public bool IsSharedAvailability { get; set; }
+    public bool CountsAsTime { get; set; } = true;
     public bool IsBillable { get; set; }
 }
 
 public sealed class TrackedTaskExportRow
 {
     public string TaskId { get; set; } = null!;
-    public string Details { get; set; } = null!;
+    public string Name { get; set; } = null!;
     public double DurationSeconds { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime? EndDate { get; set; }

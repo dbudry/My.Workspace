@@ -28,6 +28,63 @@ public class StopwatchItemTests
         Assert.NotEqual(billed, end - start);
     }
 
+    [Fact]
+    public void ClampForStorage_caps_multi_day_sessions_to_the_SQL_time_ceiling()
+    {
+        // A stopwatch left running for days (forgot to stop) must not overflow SQL `time`
+        // (max 23:59:59.9999999) when the session is finally stopped.
+        var fourDaysPlus = new TimeSpan(4, 2, 56, 0);
+        Assert.Equal(StopwatchRules.MaxStorableDuration, StopwatchRules.ClampForStorage(fourDaysPlus));
+
+        var underADay = TimeSpan.FromHours(5);
+        Assert.Equal(underADay, StopwatchRules.ClampForStorage(underADay));
+
+        Assert.Equal(StopwatchRules.MaxStorableDuration, StopwatchRules.ClampForStorage(TimeSpan.FromHours(24)));
+    }
+
+    [SqlServerFact]
+    public async Task Stopping_a_multi_day_session_saves_without_overflowing_SQL_time()
+    {
+        await using var db = IntegrationTestConnection.NewContext();
+
+        var userId = await IntegrationTestFixtures.EnsureTestUserIdAsync(db);
+
+        var now = DateTime.UtcNow;
+        var item = new StopwatchItem { UserId = userId, Details = "Forgotten timer", CreatedAt = now, LastWorkedAt = now };
+        db.StopwatchItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var session = new TrackedTask {
+            UserId = userId,
+            StopwatchItemId = item.StopwatchItemId,
+            Details = item.Details,
+            StartDate = now.AddDays(-4).AddHours(-3),
+            EndDate = null,
+            Duration = TimeSpan.Zero
+        };
+        db.TrackedTasks.Add(session);
+        await db.SaveChangesAsync();
+
+        try
+        {
+            // Mirrors StopwatchItemFunction.StopSessionAsync: round up then clamp before persisting.
+            var elapsed = StopwatchRules.ElapsedForActiveSession(session.StartDate, now);
+            session.EndDate = now;
+            session.Duration = StopwatchRules.ClampForStorage(StopwatchRules.RoundUpToMinute(elapsed));
+
+            await db.SaveChangesAsync(); // would throw SqlDbType.Time overflow before the fix
+
+            var saved = await db.TrackedTasks.AsNoTracking()
+                .FirstAsync(t => t.TaskId == session.TaskId);
+            Assert.Equal(StopwatchRules.MaxStorableDuration, saved.Duration);
+        }
+        finally
+        {
+            await db.TrackedTasks.Where(t => t.StopwatchItemId == item.StopwatchItemId).ExecuteDeleteAsync();
+            await db.StopwatchItems.Where(i => i.StopwatchItemId == item.StopwatchItemId).ExecuteDeleteAsync();
+        }
+    }
+
     [SqlServerFact]
     public async Task Stopwatch_item_sessions_aggregate_completed_duration()
     {
@@ -36,10 +93,9 @@ public class StopwatchItemTests
         var userId = await IntegrationTestFixtures.EnsureTestUserIdAsync(db);
 
         var now = DateTime.UtcNow;
-        var item = new StopwatchItem
-        {
+        var item = new StopwatchItem {
             UserId = userId,
-                    Details = "Test stopwatch aggregation",
+            Details = "Test stopwatch aggregation",
             CreatedAt = now,
             LastWorkedAt = now
         };
@@ -49,8 +105,7 @@ public class StopwatchItemTests
         try
         {
             db.TrackedTasks.AddRange(
-                new TrackedTask
-                {
+                new TrackedTask {
                     UserId = userId,
                     StopwatchItemId = item.StopwatchItemId,
                     Details = item.Details,
@@ -58,8 +113,7 @@ public class StopwatchItemTests
                     EndDate = now.AddHours(-1),
                     Duration = TimeSpan.FromMinutes(30)
                 },
-                new TrackedTask
-                {
+                new TrackedTask {
                     UserId = userId,
                     StopwatchItemId = item.StopwatchItemId,
                     Details = item.Details,
@@ -145,8 +199,7 @@ public class StopwatchItemTests
         db.StopwatchItems.AddRange(cleared, visible);
         await db.SaveChangesAsync();
 
-        db.TrackedTasks.Add(new TrackedTask
-        {
+        db.TrackedTasks.Add(new TrackedTask {
             UserId = userId,
             StopwatchItemId = cleared.StopwatchItemId,
             Details = cleared.Details,
@@ -203,8 +256,7 @@ public class StopwatchItemTests
         db.StopwatchItems.Add(item);
         await db.SaveChangesAsync();
 
-        db.TrackedTasks.Add(new TrackedTask
-        {
+        db.TrackedTasks.Add(new TrackedTask {
             UserId = userId,
             StopwatchItemId = item.StopwatchItemId,
             Details = item.Details,
@@ -221,6 +273,8 @@ public class StopwatchItemTests
                 .AnyAsync(t => t.StopwatchItemId == item.StopwatchItemId && t.EndDate == null);
 
             Assert.True(isRunning, "Setup should have left one open session on the item.");
+            // The endpoint returns a BadRequest and never sets IsCleared when this is true —
+            // asserting the flag stays false is the behavior a caller actually depends on.
             Assert.False(item.IsCleared);
         }
         finally

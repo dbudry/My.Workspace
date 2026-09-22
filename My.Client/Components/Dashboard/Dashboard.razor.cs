@@ -4,12 +4,14 @@ using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.JSInterop;
 using MudBlazor;
 using My.Client.Models.Dashboard;
 using My.Client.Services;
 using My.Shared;
 using My.Shared.Constants;
 using My.Shared.Dtos.Dashboard;
+using My.Shared.Dtos.Expenses;
 using My.Shared.Dtos.Intranet;
 using My.Shared.Dtos.TimeSubmission;
 using My.Shared.Rules;
@@ -23,16 +25,32 @@ namespace My.Client.Components.Dashboard
         private const string Placeholder = "—";
         private const string AxisStorageKey = "dashboard.projectMixAxis";
         private const string ValueModeStorageKey = "dashboard.projectMixValueMode";
+        private const string LayoutStorageKey = "dashboard.layout";
 
         private string TopProjectLastMonth = Placeholder;
         private string TopProjectThisMonth = Placeholder;
 
         private List<ProjectDataItem> projectChartData = new();
         private List<OverdueMonthDto> overdueMonths = new();
+        private List<ExpenseReportListDto> overdueExpenseReports = new();
+        private List<ExpenseReportListDto> lastMonthTeamExpenses = new();
+        private const int LastMonthExpenseMaxRows = 10;
+        private string lastMonthExpenseLabel = "";
         private bool canManageTyme;
+        private bool canManageExpenses;
         private bool hasTymeAccess;
+        private bool hasExpensesAccess;
         private bool hasIntranetAccess;
+
+        private List<ExpenseReportListDto> visibleLastMonthExpenses =>
+            lastMonthTeamExpenses.Take(LastMonthExpenseMaxRows).ToList();
         private List<FavoriteIntranetPageLink> intranetFavoriteLinks = new();
+        private List<IntranetPageSummaryDto> intranetPages = new();
+        private string? favoritePageToAdd;
+        private bool isUpdatingFavorite;
+
+        private IEnumerable<IntranetPageSummaryDto> pagesNotFavorited =>
+            intranetPages.Where(p => intranetFavoriteLinks.All(f => f.PageId != p.PageId));
         private bool isLoading = true;
         private string? loadError;
         /// <summary>
@@ -42,6 +60,10 @@ namespace My.Client.Components.Dashboard
         private bool profileLoadFailed;
         private string? profileLoadDetail;
         private bool isRetryingProfile;
+        private bool isArranging;
+        private List<DashboardLayoutItem> savedLayout = [];
+        private ElementReference layoutGrid;
+        private DotNetObjectReference<Dashboard>? layoutJsRef;
 
 
         private ChartAxis _selectedAxis = ChartAxis.Organization;
@@ -115,20 +137,38 @@ namespace My.Client.Components.Dashboard
         [Inject]
         private TimeSubmissionEvents SubmissionEvents { get; set; } = null!;
 
+        [Inject]
+        private IJSRuntime Js { get; set; } = null!;
+
         #endregion
 
 
         [CascadingParameter]
         private Task<AuthenticationState> AuthenticationStateTask { get; set; } = null!;
 
+        [CascadingParameter(Name = "SetPageTitleActions")]
+        private Action<RenderFragment?>? SetPageTitleActions { get; set; }
+
         protected override void OnInitialized()
         {
             AuthStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
+            layoutJsRef = DotNetObjectReference.Create(this);
         }
 
         public void Dispose()
         {
             AuthStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
+            SetPageTitleActions?.Invoke(null);
+            try
+            {
+                _ = Js.InvokeVoidAsync("dashboardLayout.unbind");
+            }
+            catch
+            {
+                // Runtime may already be gone.
+            }
+            layoutJsRef?.Dispose();
+            layoutJsRef = null;
         }
 
         private void OnAuthStateChanged(Task<AuthenticationState> t) => _ = RefreshForAuthChangeAsync();
@@ -138,6 +178,27 @@ namespace My.Client.Components.Dashboard
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             await ApplyUserGatesAsync(authState.User);
             await InvokeAsync(StateHasChanged);
+        }
+
+        protected override async Task OnAfterRenderAsync(bool firstRender)
+        {
+            if (isArranging)
+            {
+                var specs = DashboardLayoutRules.Catalog.ToDictionary(
+                    s => s.Id,
+                    s => new Dictionary<string, int>
+                    {
+                        ["minColumns"] = s.MinColumns,
+                        ["minRows"] = s.MinRows,
+                        ["maxColumns"] = s.MaxColumns,
+                        ["maxRows"] = s.MaxRows,
+                        ["compactMinColumns"] = s.CompactMinColumns,
+                        ["compactMinRows"] = s.CompactMinRows
+                    });
+                await Js.InvokeVoidAsync("dashboardLayout.bind", layoutGrid, layoutJsRef, specs);
+            }
+            else
+                await Js.InvokeVoidAsync("dashboardLayout.unbind");
         }
 
         protected override async Task OnInitializedAsync()
@@ -157,7 +218,86 @@ namespace My.Client.Components.Dashboard
             if (!string.IsNullOrEmpty(savedValueMode) && Enum.TryParse<ChartValueMode>(savedValueMode, out var parsedMode))
                 _selectedValueMode = parsedMode;
 
+            try
+            {
+                var storedLayout = await LocalStorage.GetItemAsync<List<DashboardLayoutItem>>(LayoutStorageKey);
+                if (storedLayout != null)
+                    savedLayout = storedLayout;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Ignoring unreadable dashboard layout.");
+                savedLayout = [];
+            }
+
             await ApplyUserGatesAsync(User);
+        }
+
+        private HashSet<string> AvailableWidgetIds
+        {
+            get
+            {
+                var ids = new HashSet<string>(StringComparer.Ordinal);
+                if (hasTymeAccess)
+                {
+                    ids.Add(DashboardLayoutRules.ProjectMix);
+                    ids.Add(DashboardLayoutRules.TopProjects);
+                }
+                if (hasIntranetAccess)
+                    ids.Add(DashboardLayoutRules.Favorites);
+                if (canManageTyme)
+                    ids.Add(DashboardLayoutRules.UnsubmittedTime);
+                if (canManageExpenses)
+                    ids.Add(DashboardLayoutRules.LastMonthExpenses);
+                return ids;
+            }
+        }
+
+        private List<DashboardLayoutItem> visibleLayout =>
+            DashboardLayoutRules.Resolve(savedLayout, AvailableWidgetIds);
+
+        private static string TileStyle(DashboardLayoutItem widget) =>
+            $"grid-column:{widget.Col} / span {widget.Columns};grid-row:{widget.Row} / span {widget.Rows}";
+
+        [JSInvokable]
+        public async Task ApplyDashboardPlace(
+            string id, string mode, int col, int row, int columns, int rows)
+        {
+            var nextVisible = string.Equals(mode, "move", StringComparison.Ordinal)
+                ? DashboardLayoutRules.TryMove(visibleLayout, id, col, row)
+                : DashboardLayoutRules.TryResize(visibleLayout, id, col, row, columns, rows);
+            nextVisible = DashboardLayoutRules.Sanitize(nextVisible);
+            savedLayout = DashboardLayoutRules.MergeForSave(nextVisible, savedLayout);
+            await PersistLayoutAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+
+        private bool CanArrange =>
+            !profileLoadFailed && loadError is null && !isLoading && visibleLayout.Count > 0;
+
+        private void PushArrangeActions()
+        {
+            SetPageTitleActions?.Invoke(CanArrange ? ArrangeToolbar : null);
+        }
+
+        private async Task ToggleArrangeAsync()
+        {
+            isArranging = !isArranging;
+            PushArrangeActions();
+            if (!isArranging)
+                await Js.InvokeVoidAsync("dashboardLayout.unbind");
+        }
+
+        private async Task ResetLayoutAsync()
+        {
+            savedLayout = [];
+            await LocalStorage.RemoveItemAsync(LayoutStorageKey);
+            await InvokeAsync(StateHasChanged);
+        }
+
+        private async Task PersistLayoutAsync()
+        {
+            await LocalStorage.SetItemAsync(LayoutStorageKey, savedLayout);
         }
 
         private async Task ApplyUserGatesAsync(ClaimsPrincipal user)
@@ -173,11 +313,16 @@ namespace My.Client.Components.Dashboard
                 isLoading = false;
                 loadError = null;
                 hasTymeAccess = false;
+                hasExpensesAccess = false;
                 hasIntranetAccess = false;
                 canManageTyme = false;
+                canManageExpenses = false;
                 overdueMonths.Clear();
+                overdueExpenseReports.Clear();
+                lastMonthTeamExpenses.Clear();
                 projectChartData.Clear();
                 intranetFavoriteLinks.Clear();
+                PushArrangeActions();
                 return;
             }
 
@@ -194,12 +339,22 @@ namespace My.Client.Components.Dashboard
             var prevIntranetAccess = hasIntranetAccess;
 
             canManageTyme = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme, Constants.Roles.Manager);
+            canManageExpenses = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses, Constants.Roles.Manager);
 
             hasTymeAccess = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme);
+            hasExpensesAccess = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses);
             hasIntranetAccess = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
 
-            var settings = await SettingsService.GetSettingsAsync();
-            var favoriteIds = settings?.FavoriteIntranetPageIds ?? new();
+            List<string> favoriteIds = [];
+            try
+            {
+                var settings = await SettingsService.GetSettingsAsync();
+                favoriteIds = settings?.FavoriteIntranetPageIds ?? [];
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Dashboard settings load failed; continuing without favorites.");
+            }
 
             if (hasIntranetAccess && favoriteIds.Count > 0)
                 await LoadFavoritePageLinksAsync(favoriteIds);
@@ -213,7 +368,30 @@ namespace My.Client.Components.Dashboard
                 isLoading = false;
                 loadError = null;
                 overdueMonths.Clear();
+                projectChartData.Clear();
+                TopProjectLastMonth = Placeholder;
+                TopProjectThisMonth = Placeholder;
             }
+
+            if (hasExpensesAccess)
+                _ = LoadOverdueExpensesAsync();
+            else
+                overdueExpenseReports.Clear();
+
+            if (canManageExpenses)
+                _ = LoadLastMonthTeamExpensesAsync();
+            else
+                lastMonthTeamExpenses.Clear();
+
+            PushArrangeActions();
+        }
+
+        private void OpenOverdueExpenses()
+        {
+            if (overdueExpenseReports.Count == 1)
+                Navigation.NavigateTo($"expenses/{overdueExpenseReports[0].ExpenseReportId}");
+            else
+                Navigation.NavigateTo("expenses");
         }
 
         private sealed class FavoriteIntranetPageLink
@@ -238,6 +416,7 @@ namespace My.Client.Components.Dashboard
                 }
 
                 var pages = await response.Content.ReadFromJsonAsync<List<IntranetPageSummaryDto>>() ?? new();
+                intranetPages = pages;
                 var pageById = pages.ToDictionary(p => p.PageId);
 
                 intranetFavoriteLinks = favoriteIds
@@ -259,6 +438,53 @@ namespace My.Client.Components.Dashboard
                 intranetFavoriteLinks = favoriteIds
                     .Select(id => new FavoriteIntranetPageLink { PageId = id, Title = "Favorite page" })
                     .ToList();
+            }
+        }
+
+        private async Task AddFavoriteAsync(string? pageId)
+        {
+            if (string.IsNullOrWhiteSpace(pageId) || isUpdatingFavorite) return;
+            if (intranetFavoriteLinks.Any(f => f.PageId == pageId)) return;
+            isUpdatingFavorite = true;
+            try
+            {
+                await SettingsService.ToggleIntranetFavoriteAsync(pageId);
+                var page = intranetPages.FirstOrDefault(p => p.PageId == pageId);
+                intranetFavoriteLinks.Add(new FavoriteIntranetPageLink
+                {
+                    PageId = pageId,
+                    Slug = page?.Slug,
+                    Title = page is { Title: { Length: > 0 } title } ? title : "Untitled page"
+                });
+                favoritePageToAdd = null;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not add intranet favorite {PageId}.", pageId);
+            }
+            finally
+            {
+                isUpdatingFavorite = false;
+            }
+        }
+
+        private async Task RemoveFavoriteAsync(string pageId)
+        {
+            if (string.IsNullOrWhiteSpace(pageId) || isUpdatingFavorite) return;
+            isUpdatingFavorite = true;
+            try
+            {
+                if (intranetFavoriteLinks.Any(f => f.PageId == pageId))
+                    await SettingsService.ToggleIntranetFavoriteAsync(pageId);
+                intranetFavoriteLinks.RemoveAll(f => f.PageId == pageId);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not remove intranet favorite {PageId}.", pageId);
+            }
+            finally
+            {
+                isUpdatingFavorite = false;
             }
         }
 
@@ -309,6 +535,7 @@ namespace My.Client.Components.Dashboard
             finally
             {
                 isLoading = false;
+                PushArrangeActions();
                 StateHasChanged();
             }
         }
@@ -356,6 +583,7 @@ namespace My.Client.Components.Dashboard
             finally
             {
                 isRetryingProfile = false;
+                PushArrangeActions();
                 StateHasChanged();
             }
         }
@@ -397,6 +625,49 @@ namespace My.Client.Components.Dashboard
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "Failed to load overdue submissions; suppressing.");
+            }
+        }
+
+        private async Task LoadOverdueExpensesAsync()
+        {
+            try
+            {
+                var client = ClientFactory.CreateClient(Constants.API.ClientName);
+                var list = await client.GetFromJsonAsync<List<ExpenseReportListDto>>(Constants.API.Expenses.Reports);
+                var today = DateTime.Today;
+                overdueExpenseReports = (list ?? [])
+                    .Where(r => ExpenseReportRules.IsOverdueDraft(r.Status, r.Year, r.Month, r.LineCount, today))
+                    .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month)
+                    .ToList();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to load overdue expense reports; suppressing.");
+            }
+        }
+
+        private async Task LoadLastMonthTeamExpensesAsync()
+        {
+            var last = DateTime.Today.AddMonths(-1);
+            lastMonthExpenseLabel = last.ToString("MMMM yyyy");
+            try
+            {
+                var client = ClientFactory.CreateClient(Constants.API.ClientName);
+                var url = Constants.API.Expenses.ConstructUrlForTeam(
+                    ExpenseDataExtractionRules.StatusAll,
+                    userId: null,
+                    year: last.Year,
+                    month: last.Month);
+                var list = await client.GetFromJsonAsync<List<ExpenseReportListDto>>(url);
+                lastMonthTeamExpenses = (list ?? [])
+                    .OrderBy(r => r.EmployeeName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to load last month's team expenses; suppressing.");
             }
         }
 

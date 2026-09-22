@@ -25,8 +25,28 @@ public static class ProjectPermissionRules
         bool requestedIsSharedAvailability,
         bool currentIsSharedAvailability,
         bool callerHasManagerAccess)
+        => CanChangeManagerOnlyFlag(
+            requestedIsSharedAvailability, currentIsSharedAvailability, callerHasManagerAccess);
+
+    /// <summary>
+    /// Turning "counts as Tyme hours" off is a Manager+ decision (presence-only
+    /// availability categories). Editors may round-trip the existing value.
+    /// On create, pass <paramref name="currentCountsAsTime"/> as <c>true</c>
+    /// (the default) so only a Manager can create with hours off.
+    /// </summary>
+    public static bool CanSetCountsAsTime(
+        bool requestedCountsAsTime,
+        bool currentCountsAsTime,
+        bool callerHasManagerAccess)
+        => CanChangeManagerOnlyFlag(
+            requestedCountsAsTime, currentCountsAsTime, callerHasManagerAccess);
+
+    public static bool CanChangeManagerOnlyFlag(
+        bool requested,
+        bool current,
+        bool callerHasManagerAccess)
     {
         if (callerHasManagerAccess) return true;
-        return requestedIsSharedAvailability == currentIsSharedAvailability;
+        return requested == current;
     }
 }
