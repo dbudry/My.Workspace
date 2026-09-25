@@ -371,6 +371,16 @@ public class RoleAdministrationTests
     }
 
     [Fact]
+    public void IsAssignableRole_accepts_crm_user_editor_manager_useraccess()
+    {
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Crm)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Crm)));
+    }
+
+    [Fact]
     public void IsAssignableRole_accepts_expenses_user_manager_useraccess()
     {
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Expenses)));

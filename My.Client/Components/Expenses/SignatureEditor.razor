@@ -6,6 +6,7 @@
 @inject IJSRuntime Js
 @inject IHttpClientFactory ClientFactory
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <div>
     @if (!string.IsNullOrEmpty(previewSrc))
@@ -186,6 +187,13 @@
 
     private async Task DeleteAsync()
     {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            "Remove this signature?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
+
         isBusy = true;
         try
         {

@@ -100,7 +100,7 @@
                     <div class="d-flex justify-end gap-2 mt-2">
                         <MudButton Size="Size.Small" OnClick="CancelAdd">Cancel</MudButton>
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
-                                   Disabled="@(string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newContactType))" OnClick="SaveNewContact">Save Contact</MudButton>
+                                   Disabled="@(string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newContactType))" OnClick="SaveNewContact">Save</MudButton>
                     </div>
                 </div>
             }
@@ -128,6 +128,9 @@
 
     [Inject]
     private ISnackbar Snackbar { get; set; } = null!;
+
+    [Inject]
+    private IDialogService DialogService { get; set; } = null!;
 
     [Inject]
     private AppSettingsCache AppSettingsCache { get; set; } = null!;
@@ -240,6 +243,12 @@
 
     private async Task DeleteContact(ContactModel c)
     {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Delete contact \"{c.Name}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
         try
         {
             var response = await client.DeleteAsync($"{Constants.API.Contact.Delete}/{c.ContactId}");

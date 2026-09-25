@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using My.Shared.Dtos;
 using My.Shared.Dtos.Contact;
+using My.Shared.Dtos.Crm;
 using My.Shared.Dtos.Expenses;
 using My.Shared.Dtos.Intranet;
 using My.Shared.Dtos.Project;
@@ -54,5 +55,10 @@ public class AzureFunctionsValidationDiTests
         Assert.IsType<CreateExpenseReportDtoValidator>(provider.GetRequiredService<IValidator<CreateExpenseReportDto>>());
         Assert.IsType<UpdateExpenseReportDtoValidator>(provider.GetRequiredService<IValidator<UpdateExpenseReportDto>>());
         Assert.IsType<UpdateExpenseSettingsDtoValidator>(provider.GetRequiredService<IValidator<UpdateExpenseSettingsDto>>());
+        Assert.IsType<CreateOpportunityDtoValidator>(provider.GetRequiredService<IValidator<CreateOpportunityDto>>());
+        Assert.IsType<UpdateOpportunityDtoValidator>(provider.GetRequiredService<IValidator<UpdateOpportunityDto>>());
+        Assert.IsType<CreateCrmActivityDtoValidator>(provider.GetRequiredService<IValidator<CreateCrmActivityDto>>());
+        Assert.IsType<UpdateCrmActivityDtoValidator>(provider.GetRequiredService<IValidator<UpdateCrmActivityDto>>());
+        Assert.IsType<SetOpportunityArchivedDtoValidator>(provider.GetRequiredService<IValidator<SetOpportunityArchivedDto>>());
     }
 }

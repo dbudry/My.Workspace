@@ -224,6 +224,61 @@ public class AuthGatesTests
         Assert.Equal(UserIdValue, userId);
     }
 
+    // ---------- RequireScopedCrm ----------
+
+    [Fact]
+    public void RequireScopedCrm_anonymous_caller_gets_401()
+    {
+        var result = AuthGates.RequireScopedCrm(Anonymous(), out var userId);
+
+        Assert.IsType<UnauthorizedResult>(result);
+        Assert.Equal(string.Empty, userId);
+    }
+
+    [Fact]
+    public void RequireScopedCrm_global_admin_does_not_pass_without_crm_role()
+    {
+        var principal = Authenticated(Constants.Roles.Admin);
+
+        var result = AuthGates.RequireScopedCrm(principal, out var userId);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal(UserIdValue, userId);
+    }
+
+    [Fact]
+    public void RequireScopedCrm_tyme_user_gets_403()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Tyme));
+
+        var result = AuthGates.RequireScopedCrm(principal, out _);
+
+        var status = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(403, status.StatusCode);
+    }
+
+    [Fact]
+    public void RequireScopedCrm_user_passes_read_and_fails_editor()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm));
+
+        Assert.Null(AuthGates.RequireScopedCrm(principal, out var userId));
+        Assert.Equal(UserIdValue, userId);
+
+        var editorGate = AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Editor);
+        var status = Assert.IsType<StatusCodeResult>(editorGate);
+        Assert.Equal(403, status.StatusCode);
+    }
+
+    [Fact]
+    public void RequireScopedCrm_manager_passes_manager_gate()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm));
+
+        Assert.Null(AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Manager));
+    }
+
     // ---------- RequireOrganizations ----------
     //
     // Same as Tyme/Intranet: an Organizations-scoped role is required. Global Admin does not pass.

@@ -1,23 +1,111 @@
-<MudSelect T="string" Value="Value" ValueChanged="ValueChanged"
-           Label="Contact type" Variant="Variant.Outlined" Margin="Margin.Dense"
-           Dense="@Dense" Required="true" RequiredError="Contact type is required">
-    @if (ShowsOrphanValue)
-    {
-        <MudSelectItem T="string" Value="@Value" Disabled="true">@Value (no longer allowed)</MudSelectItem>
-    }
-    @foreach (var type in Types)
-    {
-        <MudSelectItem T="string" Value="@type">@type</MudSelectItem>
-    }
-</MudSelect>
+@using My.Shared.Dtos
+
+<div class="contact-type-field">
+    <MudSelect T="string" Value="Value" ValueChanged="ValueChanged"
+               Label="Contact type" Variant="Variant.Outlined" Margin="Margin.Dense"
+               Dense="@Dense" Required="true" RequiredError="Contact type is required">
+        @if (ShowsOrphanValue)
+        {
+            <MudSelectItem T="string" Value="@Value" Disabled="true">@Value (no longer allowed)</MudSelectItem>
+        }
+        @foreach (var type in Types)
+        {
+            <MudSelectItem T="string" Value="@type">@type</MudSelectItem>
+        }
+    </MudSelect>
+    <span class="contact-type-help" aria-label="Who can add a contact type"
+          @onclick="ToggleHelp" @onclick:stopPropagation="true" @onclick:preventDefault="true">
+        <MudIcon Icon="@Icons.Material.Outlined.HelpOutline" Size="Size.Small" />
+    </span>
+    <MudPopover Open="_helpOpen" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Paper="true">
+        <div class="pa-3" style="max-width: 24rem;">
+            @if (isAdmin)
+            {
+                <MudText Typo="Typo.body2">You can add a type under Admin, App Settings, Organizations.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2">Only an Admin can add a contact type.</MudText>
+            }
+            @if (admins.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mt-2">No Admin is listed.</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="mt-2">Admins:</MudText>
+                @foreach (var person in admins)
+                {
+                    <div class="mt-2">
+                        <MudText Typo="Typo.body2">@person.Name</MudText>
+                        <div class="d-flex align-center">
+                            <MudText Typo="Typo.caption">@person.Email</MudText>
+                            <MudTooltip Text="Copy email">
+                                <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small"
+                                               aria-label="Copy email"
+                                               OnClick="@(() => CopyEmailAsync(person.Email))" />
+                            </MudTooltip>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </MudPopover>
+</div>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private IJSRuntime Js { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public IReadOnlyList<string> Types { get; set; } = Array.Empty<string>();
     [Parameter] public bool Dense { get; set; } = true;
 
+    private bool isAdmin;
+    private bool _helpOpen;
+    private List<ContactTypeAdminDto> admins = new();
+
     private bool ShowsOrphanValue =>
         !string.IsNullOrWhiteSpace(Value)
         && !Types.Any(t => string.Equals(t, Value, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthStateTask != null)
+        {
+            var user = (await AuthStateTask).User;
+            isAdmin = user.IsInRole(My.Shared.Constants.Constants.Roles.Admin);
+        }
+
+        try
+        {
+            var client = ClientFactory.CreateClient(My.Shared.Constants.Constants.API.ClientName);
+            var response = await client.GetAsync(My.Shared.Constants.Constants.API.AppSettings.ContactTypeAdmins);
+            if (!response.IsSuccessStatusCode)
+                return;
+            admins = await response.Content.ReadFromJsonAsync<List<ContactTypeAdminDto>>() ?? new();
+        }
+        catch
+        {
+            admins = new();
+        }
+    }
+
+    private void ToggleHelp() => _helpOpen = !_helpOpen;
+
+    private async Task CopyEmailAsync(string email)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", email);
+            Snackbar.Add("Email copied.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Couldn't copy the email.", Severity.Warning);
+        }
+    }
 }

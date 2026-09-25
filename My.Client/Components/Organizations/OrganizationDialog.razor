@@ -4,46 +4,218 @@
 @using My.Client.Services
 @using My.Shared.Rules
 @using My.Shared.Dtos.Contact
+@using My.Shared.Dtos.Department
+@using My.Shared.Dtos.Organization
 @using My.Shared.Constants
+@using My.Shared.Validation
 @using System.Net.Http.Json
 
 <MudDialog>
     <DialogContent>
-        <DialogFormStack>
-            <MudTextField @bind-Value="Model.Name" Label="Organization Name" Required="true"
-                          RequiredError="Organization name is required" Variant="Variant.Outlined" Margin="Margin.Dense" />
-
-            @* Address block uses its own tighter stack — these four fields read as one
-               group, so the normal inter-field gap (DialogFormStack's Spacing="3") just
-               made the dialog needlessly tall between them. *@
-            <MudStack Spacing="1">
-                <MudTextField @bind-Value="Model.Address" Label="Address" Variant="Variant.Outlined" Margin="Margin.Dense" />
-                <div class="d-flex gap-2">
-                    <MudTextField @bind-Value="Model.City" Label="City" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:2;" />
-                    <MudTextField @bind-Value="Model.State" Label="State" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
-                    <MudTextField @bind-Value="Model.PostalCode" Label="Zip" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
-                </div>
-                <MudTextField @bind-Value="Model.Country" Label="Country" Variant="Variant.Outlined" Margin="Margin.Dense" />
-            </MudStack>
-
-            <MudTextField @bind-Value="Model.Note" Label="Notes" Variant="Variant.Outlined" Lines="3" Margin="Margin.Dense" />
-
-            <ColorPickerField Label="Color"
-                              HelperText="Used as the visual indicator for projects in this organization that have no Project Group."
-                              ColorHex="@colorHex"
-                              ColorHexChanged="OnColorHexChanged" />
-        </DialogFormStack>
-
-        @if (IsEdit)
+        @if (!IsEdit)
         {
-            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle2" Class="mb-3">Step @(step + 1) of 3 — @StepTitle</MudText>
+            @if (step == 0)
+            {
+                <MudTextField @bind-Value="Model.Name" Label="Organization Name" Required="true"
+                              RequiredError="Organization name is required" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Immediate="true" />
+            }
+            else if (step == 1)
+            {
+                <MudStack Spacing="1">
+                    <MudTextField @bind-Value="Model.Address" Label="Address" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <div class="d-flex gap-2">
+                        <MudTextField @bind-Value="Model.City" Label="City" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:2;" />
+                        <MudTextField @bind-Value="Model.State" Label="State" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                        <MudTextField @bind-Value="Model.PostalCode" Label="Zip" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                    </div>
+                    <MudTextField @bind-Value="Model.Country" Label="Country" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudStack>
+            }
+            else
+            {
+                <CountedTextArea Value="@Model.Note" ValueChanged="@(v => Model.Note = v)"
+                                 MaxLength="@OrganizationFieldRules.NoteMaxLength"
+                                 Class="counted-textarea--multiline" Placeholder="Notes" AriaLabel="Notes" />
+                <ColorPickerField Label="Color"
+                                  HelperText="Used as the visual indicator for projects in this organization that have no Project Group."
+                                  ColorHex="@colorHex"
+                                  ColorHexChanged="OnColorHexChanged" />
+            }
+        }
+        else
+        {
+            <MudTabs @bind-ActivePanelIndex="activeTab" Rounded="true" Elevation="0" ApplyEffectsToContainer="true" KeepPanelsAlive="true">
+                <MudTabPanel Text="Details">
+                    <div class="org-edit-tab">
+                    <DialogFormStack>
+                        <MudTextField @bind-Value="Model.Name" Label="Organization Name" Required="true"
+                                      RequiredError="Organization name is required" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Immediate="true" />
+                        <MudStack Spacing="1">
+                            <MudTextField @bind-Value="Model.Address" Label="Address" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                            <div class="d-flex gap-2">
+                                <MudTextField @bind-Value="Model.City" Label="City" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:2;" />
+                                <MudTextField @bind-Value="Model.State" Label="State" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                                <MudTextField @bind-Value="Model.PostalCode" Label="Zip" Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1;" />
+                            </div>
+                            <MudTextField @bind-Value="Model.Country" Label="Country" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        </MudStack>
+                        <CountedTextArea Value="@Model.Note" ValueChanged="@(v => Model.Note = v)"
+                                         MaxLength="@OrganizationFieldRules.NoteMaxLength"
+                                         Class="counted-textarea--multiline" Placeholder="Notes" AriaLabel="Notes" />
+                    </DialogFormStack>
+                    </div>
+                </MudTabPanel>
+                <MudTabPanel Text="Color">
+                    <div class="org-edit-tab">
+                    <DialogFormStack>
+                        <ColorPickerField Label="Color"
+                                          HelperText="Used as the visual indicator for projects in this organization that have no Project Group."
+                                          ColorHex="@colorHex"
+                                          ColorHexChanged="OnColorHexChanged" />
+                    </DialogFormStack>
+                    </div>
+                </MudTabPanel>
+                <MudTabPanel Text="Departments">
+                    <div class="org-edit-tab">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.subtitle1" Style="font-weight:600;">Departments</MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.CreateNewFolder" OnClick="StartAddDepartment">Add department</MudButton>
+                    </div>
+                    @if (isAddingDepartment)
+                    {
+                        <div class="mt-2 pa-3 mb-2" style="border: 1px solid var(--mud-palette-lines-default); border-radius: 4px;">
+                            <MudTextField @bind-Value="newDepartmentName" Label="Department name" Variant="Variant.Outlined"
+                                          Margin="Margin.Dense" Immediate="true" />
+                            <div class="d-flex justify-end gap-2 mt-2">
+                                <MudButton Size="Size.Small" OnClick="CancelAddDepartment">Cancel</MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                           Disabled="@((newDepartmentName?.Trim().Length ?? 0) < 2)"
+                                           OnClick="SaveNewDepartment">Save</MudButton>
+                            </div>
+                        </div>
+                    }
+                    @if (departments.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No departments</MudText>
+                    }
+                    else
+                    {
+                        @foreach (var dept in departments)
+                        {
+                            <MudPaper Class="pa-2 mb-2" Outlined="true">
+                                <div class="d-flex align-center gap-2">
+                                    @if (editingDepartmentId == dept.DepartmentId)
+                                    {
+                                        <MudTextField @bind-Value="editDepartmentName" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small"
+                                                       OnClick="SaveDepartmentName" Disabled="@((editDepartmentName?.Trim().Length ?? 0) < 2)" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CancelDepartmentEdit" />
+                                    }
+                                    else
+                                    {
+                                        <MudText Typo="Typo.body1">@dept.Name</MudText>
+                                        <MudText Typo="Typo.caption">(@(dept.Contacts?.Count ?? 0) contacts)</MudText>
+                                        <MudSpacer />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                       OnClick="@(() => StartEditDepartment(dept))" />
+                                        <MudIconButton Icon="@(expandedDepartmentId == dept.DepartmentId ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.People)"
+                                                       Size="Size.Small" OnClick="@(() => ToggleDepartmentContacts(dept))" />
+                                        @if (CanDeleteDepartments)
+                                        {
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                           OnClick="@(() => DeleteDepartment(dept))" />
+                                        }
+                                    }
+                                </div>
+                                @if (expandedDepartmentId == dept.DepartmentId)
+                                {
+                                    <div class="mt-2">
+                                        <div class="d-flex justify-end mb-1">
+                                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                                       StartIcon="@Icons.Material.Filled.PersonAdd"
+                                                       OnClick="@(() => AddContact(dept.DepartmentId))">Add contact</MudButton>
+                                        </div>
+                                        @if (dept.Contacts == null || dept.Contacts.Count == 0)
+                                        {
+                                            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No contacts</MudText>
+                                        }
+                                        else
+                                        {
+                                            <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                                                <tbody>
+                                                    @foreach (var c in dept.Contacts)
+                                                    {
+                                                        <tr>
+                                                            @if (editingContactId == c.ContactId)
+                                                            {
+                                                                <td><MudTextField @bind-Value="editName" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                                                <td><ContactTypeSelect @bind-Value="editContactType" Types="contactTypes" /></td>
+                                                                <td><MudTextField @bind-Value="editTitle" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                                                <td><MudTextField @bind-Value="editPhone" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                                                <td><MudTextField @bind-Value="editEmail" Variant="Variant.Text" Margin="Margin.Dense" /></td>
+                                                                <td style="text-align:center; white-space:nowrap;">
+                                                                    <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small"
+                                                                                   OnClick="SaveEditContact" Disabled="@string.IsNullOrWhiteSpace(editName)" />
+                                                                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CancelEdit" />
+                                                                </td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td>@c.Name</td>
+                                                                <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                                                <td>@c.Title</td>
+                                                                <td>@c.PhoneNumber</td>
+                                                                <td>@c.Email</td>
+                                                                <td style="text-align:center; white-space:nowrap;">
+                                                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                                                                   OnClick="@(() => StartEditContact(c))" />
+                                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                                                   OnClick="@(() => DeleteContact(c, dept))" />
+                                                                </td>
+                                                            }
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </MudSimpleTable>
+                                        }
+                                        @if (isAdding && addingContactDepartmentId == dept.DepartmentId)
+                                        {
+                                            <div class="mt-2 pa-3" style="border: 1px solid var(--mud-palette-lines-default); border-radius: 4px;">
+                                                <MudGrid Spacing="2">
+                                                    <MudItem xs="6"><MudTextField @bind-Value="newName" Label="Name" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                                    <MudItem xs="6"><ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" /></MudItem>
+                                                    <MudItem xs="6"><MudTextField @bind-Value="newTitle" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                                    <MudItem xs="6"><MudTextField @bind-Value="newPhone" Label="Phone" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                                    <MudItem xs="12"><MudTextField @bind-Value="newEmail" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
+                                                </MudGrid>
+                                                <div class="d-flex justify-end gap-2 mt-2">
+                                                    <MudButton Size="Size.Small" OnClick="CancelAdd">Cancel</MudButton>
+                                                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                                               Disabled="@(string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newContactType))"
+                                                               OnClick="SaveNewContact">Save</MudButton>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </MudPaper>
+                        }
+                    }
+                    </div>
+                </MudTabPanel>
+                <MudTabPanel Text="Contacts">
+                    <div class="org-edit-tab">
             <div class="d-flex align-center justify-space-between mb-2">
                 <MudText Typo="Typo.subtitle1" Style="font-weight:600;">Contacts</MudText>
                 <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="AddContact">Add Contact</MudButton>
+                           StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="@(() => AddContact(null))">Add Contact</MudButton>
             </div>
 
-            @if (contacts.Any())
+            @if (OrganizationContacts.Any())
             {
                 <MudSimpleTable Dense="true" Hover="true" Elevation="0">
                     <thead>
@@ -57,7 +229,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var c in contacts)
+                        @foreach (var c in OrganizationContacts)
                         {
                             <tr>
                                 @if (editingContactId == c.ContactId)
@@ -98,7 +270,7 @@
                 <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-style: italic;">No contacts</MudText>
             }
 
-            @if (isAdding)
+            @if (isAdding && addingContactDepartmentId == null)
             {
                 <div class="mt-2 pa-3" style="border: 1px solid var(--mud-palette-lines-default); border-radius: 4px;">
                     <MudGrid Spacing="2">
@@ -121,16 +293,31 @@
                     <div class="d-flex justify-end gap-2 mt-2">
                         <MudButton Size="Size.Small" OnClick="CancelAdd">Cancel</MudButton>
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
-                                   Disabled="@(string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newContactType))" OnClick="SaveNewContact">Save Contact</MudButton>
+                                   Disabled="@(string.IsNullOrWhiteSpace(newName) || string.IsNullOrWhiteSpace(newContactType))" OnClick="SaveNewContact">Save</MudButton>
                     </div>
                 </div>
             }
+                    </div>
+                </MudTabPanel>
+            </MudTabs>
         }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
-                   Disabled="@string.IsNullOrWhiteSpace(Model.Name)">@SubmitLabel</MudButton>
+        @if (!IsEdit && step > 0)
+        {
+            <MudButton OnClick="Back">Back</MudButton>
+        }
+        @if (!IsEdit && step < 2)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Next"
+                       Disabled="@(step == 0 && (Model.Name?.Trim().Length ?? 0) < 2)">Next</MudButton>
+        }
+        else
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit"
+                       Disabled="@((Model.Name?.Trim().Length ?? 0) < 2)">@SubmitLabel</MudButton>
+        }
     </DialogActions>
 </MudDialog>
 
@@ -144,6 +331,13 @@
     [Parameter]
     public string SubmitLabel { get; set; } = "Save";
 
+    [Parameter]
+    public bool CanDeleteDepartments { get; set; }
+
+    /// <summary>"department" or "contact" opens that tab with the add form already showing.</summary>
+    [Parameter]
+    public string? StartAction { get; set; }
+
     [Inject]
     private IHttpClientFactory ClientFactory { get; set; } = null!;
 
@@ -153,15 +347,51 @@
     [Inject]
     private AppSettingsCache AppSettingsCache { get; set; } = null!;
 
+    [Inject]
+    private IDialogService DialogService { get; set; } = null!;
+
     private bool IsEdit => !string.IsNullOrEmpty(Model.OrganizationId);
+    private const int DepartmentsTab = 2;
+    private const int ContactsTab = 3;
+    private int activeTab;
+    private int step;
+    private string StepTitle => step switch
+    {
+        0 => "Name",
+        1 => "Address",
+        _ => "Notes"
+    };
+
+    private void Next()
+    {
+        if (step == 0 && (Model.Name?.Trim().Length ?? 0) < 2)
+            return;
+        if (step < 2)
+            step++;
+    }
+
+    private void Back()
+    {
+        if (step > 0)
+            step--;
+    }
     private HttpClient client = null!;
     private List<ContactModel> contacts = new();
+    private List<DepartmentModel> departments = new();
+    private IEnumerable<ContactModel> OrganizationContacts =>
+        contacts.Where(c => string.IsNullOrEmpty(c.DepartmentId));
     private string colorHex = "#1976d2";
     private IReadOnlyList<string> contactTypes = ContactTypeRules.DefaultTypes;
 
     // Add contact state
     private bool isAdding;
+    private string? addingContactDepartmentId;
     private string newName = "", newTitle = "", newPhone = "", newEmail = "", newContactType = "";
+    private bool isAddingDepartment;
+    private string newDepartmentName = "";
+    private string? editingDepartmentId;
+    private string editDepartmentName = "";
+    private string? expandedDepartmentId;
 
     // Edit contact state
     private string? editingContactId;
@@ -170,16 +400,32 @@
     protected override async Task OnInitializedAsync()
     {
         client = ClientFactory.CreateClient(Constants.API.ClientName);
-        contacts = Model.Contacts?.ToList() ?? new();
+        contacts = Model.Contacts?.Where(c => string.IsNullOrEmpty(c.DepartmentId)).ToList() ?? new();
+        departments = Model.Departments?.Where(d => !d.IsArchived).ToList() ?? new();
+        foreach (var dept in departments)
+            dept.Contacts ??= new();
         colorHex = string.IsNullOrWhiteSpace(Model.Color) ? "#1976d2" : Model.Color;
         contactTypes = await ContactTypeOptions.GetAsync(AppSettingsCache);
         newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+        if (StartAction == "department")
+        {
+            activeTab = DepartmentsTab;
+            StartAddDepartment();
+        }
+        else if (StartAction == "contact")
+        {
+            activeTab = ContactsTab;
+            AddContact(null);
+        }
     }
 
-    private void AddContact()
+    private void AddContact(string? departmentId)
     {
         CancelEdit();
         isAdding = true;
+        addingContactDepartmentId = departmentId;
+        if (departmentId != null)
+            expandedDepartmentId = departmentId;
         newName = ""; newTitle = ""; newPhone = ""; newEmail = "";
         newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
     }
@@ -198,13 +444,22 @@
                 Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
                 ContactType = newContactType,
                 OrganizationId = Model.OrganizationId,
-                DepartmentId = null
+                DepartmentId = addingContactDepartmentId
             };
             var response = await client.PostAsJsonAsync(Constants.API.Contact.Create, dto);
             response.EnsureSuccessStatusCode();
             var created = await response.Content.ReadFromJsonAsync<ContactDto>();
             if (created != null)
-                contacts.Add(new ContactModel(created));
+            {
+                var model = new ContactModel(created);
+                if (string.IsNullOrEmpty(addingContactDepartmentId))
+                    contacts.Add(model);
+                else
+                {
+                    var dept = departments.FirstOrDefault(d => d.DepartmentId == addingContactDepartmentId);
+                    dept?.Contacts?.Add(model);
+                }
+            }
             isAdding = false;
             Snackbar.Add("Contact added.", Severity.Success);
         }
@@ -231,7 +486,7 @@
 
     private async Task SaveEditContact()
     {
-        var c = contacts.FirstOrDefault(x => x.ContactId == editingContactId);
+        var c = FindContact(editingContactId);
         if (c == null) return;
 
         try
@@ -261,18 +516,133 @@
         }
     }
 
-    private async Task DeleteContact(ContactModel c)
+    private async Task DeleteContact(ContactModel c, DepartmentModel? dept = null)
     {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Delete contact \"{c.Name}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
         try
         {
             var response = await client.DeleteAsync($"{Constants.API.Contact.Delete}/{c.ContactId}");
             response.EnsureSuccessStatusCode();
-            contacts.Remove(c);
+            if (dept?.Contacts != null)
+                dept.Contacts.Remove(c);
+            else
+                contacts.Remove(c);
             Snackbar.Add("Contact deleted.", Severity.Success);
         }
         catch (Exception ex)
         {
             Snackbar.AddApiError(ex, "Couldn't delete contact.");
+        }
+    }
+
+    private ContactModel? FindContact(string? contactId)
+    {
+        if (string.IsNullOrEmpty(contactId))
+            return null;
+        return contacts.FirstOrDefault(c => c.ContactId == contactId)
+            ?? departments.SelectMany(d => d.Contacts ?? []).FirstOrDefault(c => c.ContactId == contactId);
+    }
+
+    private void StartAddDepartment()
+    {
+        isAddingDepartment = true;
+        newDepartmentName = "";
+    }
+
+    private void CancelAddDepartment() => isAddingDepartment = false;
+
+    private async Task SaveNewDepartment()
+    {
+        var name = newDepartmentName?.Trim() ?? "";
+        if (name.Length < 2)
+            return;
+        try
+        {
+            var response = await client.PostAsJsonAsync(Constants.API.Department.Create, new CreateDepartmentDto
+            {
+                Name = name,
+                OrganizationId = Model.OrganizationId
+            });
+            response.EnsureSuccessStatusCode();
+            var created = await response.Content.ReadFromJsonAsync<DepartmentDto>();
+            if (created != null)
+            {
+                departments.Add(new DepartmentModel(created) { Contacts = new() });
+                expandedDepartmentId = created.DepartmentId;
+            }
+            isAddingDepartment = false;
+            Snackbar.Add("Department added.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't add department.");
+        }
+    }
+
+    private void StartEditDepartment(DepartmentModel dept)
+    {
+        editingDepartmentId = dept.DepartmentId;
+        editDepartmentName = dept.Name;
+    }
+
+    private void CancelDepartmentEdit() => editingDepartmentId = null;
+
+    private async Task SaveDepartmentName()
+    {
+        var dept = departments.FirstOrDefault(d => d.DepartmentId == editingDepartmentId);
+        var name = editDepartmentName?.Trim() ?? "";
+        if (dept == null || name.Length < 2)
+            return;
+        try
+        {
+            var response = await client.PutAsJsonAsync(Constants.API.Department.Update, new UpdateDepartmentDto
+            {
+                DepartmentId = dept.DepartmentId,
+                Name = name,
+                OrganizationId = Model.OrganizationId
+            });
+            response.EnsureSuccessStatusCode();
+            dept.Name = name;
+            editingDepartmentId = null;
+            Snackbar.Add("Department updated.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't update department.");
+        }
+    }
+
+    private void ToggleDepartmentContacts(DepartmentModel dept)
+    {
+        expandedDepartmentId = expandedDepartmentId == dept.DepartmentId ? null : dept.DepartmentId;
+    }
+
+    private async Task DeleteDepartment(DepartmentModel dept)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete", $"Are you sure you want to delete department \"{dept.Name}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
+        try
+        {
+            var response = await client.DeleteAsync($"{Constants.API.Department.Delete}/{dept.DepartmentId}");
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await response.Content.ReadAsStringAsync(), Severity.Error);
+                return;
+            }
+            departments.Remove(dept);
+            Snackbar.Add("Department deleted.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't delete department.");
         }
     }
 

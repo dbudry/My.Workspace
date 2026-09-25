@@ -91,6 +91,7 @@ builder.Services.AddScoped<TrackedTasksClient>();
 builder.Services.AddScoped<StopwatchItemsClient>();
 builder.Services.AddScoped<StopwatchLocalCache>();
 builder.Services.AddScoped<OrganizationsCache>();
+builder.Services.AddScoped<CrmService>();
 builder.Services.AddScoped<AppSettingsCache>();
 builder.Services.AddScoped<IntranetMediaService>();
 builder.Services.AddScoped<IntranetMediaPolicyService>();

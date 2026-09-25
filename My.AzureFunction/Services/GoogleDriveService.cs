@@ -9,6 +9,7 @@ using Google.Apis.Services;
 using Microsoft.Extensions.Logging;
 using My.DAL.Models;
 using My.Shared.Rules;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -29,6 +30,7 @@ namespace My.Functions.Services
         private readonly ILogger<GoogleDriveService> logger;
         private readonly string clientId;
         private readonly string clientSecret;
+        private readonly ConcurrentDictionary<string, (bool Under, long ExpiresAtMs)> folderMembership = new();
 
         public GoogleDriveService(GoogleTokenEncryptor encryptor, ILogger<GoogleDriveService> logger)
         {
@@ -247,6 +249,19 @@ namespace My.Functions.Services
             if (string.Equals(fileId, ancestorFolderId, StringComparison.Ordinal))
                 return true;
 
+            var cacheKey = ancestorFolderId + "\n" + fileId;
+            var now = Environment.TickCount64;
+            if (folderMembership.TryGetValue(cacheKey, out var cached) && cached.ExpiresAtMs > now)
+                return cached.Under;
+
+            var under = await WalkToAncestorAsync(encryptedRefreshToken, fileId, ancestorFolderId, ct);
+            folderMembership[cacheKey] = (under, now + (10 * 60 * 1000));
+            return under;
+        }
+
+        private async Task<bool> WalkToAncestorAsync(
+            string encryptedRefreshToken, string fileId, string ancestorFolderId, CancellationToken ct)
+        {
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var current = fileId;
             for (var i = 0; i < DriveFolderAncestryRules.MaxWalkDepth; i++)
