@@ -10,12 +10,12 @@ public class ProjectSlugListingRulesTests
     {
         var csv = ProjectSlugListingRules.ToCsv(new[]
         {
-            new ProjectSlugListingRules.Row("Out of Office", "ooo", "Acme Corp"),
+            new ProjectSlugListingRules.Row("Out of Office", "ooo", "Sample Organization"),
             new ProjectSlugListingRules.Row("Worker", "wrkr", null)
         });
 
         Assert.StartsWith("Name,Slug,Organization", csv);
-        Assert.Contains("\"Out of Office\",\"ooo\",\"Acme Corp\"", csv);
+        Assert.Contains("\"Out of Office\",\"ooo\",\"Sample Organization\"", csv);
         Assert.Contains("\"Worker\",\"wrkr\",\"\"", csv);
     }
 
