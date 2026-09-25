@@ -125,7 +125,7 @@
                 project.OrganizationColor, project.ProjectGroupColor, SettingsService.ProjectColorSource);
             var indicator = resolved ?? "transparent";
             // Tooltip label names the entity (Org/Group) whose color is shown so users
-            // can tell *what* the color represents — "Ball" vs. "Profit Network" — without
+            // can tell *what* the color represents — org vs group name — without
             // memorizing a palette. Empty string when no label, so MudTooltip stays silent.
             var indicatorLabel = ProjectColorRules.ResolveLabel(
                 project.OrganizationName, project.ProjectGroupName,

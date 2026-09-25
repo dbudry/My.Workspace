@@ -307,24 +307,24 @@ public class WeekEntryGridRulesTests
         var day = new DateTime(2026, 8, 20, 9, 0, 0);
         var tasks = new[]
         {
-            Slice("blank", "olipop", day, TimeSpan.FromHours(2), name: ""),
-            Slice("named", "celanese", day.AddHours(3), TimeSpan.FromMinutes(45), name: "Celanese")
+            Slice("blank", "org-alpha", day, TimeSpan.FromHours(2), name: ""),
+            Slice("named", "org-beta", day.AddHours(3), TimeSpan.FromMinutes(45), name: "Organization Beta")
         };
 
         var blank = WeekEntryGridRules.BindDayForTaskName(
-            tasks, "olipop", "", new DateTime(2026, 8, 20));
+            tasks, "org-alpha", "", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, blank.Kind);
         Assert.Equal("blank", blank.TaskId);
         Assert.Equal(TimeSpan.FromHours(2), blank.EditableDuration);
 
         var named = WeekEntryGridRules.BindDayForTaskName(
-            tasks, "celanese", "Celanese", new DateTime(2026, 8, 20));
+            tasks, "org-beta", "Organization Beta", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Single, named.Kind);
         Assert.Equal("named", named.TaskId);
         Assert.Equal(TimeSpan.FromMinutes(45), named.EditableDuration);
 
         var blankDoesNotStealNamed = WeekEntryGridRules.BindDayForTaskName(
-            tasks, "celanese", "", new DateTime(2026, 8, 20));
+            tasks, "org-beta", "", new DateTime(2026, 8, 20));
         Assert.Equal(WeekEntryGridRules.DayBindKind.Empty, blankDoesNotStealNamed.Kind);
     }
 
@@ -567,12 +567,12 @@ public class WeekEntryGridRulesTests
     [InlineData(null, true)]
     [InlineData("", true)]
     [InlineData("   ", true)]
-    [InlineData("ball", true)]
-    [InlineData("BALL", true)]
+    [InlineData("alpha", true)]
+    [InlineData("ALPHA", true)]
     [InlineData("xyz", false)]
     public void MatchesEntrySearch_is_case_insensitive_substring(string? query, bool match)
     {
-        Assert.Equal(match, WeekEntryGridRules.MatchesEntrySearch(query, "Ball PHC Support", "Standup"));
+        Assert.Equal(match, WeekEntryGridRules.MatchesEntrySearch(query, "Organization Alpha Support", "Standup"));
     }
 
     [Fact]
