@@ -59,7 +59,7 @@ namespace My.Client.Models
         /// </summary>
         public bool IsBillable { get; set; }
 
-        /// <summary>The project's human name with its group prefix — e.g. "Profit Network - Worker".</summary>
+        /// <summary>The project's human name with its group prefix — e.g. "Sample Group - Worker".</summary>
         public string DisplayName => string.IsNullOrEmpty(ProjectGroupName)
             ? Name
             : $"{ProjectGroupName} - {Name}";
