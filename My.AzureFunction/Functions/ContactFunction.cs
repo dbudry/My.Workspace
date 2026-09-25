@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using My.Shared.Constants;
 using My.Shared.Dtos.Contact;
+using My.DAL.Data;
 using My.DAL.Models;
 using My.DAL.Repository;
 using My.Functions.Authorization;
@@ -21,6 +22,7 @@ namespace My.Functions
         private readonly IRepository<Organization> organizationRepository;
         private readonly IRepository<Department> departmentRepository;
         private readonly IRepository<AppSetting> appSettingRepository;
+        private readonly ApplicationDbContext dbContext;
         private readonly AppMapper mapper;
         private readonly ILogger<ContactFunctions> logger;
         private readonly IValidator<CreateContactDto> createValidator;
@@ -28,12 +30,14 @@ namespace My.Functions
 
         public ContactFunctions(
             IRepositoryFactory repositoryFactory,
+            ApplicationDbContext dbContext,
             AppMapper mapper,
             ILogger<ContactFunctions> logger,
             IValidator<CreateContactDto> createValidator,
             IValidator<UpdateContactDto> updateValidator)
         {
             this.logger = logger;
+            this.dbContext = dbContext;
             this.mapper = mapper;
             this.createValidator = createValidator;
             this.updateValidator = updateValidator;
@@ -164,6 +168,7 @@ namespace My.Functions
             if (contact == null)
                 return new NotFoundObjectResult("Contact not found!");
 
+            await CrmReferenceCleanup.UnlinkContactAsync(dbContext, id);
             await contactRepository.Delete(contact);
             logger.LogInformation("Contact {Id} was deleted.", id);
             return new NoContentResult();

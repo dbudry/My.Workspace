@@ -1,0 +1,14 @@
+.contact-type-field {
+    position: relative;
+}
+
+.contact-type-help {
+    position: absolute;
+    right: 2rem;
+    top: 0.85rem;
+    z-index: 2;
+    cursor: pointer;
+    display: inline-flex;
+    color: var(--mud-palette-text-secondary);
+    cursor: help;
+}

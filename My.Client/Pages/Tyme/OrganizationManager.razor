@@ -74,7 +74,8 @@
                             <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditOrganization(org))">Edit</MudMenuItem>
                             @if (org.IsActive)
                             {
-                                <MudMenuItem Icon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(() => AddDepartment(org))">Add department</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.CreateNewFolder" OnClick="@(() => EditOrganization(org, "department"))">Add department</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.PersonAdd" OnClick="@(() => EditOrganization(org, "contact"))">Add contact</MudMenuItem>
                             }
                             @* Set active/inactive, archive, and delete are Manager:Organizations.
                                Editor:Organizations can create/edit but not these. *@
@@ -111,7 +112,7 @@
                         <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" Color="Color.Success" Class="mr-2" />
                         <MudLink Typo="Typo.body2" Style="cursor:pointer;"
                                  Color="Color.Inherit" Underline="Underline.Hover"
-                                 OnClick="@(() => ViewDepartment(org, dept))">@dept.Name</MudLink>
+                                 OnClick="@(() => OpenDepartment(org, dept))">@dept.Name</MudLink>
                     </div>
                 </MudTd>
                 <MudTd DataLabel="Contacts">@(dept.Contacts?.Count ?? 0)</MudTd>

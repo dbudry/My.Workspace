@@ -59,7 +59,7 @@
                                            OnClick="@(() => Navigation.NavigateTo($"intranet/editor?pageId={context.PageId}"))" />
                         </MudTooltip>
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                       OnClick="@(() => DeletePageAsync(context.PageId))" />
+                                       OnClick="@(() => DeletePageAsync(context))" />
                     </MudTd>
                 </RowTemplate>
             </MudTable>
@@ -74,6 +74,7 @@
     [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
 
     private List<IntranetPageSummaryDto> pages = new();
     private List<IntranetPageSummaryDto> filteredPages = new();
@@ -163,13 +164,18 @@
         }
     }
 
-    private async Task DeletePageAsync(string pageId)
+    private async Task DeletePageAsync(IntranetPageSummaryDto page)
     {
-        // Simple delete (no heavy confirm dialog to keep deps clean)
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Delete \"{page.Title}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
         try
         {
             var client = ClientFactory.CreateClient(Constants.API.ClientName);
-            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Pages.Get}/{pageId}");
+            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Pages.Get}/{page.PageId}");
             if (resp.IsSuccessStatusCode)
             {
                 Snackbar.Add("Page deleted.", Severity.Success);

@@ -31,6 +31,8 @@ namespace My.DAL.Data
         public DbSet<ExpenseLine> ExpenseLines { get; set; } = null!;
         public DbSet<ExpenseReceipt> ExpenseReceipts { get; set; } = null!;
         public DbSet<AppDriveCredential> AppDriveCredentials { get; set; } = null!;
+        public DbSet<Opportunity> Opportunities { get; set; } = null!;
+        public DbSet<CrmActivity> CrmActivities { get; set; } = null!;
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
         {
@@ -478,6 +480,91 @@ namespace My.DAL.Data
             builder.Entity<AppDriveCredential>()
                 .HasKey(c => c.AppDriveCredentialId);
 
+            builder.Entity<Opportunity>()
+                .Property(o => o.OpportunityId)
+                .ValueGeneratedOnAdd()
+                .IsRequired();
+
+            builder.Entity<Opportunity>().HasKey(o => o.OpportunityId);
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.Name)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.Stage)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.Amount)
+                .HasPrecision(18, 2);
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.ExpectedCloseDate)
+                .HasColumnType("date");
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.OwnerUserId)
+                .HasMaxLength(450);
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.ContactId)
+                .HasMaxLength(450);
+
+            builder.Entity<Opportunity>()
+                .Property(o => o.Note)
+                .HasMaxLength(500);
+
+            // SetNull so an organization delete still succeeds. ContactId is intentionally
+            // not a foreign key — see Opportunity.ContactId.
+            builder.Entity<Opportunity>()
+                .HasOne(o => o.Organization)
+                .WithMany()
+                .HasForeignKey(o => o.OrganizationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<Opportunity>()
+                .HasIndex(o => o.OrganizationId);
+
+            builder.Entity<Opportunity>()
+                .HasIndex(o => o.Stage);
+
+            builder.Entity<CrmActivity>()
+                .Property(a => a.CrmActivityId)
+                .ValueGeneratedOnAdd()
+                .IsRequired();
+
+            builder.Entity<CrmActivity>().HasKey(a => a.CrmActivityId);
+
+            builder.Entity<CrmActivity>()
+                .Property(a => a.ActivityType)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            builder.Entity<CrmActivity>()
+                .Property(a => a.Subject)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            builder.Entity<CrmActivity>()
+                .Property(a => a.Body)
+                .HasMaxLength(500);
+
+            builder.Entity<CrmActivity>()
+                .Property(a => a.OwnerUserId)
+                .HasMaxLength(450);
+
+            builder.Entity<CrmActivity>()
+                .HasOne(a => a.Opportunity)
+                .WithMany(o => o.Activities)
+                .HasForeignKey(a => a.OpportunityId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<CrmActivity>()
+                .HasIndex(a => a.OpportunityId);
+
             FillDataToDB(builder);
         }
 
@@ -733,6 +820,38 @@ namespace My.DAL.Data
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Organizations).ToUpper(),
                     Description = "Organizations User Access — assign Organizations roles on Users.",
                     ConcurrencyStamp = "20a1b2c3-d4e5-4678-9abc-def012345703"
+                },
+                new ApplicationRole
+                {
+                    Id = "30a1b2c3-d4e5-4678-9abc-def012345801",
+                    Name = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm).ToUpper(),
+                    Description = "CRM-scoped user role (view the pipeline).",
+                    ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345801"
+                },
+                new ApplicationRole
+                {
+                    Id = "30a1b2c3-d4e5-4678-9abc-def012345802",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm).ToUpper(),
+                    Description = "CRM-scoped editor role (create and edit opportunities and activities).",
+                    ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345802"
+                },
+                new ApplicationRole
+                {
+                    Id = "30a1b2c3-d4e5-4678-9abc-def012345803",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm).ToUpper(),
+                    Description = "CRM-scoped manager role (archive and delete).",
+                    ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345803"
+                },
+                new ApplicationRole
+                {
+                    Id = "30a1b2c3-d4e5-4678-9abc-def012345804",
+                    Name = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Crm),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Crm).ToUpper(),
+                    Description = "CRM User Access — assign CRM roles on Users. Does not operate CRM.",
+                    ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345804"
                 });
 
             // Note: If you add/remove roles, AppSettings, or other HasData here,

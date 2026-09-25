@@ -3,6 +3,7 @@
 
 window.intranetMedia = {
   _blobUrls: new Map(),
+  _failedDriveIds: {},
 
   _extractDriveFileId: function (img) {
     var id = img.getAttribute('data-drive-file-id');
@@ -156,6 +157,7 @@ window.intranetMedia = {
 
       var driveFileId = this._extractDriveFileId(img);
       if (!driveFileId) continue;
+      if (this._failedDriveIds[driveFileId]) continue;
 
       img.setAttribute('data-intranet-media', 'true');
       this._markDriveImagePending(img);
@@ -166,6 +168,7 @@ window.intranetMedia = {
           headers: { Authorization: 'Bearer ' + accessToken }
         });
         if (!resp.ok) {
+          this._failedDriveIds[driveFileId] = true;
           console.warn('intranetMedia: fetch failed', driveFileId, resp.status);
           continue;
         }
@@ -176,6 +179,7 @@ window.intranetMedia = {
         img.src = blobUrl;
         this._clearDriveImagePending(img);
       } catch (e) {
+        this._failedDriveIds[driveFileId] = true;
         console.warn('intranetMedia.hydrate failed for', driveFileId, e);
       }
     }

@@ -53,6 +53,11 @@
     user-select: none;
 }
 
+.counted-textarea--multiline .counted-textarea__surface {
+    min-height: 4.5rem;
+    padding-bottom: 1.15rem;
+}
+
 .counted-textarea--empty:not(:focus-within) .counted-textarea__surface::after {
     content: attr(data-placeholder);
     color: var(--mud-palette-text-disabled);

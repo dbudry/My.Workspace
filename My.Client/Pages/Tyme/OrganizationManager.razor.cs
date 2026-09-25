@@ -279,7 +279,19 @@ namespace My.Client.Pages.Tyme
             }
         }
 
-        private async Task EditOrganization(Organization org)
+        private static ContactModel CloneContact(ContactModel c) => new()
+        {
+            ContactId = c.ContactId,
+            Name = c.Name,
+            ContactType = c.ContactType,
+            Title = c.Title,
+            PhoneNumber = c.PhoneNumber,
+            Email = c.Email,
+            OrganizationId = c.OrganizationId,
+            DepartmentId = c.DepartmentId
+        };
+
+        private async Task EditOrganization(Organization org, string? startAction = null)
         {
             Organization source;
             try
@@ -303,23 +315,24 @@ namespace My.Client.Pages.Tyme
                 Country = source.Country,
                 Note = source.Note,
                 Color = source.Color,
-                Contacts = source.Contacts?.Select(c => new ContactModel
+                Contacts = source.Contacts?.Select(CloneContact).ToList(),
+                Departments = source.Departments?.Select(d => new DepartmentModel
                 {
-                    ContactId = c.ContactId,
-                    Name = c.Name,
-                    ContactType = c.ContactType,
-                    Title = c.Title,
-                    PhoneNumber = c.PhoneNumber,
-                    Email = c.Email,
-                    OrganizationId = c.OrganizationId,
-                    DepartmentId = c.DepartmentId
+                    DepartmentId = d.DepartmentId,
+                    Name = d.Name,
+                    OrganizationId = d.OrganizationId,
+                    IsActive = d.IsActive,
+                    IsArchived = d.IsArchived,
+                    Contacts = d.Contacts?.Select(CloneContact).ToList()
                 }).ToList()
             };
 
             var parameters = new DialogParameters<OrganizationDialog>
             {
                 { x => x.Model, model },
-                { x => x.SubmitLabel, "Save" }
+                { x => x.SubmitLabel, "Save" },
+                { x => x.CanDeleteDepartments, canManage && allowOrgDelete },
+                { x => x.StartAction, startAction }
             };
 
             var dialog = await DialogService.ShowAsync<OrganizationDialog>("Edit Organization", parameters,
@@ -569,6 +582,11 @@ namespace My.Client.Pages.Tyme
 
         #region Department CRUD
 
+        private Task OpenDepartment(Organization org, DepartmentModel dept) =>
+            canManage || canEditOrganizations
+                ? EditDepartment(org, dept)
+                : ViewDepartment(org, dept);
+
         private async Task ViewDepartment(Organization org, DepartmentModel dept)
         {
             var parameters = new DialogParameters<ViewDepartmentDialog>
@@ -578,45 +596,6 @@ namespace My.Client.Pages.Tyme
 
             await DialogService.ShowAsync<ViewDepartmentDialog>(dept.Name, parameters,
                 new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseOnEscapeKey = true, CloseButton = true });
-        }
-
-        private async Task AddDepartment(Organization org)
-        {
-            var model = new DepartmentModel { OrganizationId = org.OrganizationId };
-            var parameters = new DialogParameters<DepartmentDialog>
-            {
-                { x => x.Model, model },
-                { x => x.SubmitLabel, "Create" }
-            };
-
-            var dialog = await DialogService.ShowAsync<DepartmentDialog>($"New Department for {org.Name}", parameters,
-                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
-            var result = await dialog.Result;
-
-            if (result == null || result.Canceled)
-                return;
-
-            var dept = (DepartmentModel)result.Data!;
-
-            try
-            {
-                var dto = new CreateDepartmentDto
-                {
-                    Name = dept.Name,
-                    OrganizationId = org.OrganizationId
-                };
-
-                var response = await client.PostAsJsonAsync(Constants.API.Department.Create, dto);
-                response.EnsureSuccessStatusCode();
-
-                Snackbar.Add("Department created.", Severity.Success);
-                InvalidateAfterOrgMutation();
-                await ReloadTableAsync();
-            }
-            catch (Exception ex)
-            {
-                Snackbar.AddApiError(ex, "Couldn't create department.");
-            }
         }
 
         private async Task EditDepartment(Organization org, DepartmentModel dept)

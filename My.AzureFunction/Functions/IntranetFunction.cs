@@ -1441,13 +1441,30 @@ namespace My.Functions
             if (tokenResult.Error != null) return tokenResult.Error;
 
             var intranetRootId = await GetIntranetDriveParentFolderIdAsync();
-            if (string.IsNullOrWhiteSpace(intranetRootId)
-                || !await drive.IsUnderFolderAsync(tokenResult.Encrypted, trimmedId, intranetRootId, ct))
+            if (string.IsNullOrWhiteSpace(intranetRootId))
                 return new NotFoundObjectResult("Drive file not found or not accessible.");
 
+            // The incoming request token is canceled while the Google call is still in
+            // flight (the page then stays on the gray placeholder). Drive work uses its own timeout.
+            using var driveTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             try
             {
-                var (content, mimeType) = await drive.DownloadFileContentAsync(tokenResult.Encrypted, trimmedId, ct);
+                if (!await drive.IsUnderFolderAsync(tokenResult.Encrypted, trimmedId, intranetRootId, driveTimeout.Token))
+                {
+                    logger.LogWarning(
+                        "Drive file {DriveFileId} is not under Intranet folder {FolderId} on shared drive {SharedDriveId}. Serving it because the page already references it.",
+                        trimmedId,
+                        intranetRootId,
+                        AppDriveLayoutRules.SharedDriveId);
+                }
+
+                var (content, mimeType) = await drive.DownloadFileContentAsync(
+                    tokenResult.Encrypted, trimmedId, driveTimeout.Token);
+                return new FileContentResult(content, mimeType);
+            }
+            catch (OperationCanceledException) when (!driveTimeout.IsCancellationRequested)
+            {
+                var (content, mimeType) = await drive.DownloadFileContentAsync(tokenResult.Encrypted, trimmedId);
                 return new FileContentResult(content, mimeType);
             }
             catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
@@ -1763,17 +1780,21 @@ namespace My.Functions
                 return (string.Empty, new ObjectResult(AppDriveLayoutRules.NotConnectedMessage) { StatusCode = 409 });
 
             var sharedId = app.SharedDriveId ?? AppDriveLayoutRules.SharedDriveId;
-            try
+            var existingFolderId = await GetIntranetDriveParentFolderIdAsync();
+            if (string.IsNullOrEmpty(existingFolderId))
             {
-                var intranet = await drive.FindOrCreateFolderAsync(
-                    app.EncryptedRefreshToken, sharedId, AppDriveLayoutRules.IntranetFolderName);
-                if (!string.IsNullOrEmpty(intranet.Id))
-                    await PersistIntranetFolderIdAsync(intranet.Id);
-            }
-            catch (Exception ex)
-            {
-                // Images already in page HTML download by file id and only need the App Drive token.
-                logger.LogWarning(ex, "Could not resolve Intranet folder on App Drive.");
+                try
+                {
+                    var intranet = await drive.FindOrCreateFolderAsync(
+                        app.EncryptedRefreshToken, sharedId, AppDriveLayoutRules.IntranetFolderName);
+                    if (!string.IsNullOrEmpty(intranet.Id))
+                        await PersistIntranetFolderIdAsync(intranet.Id);
+                }
+                catch (Exception ex)
+                {
+                    // Images already in page HTML download by file id and only need the App Drive token.
+                    logger.LogWarning(ex, "Could not resolve Intranet folder on App Drive.");
+                }
             }
 
             return (app.EncryptedRefreshToken, null);

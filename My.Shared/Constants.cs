@@ -122,6 +122,10 @@ namespace My.Shared.Constants
                 Scoped(UserAccess, Scopes.Expenses),
                 Scoped(Manager, Scopes.Expenses),
                 Scoped(User, Scopes.Expenses),
+                Scoped(UserAccess, Scopes.Crm),
+                Scoped(Manager, Scopes.Crm),
+                Scoped(Editor, Scopes.Crm),
+                Scoped(User, Scopes.Crm),
             };
 
             /// <summary>True when <paramref name="role"/> is in <see cref="Assignable"/>.</summary>
@@ -488,6 +492,12 @@ namespace My.Shared.Constants
             /// against the home company, not client/project time. Global Admin does not pass.
             /// </summary>
             public const string Expenses = "Expenses";
+
+            /// <summary>
+            /// Sales pipeline. Independent of Tyme and Organizations. Global Admin does not pass.
+            /// Nobody receives these roles from a migration; an admin assigns them.
+            /// </summary>
+            public const string Crm = "Crm";
         }
 
         public static class Claims
@@ -631,6 +641,15 @@ namespace My.Shared.Constants
                 public const string Archive = Api;
             }
 
+            public static class Crm
+            {
+                public const string Opportunities = "crmopportunities";
+
+                public const string Activities = "crmactivities";
+
+                public const string Contacts = "crmcontacts";
+            }
+
             public static class Department
             {
                 public const string Api = "departments";
@@ -718,6 +737,9 @@ namespace My.Shared.Constants
                 public const string Update = Api;
 
                 public const string ContactTypeUsage = $"{Api}/contact-types/usage";
+
+                /// <summary>GET — name and email of active Admins. Any signed-in user.</summary>
+                public const string ContactTypeAdmins = $"{Api}/contact-type-admins";
             }
 
             public static class Logs

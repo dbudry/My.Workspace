@@ -55,7 +55,7 @@
             <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.FirstName)">First Name</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.LastName)">Last Name</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.Email)">Email</MudTableSortLabel></MudTh>
-            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(GetRolesSortKey)">Roles</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(GetRolesSortKey)">Access</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(GetStatusSortKey)">Status</MudTableSortLabel></MudTh>
             <MudTh><MudTableSortLabel SortBy="new Func<UserModel, object>(u => u.LastLoginDate ?? DateTimeOffset.MinValue)">Last Login</MudTableSortLabel></MudTh>
             <MudTh Style="width:88px; text-align:center;">Actions</MudTh>
@@ -64,10 +64,20 @@
             <MudTd DataLabel="First Name">@context.FirstName</MudTd>
             <MudTd DataLabel="Last Name">@context.LastName</MudTd>
             <MudTd DataLabel="Email">@context.Email</MudTd>
-            <MudTd DataLabel="Roles">
-                @foreach (var role in context.Roles)
+            <MudTd DataLabel="Access">
+                @{
+                    var access = AccessSummary(context);
+                }
+                @if (access.Count == 0)
                 {
-                    <MudChip T="string" Size="Size.Small" Color="@GetRoleColor(role)">@role</MudChip>
+                    <MudText Typo="Typo.body2">None</MudText>
+                }
+                else
+                {
+                    @foreach (var chip in access)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="@chip.Color">@chip.Text</MudChip>
+                    }
                 }
             </MudTd>
             <MudTd DataLabel="Status">

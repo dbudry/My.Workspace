@@ -5,6 +5,34 @@
     "changes": [
       {
         "type": "Added",
+        "text": "CRM pipeline for deals, stages, and activities. It stays hidden until a user is given a CRM role, and deals are not Tyme projects."
+      },
+      {
+        "type": "Changed",
+        "text": "Editing an organization uses tabs for details, color, departments, and contacts. The dialog keeps a steady height, and long lists scroll."
+      },
+      {
+        "type": "Changed",
+        "text": "The Users list shows one access chip per module instead of every role."
+      },
+      {
+        "type": "Fixed",
+        "text": "Deleting a contact, intranet page, menu item, or signature asks for confirmation. Organization and CRM notes stop at 500 characters."
+      },
+      {
+        "type": "Fixed",
+        "text": "Intranet page images load again. The Drive folder check no longer gets canceled before the picture is downloaded."
+      },
+      {
+        "type": "Fixed",
+        "text": "Intranet images that are already on a page load even when they are not inside the current Intranet folder. A failed image is requested once, not on every redraw."
+      },
+      {
+        "type": "Fixed",
+        "text": "The CRM list loads. It was failing because the API could not create the CRM function, and the client retried that error."
+      },
+      {
+        "type": "Added",
         "text": "Expenses: draft, submit, and reimburse reports with receipts on App Shared Drive. Submit files a statement PDF under Expenses / Filed that is kept if the person is later deleted."
       },
       {

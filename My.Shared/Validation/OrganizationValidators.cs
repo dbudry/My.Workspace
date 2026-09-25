@@ -5,6 +5,8 @@ namespace My.Shared.Validation
 {
     public static class OrganizationFieldRules
     {
+        public const int NoteMaxLength = 500;
+
         public static void Apply<T>(AbstractValidator<T> validator, System.Linq.Expressions.Expression<Func<T, string>> nameSelector)
             where T : class
         {
@@ -26,6 +28,7 @@ namespace My.Shared.Validation
             RuleFor(x => x.PostalCode).MaximumLength(20);
             RuleFor(x => x.Country).MaximumLength(50);
             RuleFor(x => x.Color).MaximumLength(9);
+            RuleFor(x => x.Note).MaximumLength(OrganizationFieldRules.NoteMaxLength);
         }
     }
 
@@ -41,6 +44,7 @@ namespace My.Shared.Validation
             RuleFor(x => x.PostalCode).MaximumLength(20);
             RuleFor(x => x.Country).MaximumLength(50);
             RuleFor(x => x.Color).MaximumLength(9);
+            RuleFor(x => x.Note).MaximumLength(OrganizationFieldRules.NoteMaxLength);
         }
     }
 }
