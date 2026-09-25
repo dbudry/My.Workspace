@@ -129,6 +129,11 @@
                     <MudNavLink Href="organizations" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Business" Class="nav-top-level">Organizations</MudNavLink>
                 }
 
+                @if (hasCrmReader)
+                {
+                    <MudNavLink Href="crm" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Handshake" Class="nav-top-level">CRM</MudNavLink>
+                }
+
                 @if (isAnyAdmin)
                 {
                     <MudNavGroup Title="Admin" Icon="@Icons.Material.Filled.AdminPanelSettings" Class="nav-top-level"
@@ -184,6 +189,7 @@
     private bool isAnyAdmin;
     private bool isGlobalAdmin;
     private bool hasOrganizationsReader;
+    private bool hasCrmReader;
     private bool hasExpensesReader;
     private bool hasExpensesManager;
     private bool hasIntranetReader;
@@ -257,6 +263,7 @@
             isAnyAdmin = Constants.Roles.IsAnyAdmin(user);
             isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
             hasOrganizationsReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations);
+            hasCrmReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Crm);
             hasExpensesReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses);
             hasExpensesManager = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses, Constants.Roles.Manager);
             hasIntranetReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
@@ -294,6 +301,7 @@
             isAnyAdmin = false;
             isGlobalAdmin = false;
             hasOrganizationsReader = false;
+            hasCrmReader = false;
             hasExpensesReader = false;
             hasExpensesManager = false;
             hasIntranetReader = false;

@@ -7,6 +7,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using My.DAL.Data;
+using My.Functions.Authorization;
 using My.Functions.Helpers;
 using My.Shared.Constants;
 using My.Shared.Dtos;
@@ -54,6 +55,40 @@ namespace My.Functions
                 .ToListAsync();
 
             return new OkObjectResult(settings);
+        }
+
+        /// <summary>
+        /// Who can add a contact type. Any signed-in user. Returns name and email only.
+        /// </summary>
+        [Function("GetContactTypeAdmins")]
+        public async Task<IActionResult> GetContactTypeAdminsAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "appsettings/contact-type-admins")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireAuthenticated(principal, out _) is { } denied)
+                return denied;
+
+            var people = await (
+                from user in _dbContext.ApplicationUsers
+                join userRole in _dbContext.UserRoles on user.Id equals userRole.UserId
+                join role in _dbContext.Roles on userRole.RoleId equals role.Id
+                where role.Name == Constants.Roles.Admin
+                    && user.IsActive
+                    && !user.IsArchived
+                    && user.Email != null
+                    && user.Email != ""
+                orderby user.FirstName, user.LastName
+                select new ContactTypeAdminDto
+                {
+                    Name = (user.FirstName + " " + user.LastName).Trim(),
+                    Email = user.Email!
+                })
+                .ToListAsync();
+
+            return new OkObjectResult(people
+                .GroupBy(p => p.Email, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList());
         }
 
         [Function("GetContactTypeUsage")]

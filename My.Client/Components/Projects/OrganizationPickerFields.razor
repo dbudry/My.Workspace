@@ -20,7 +20,7 @@
                   ValueChanged="OnOrgTextChangedAsync"
                   Label="@OrganizationLabel"
                   Placeholder="Type to search organizations…"
-                  Variant="Variant.Text"
+                  Variant="@InputVariant"
                   Margin="Margin.Dense"
                   Immediate="true"
                   Clearable="true"
@@ -170,6 +170,9 @@
 
     /// <summary>Open the list above the field (project dialog sits near the bottom).</summary>
     [Parameter] public bool PreferOpenUpward { get; set; } = true;
+
+    /// <summary>Text matches the project dialog. Outlined matches dialogs whose other fields are outlined.</summary>
+    [Parameter] public Variant InputVariant { get; set; } = Variant.Text;
 
     private Organization? _selectedOrg;
     private DepartmentModel? _selectedDept;

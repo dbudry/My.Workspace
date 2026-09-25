@@ -404,7 +404,7 @@
                                    OnClick="@(() => AddSubNavItem(item))" />
                 </MudTooltip>
                 <MudTooltip Text="Delete this menu item">
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteItem(item.Id))" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteItem(item))" />
                 </MudTooltip>
             </MudStack>
         </BodyContent>
@@ -704,12 +704,18 @@
         finally { isSaving = false; }
     }
 
-    private async Task DeleteItem(string id)
+    private async Task DeleteItem(IntranetNavigationItemDto item)
     {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Delete \"{item.Title}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
         try
         {
             var client = ClientFactory.CreateClient(Constants.API.ClientName);
-            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Navigation.Get}/{id}");
+            var resp = await client.DeleteAsync($"{Constants.API.Intranet.Navigation.Get}/{item.Id}");
             if (resp.IsSuccessStatusCode)
             {
                 Snackbar.Add("Deleted.", Severity.Success);

@@ -1,0 +1,7 @@
+.org-edit-tab {
+    min-height: 30rem;
+    max-height: 30rem;
+    overflow-y: auto;
+    padding-top: 1rem;
+    box-sizing: border-box;
+}

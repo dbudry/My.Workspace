@@ -55,6 +55,15 @@ public static class AuthGates
         string minRole = Constants.Roles.User)
         => RequireScopedExpenses(principal, out _, minRole);
 
+    /// <summary>
+    /// Gate for CRM module surfaces. Scoped-only: global Admin does not pass.
+    /// </summary>
+    public static IActionResult? RequireScopedCrm(
+        ClaimsPrincipal principal,
+        out string userId,
+        string minRole = Constants.Roles.User)
+        => RequireScoped(principal, Constants.Scopes.Crm, out userId, minRole);
+
     /// <summary>Authenticated caller only — no module role check.</summary>
     public static IActionResult? RequireAuthenticated(ClaimsPrincipal principal, out string userId)
     {

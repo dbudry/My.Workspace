@@ -98,7 +98,7 @@ namespace My.Client.Pages.Admin
             user.IsArchived ? "2" : !user.IsActive ? "1" : "0";
 
         private static string GetRolesSortKey(UserModel user) =>
-            string.Join(", ", user.Roles.OrderBy(r => r, StringComparer.OrdinalIgnoreCase));
+            string.Join(", ", AccessSummary(user).Select(c => c.Text));
 
         private string GetEmptyUsersMessage()
         {
@@ -470,15 +470,85 @@ namespace My.Client.Pages.Admin
             }
         }
 
-        private static Color GetRoleColor(string role)
+        private sealed record AccessChip(string Text, Color Color);
+
+        private static readonly string[] AccessScopeOrder =
+        [
+            Constants.Scopes.Tyme,
+            Constants.Scopes.Intranet,
+            Constants.Scopes.Organizations,
+            Constants.Scopes.Expenses,
+            Constants.Scopes.Crm
+        ];
+
+        private static List<AccessChip> AccessSummary(UserModel user)
         {
-            if (role == Constants.Roles.Admin || role.StartsWith(Constants.Roles.Admin + ":", StringComparison.Ordinal))
-                return Color.Error;
-            if (role.StartsWith(Constants.Roles.UserAccess, StringComparison.Ordinal))
-                return Color.Secondary;
-            if (role.StartsWith(Constants.Roles.Manager, StringComparison.Ordinal)
-                || role.StartsWith(Constants.Roles.Navigation, StringComparison.Ordinal))
+            var roles = user.Roles ?? new List<string>();
+            if (roles.Any(r => string.Equals(r, Constants.Roles.Admin, StringComparison.Ordinal)))
+                return [new AccessChip("Admin", Color.Error)];
+
+            var chips = new List<AccessChip>();
+            var consumed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var scope in AccessScopeOrder)
+            {
+                var names = new List<string>();
+                foreach (var role in roles)
+                {
+                    var split = role.IndexOf(':');
+                    if (split <= 0 || !string.Equals(role[(split + 1)..], scope, StringComparison.Ordinal))
+                        continue;
+                    names.Add(role[..split]);
+                    consumed.Add(role);
+                }
+                if (names.Count == 0)
+                    continue;
+
+                string? operational = null;
+                foreach (var rank in new[] { Constants.Roles.Manager, Constants.Roles.Editor, Constants.Roles.User })
+                {
+                    if (names.Contains(rank, StringComparer.Ordinal))
+                    {
+                        operational = rank;
+                        break;
+                    }
+                }
+
+                var parts = new List<string>();
+                if (operational != null)
+                    parts.Add(operational);
+                if (names.Contains(Constants.Roles.UserAccess, StringComparer.Ordinal))
+                    parts.Add("User Access");
+                if (names.Contains(Constants.Roles.Navigation, StringComparer.Ordinal))
+                    parts.Add(Constants.Roles.Navigation);
+
+                if (parts.Count == 0)
+                    continue;
+
+                chips.Add(new AccessChip(
+                    $"{DisplayScope(scope)} — {string.Join(", ", parts)}",
+                    AccessColor(operational, names)));
+            }
+
+            foreach (var role in roles)
+            {
+                if (consumed.Contains(role))
+                    continue;
+                chips.Add(new AccessChip(Constants.Roles.FormatRole(role), Color.Info));
+            }
+
+            return chips;
+        }
+
+        private static string DisplayScope(string scope) =>
+            scope == Constants.Scopes.Crm ? "CRM" : scope;
+
+        private static Color AccessColor(string? operational, List<string> names)
+        {
+            if (operational == Constants.Roles.Manager
+                || names.Contains(Constants.Roles.Navigation, StringComparer.Ordinal))
                 return Color.Warning;
+            if (operational == null && names.Contains(Constants.Roles.UserAccess, StringComparer.Ordinal))
+                return Color.Secondary;
             return Color.Info;
         }
 

@@ -377,6 +377,7 @@ namespace My.Functions
             if (org == null)
                 return new NotFoundObjectResult("Organization not found!");
 
+            await CrmReferenceCleanup.UnlinkOrganizationAsync(dbContext, id);
             await organizationRepository.Delete(org);
             logger.LogInformation("Organization {Id} was deleted.", id);
             return new NoContentResult();

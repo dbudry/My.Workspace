@@ -1,0 +1,59 @@
+@page "/crm"
+@using My.Shared.Dtos.Crm
+@using My.Shared.Rules
+@attribute [Authorize(Policy = "Crm:User:Scoped")]
+
+<PageTitle>CRM</PageTitle>
+
+<PageHeader Title="CRM" />
+
+<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+    <MudSelect T="string" Value="stageFilter" ValueChanged="OnStageChanged" Label="Stage"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Clearable="true" Style="width:12rem;">
+        @foreach (var stage in CrmStageRules.All)
+        {
+            <MudSelectItem T="string" Value="@stage">@stage</MudSelectItem>
+        }
+    </MudSelect>
+    <MudTextField @bind-Value="search" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Immediate="false" OnBlur="ReloadAsync" Style="width:16rem;" />
+    <MudSwitch T="bool" Class="ml-4" Value="includeArchived" Label="View Archived" Color="Color.Secondary"
+               ValueChanged="@OnIncludeArchivedChanged" />
+    <MudSpacer />
+    @if (canEdit)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="CreateAsync">New opportunity</MudButton>
+    }
+</MudStack>
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (items.Count == 0)
+{
+    <MudText Typo="Typo.body2">No opportunities.</MudText>
+}
+else
+{
+    <MudTable Items="items" Hover="true" Dense="true"
+              OnRowClick="@((TableRowClickEventArgs<OpportunityListItemDto> args) => { if (args.Item != null) _ = OpenAsync(args.Item.OpportunityId); })">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Stage</MudTh>
+            <MudTh>Organization</MudTh>
+            <MudTh>Contact</MudTh>
+            <MudTh>Amount</MudTh>
+            <MudTh>Expected close</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Name">@context.Name</MudTd>
+            <MudTd DataLabel="Stage">@context.Stage</MudTd>
+            <MudTd DataLabel="Organization">@context.OrganizationName</MudTd>
+            <MudTd DataLabel="Contact">@context.ContactName</MudTd>
+            <MudTd DataLabel="Amount">@(context.Amount?.ToString("C"))</MudTd>
+            <MudTd DataLabel="Expected close">@(context.ExpectedCloseDate?.ToString("yyyy-MM-dd"))</MudTd>
+        </RowTemplate>
+    </MudTable>
+}

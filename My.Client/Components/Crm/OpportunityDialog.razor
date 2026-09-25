@@ -1,0 +1,495 @@
+@using My.Client.Extensions
+@using My.Client.Models
+@using My.Client.Services
+@using My.Client.Components.Organizations
+@using My.Shared.Dtos.Contact
+@using My.Shared.Dtos.Crm
+@using My.Shared.Rules
+@using My.Shared.Validation
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid Spacing="2">
+            <MudItem xs="12" sm="8">
+                <MudTextField @bind-Value="name" Label="Name" Required="true" Variant="Variant.Outlined"
+                              Immediate="true" Disabled="@(!CanEdit)" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="stage" Label="Stage" Variant="Variant.Outlined" Disabled="@(!CanEdit)">
+                    @foreach (var item in CrmStageRules.All)
+                    {
+                        <MudSelectItem T="string" Value="@item">@item</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal?" @bind-Value="amount" Label="Amount" Variant="Variant.Outlined"
+                                 Min="0" HideSpinButtons="true" Format="N2"
+                                 Adornment="Adornment.Start" AdornmentText="$" Disabled="@(!CanEdit)" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="expectedClose" Label="Expected close" Variant="Variant.Outlined"
+                               Disabled="@(!CanEdit)" />
+            </MudItem>
+            <MudItem xs="12">
+                @if (CanEdit)
+                {
+                    <OrganizationPickerFields OrganizationId="@organization?.OrganizationId"
+                                              OrganizationIdChanged="OnOrganizationIdChanged"
+                                              OrganizationName="@organization?.Name"
+                                              ShowDepartment="false"
+                                              InputVariant="Variant.Outlined" />
+                }
+                else if (organization != null)
+                {
+                    <MudTextField Value="@organization.Name" Label="Organization" ReadOnly="true" Variant="Variant.Outlined" />
+                }
+            </MudItem>
+            @if (organization != null)
+            {
+                <MudItem xs="12">
+                    <MudSelect T="string" Value="contactChoice" ValueChanged="OnContactChoiceChanged" Label="Contact"
+                               Variant="Variant.Outlined" Disabled="@(!CanEdit)" Required="true"
+                               RequiredError="Select a contact or add a new one">
+                        <MudSelectItem T="string" Value="@NewContactChoice">Add a new contact</MudSelectItem>
+                        @foreach (var contact in contacts)
+                        {
+                            <MudSelectItem T="string" Value="@contact.ContactId">@contact.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                @if (contactChoice == NewContactChoice && CanEdit)
+                {
+                    <MudItem xs="12">
+                        <div class="pa-3" style="border: 1px solid var(--mud-palette-lines-default); border-radius: 4px;">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">New contact</MudText>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="newContactName" Label="Name" Required="true"
+                                                  Variant="Variant.Outlined" Immediate="true" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="newContactTitle" Label="Title" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudTextField @bind-Value="newContactPhone" Label="Phone" Variant="Variant.Outlined" />
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="newContactEmail" Label="Email" Variant="Variant.Outlined" />
+                                </MudItem>
+                            </MudGrid>
+                        </div>
+                    </MudItem>
+                }
+            }
+            <MudItem xs="12">
+                <CountedTextArea Value="@note" ValueChanged="@(v => note = v ?? "")"
+                                 MaxLength="@CreateOpportunityDtoValidator.NoteMaxLength"
+                                 Class="counted-textarea--multiline" Disabled="@(!CanEdit)"
+                                 Placeholder="Note" AriaLabel="Note" />
+            </MudItem>
+        </MudGrid>
+
+        @if (OpportunityId != null)
+        {
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Activity</MudText>
+            @if (CanEdit)
+            {
+                <MudStack Spacing="2" Class="mb-3">
+                    <MudSelect T="string" @bind-Value="activityType" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        @foreach (var kind in CrmActivityTypeRules.All)
+                        {
+                            <MudSelectItem T="string" Value="@kind">@kind</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField @bind-Value="activitySubject" Label="Subject" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudTextField @bind-Value="activityBody" Label="Details" Variant="Variant.Outlined" Lines="2" Margin="Margin.Dense" />
+                    <MudButton Variant="Variant.Outlined" OnClick="AddActivityAsync" Disabled="@saving">Add activity</MudButton>
+                </MudStack>
+            }
+            @foreach (var activity in activities)
+            {
+                <MudPaper Class="pa-2 mb-2" Outlined="true">
+                    <MudStack Row="true" Justify="Justify.SpaceBetween">
+                        <MudText Typo="Typo.subtitle2">@activity.ActivityType — @activity.Subject</MudText>
+                        @if (CanManage)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                           OnClick="@(() => DeleteActivityAsync(activity))" />
+                        }
+                    </MudStack>
+                    @if (!string.IsNullOrWhiteSpace(activity.Body))
+                    {
+                        <MudText Typo="Typo.body2">@activity.Body</MudText>
+                    }
+                    @if (CanEdit && activity.ActivityType == CrmActivityTypeRules.Task)
+                    {
+                        <MudSwitch T="bool" Value="@(activity.CompletedAt != null)"
+                                  ValueChanged="@(done => ToggleTaskAsync(activity, done))"
+                                  Label="Done" Color="Color.Primary" />
+                    }
+                </MudPaper>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (CanManage && OpportunityId != null)
+        {
+            <MudButton OnClick="ArchiveAsync" Disabled="@saving">@(isArchived ? "Unarchive" : "Archive")</MudButton>
+            <MudButton Color="Color.Error" OnClick="DeleteAsync" Disabled="@saving">Delete</MudButton>
+        }
+        <MudSpacer />
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        @if (CanEdit)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="@saving">Save</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Inject] private CrmService Crm { get; set; } = null!;
+
+    [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private AppSettingsCache AppSettings { get; set; } = null!;
+
+    [Parameter] public string? OpportunityId { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+
+    private const string NewContactChoice = "__new__";
+
+    private string name = "";
+    private string stage = CrmStageRules.Lead;
+    private decimal? amount;
+    private DateTime? expectedClose;
+    private Organization? organization;
+    private string? contactChoice;
+    private string? note;
+    private IReadOnlyList<string> contactTypes = ContactTypeRules.DefaultTypes;
+    private string newContactName = "";
+    private string newContactType = "";
+    private string newContactTitle = "";
+    private string newContactPhone = "";
+    private string newContactEmail = "";
+    private bool isArchived;
+    private bool saving;
+    private List<ContactDto> contacts = new();
+    private List<CrmActivityDto> activities = new();
+    private string activityType = CrmActivityTypeRules.Note;
+    private string activitySubject = "";
+    private string? activityBody;
+
+    protected override async Task OnInitializedAsync()
+    {
+        contactTypes = await ContactTypeOptions.GetAsync(AppSettings);
+        newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+        if (string.IsNullOrEmpty(OpportunityId))
+            return;
+
+        var detail = await Crm.GetAsync(OpportunityId);
+        if (detail == null)
+        {
+            Snackbar.Add("Couldn't load that opportunity.", Severity.Error);
+            return;
+        }
+
+        name = detail.Name;
+        stage = detail.Stage;
+        amount = detail.Amount;
+        expectedClose = detail.ExpectedCloseDate;
+        note = detail.Note;
+        isArchived = detail.IsArchived;
+        contactChoice = detail.ContactId;
+        activities = detail.Activities;
+        if (!string.IsNullOrEmpty(detail.OrganizationId))
+        {
+            organization = new Organization
+            {
+                OrganizationId = detail.OrganizationId,
+                Name = detail.OrganizationName ?? ""
+            };
+            await LoadContactsAsync();
+        }
+    }
+
+    private async Task OnOrganizationIdChanged(string? organizationId)
+    {
+        if (organization?.OrganizationId == organizationId)
+            return;
+
+        contactChoice = null;
+        contacts.Clear();
+        if (string.IsNullOrEmpty(organizationId))
+        {
+            organization = null;
+            return;
+        }
+
+        organization = new Organization { OrganizationId = organizationId };
+        await LoadContactsAsync();
+    }
+
+    private Task OnContactChoiceChanged(string? value)
+    {
+        contactChoice = value;
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadContactsAsync()
+    {
+        if (organization == null)
+            return;
+        var client = ClientFactory.CreateClient(My.Shared.Constants.Constants.API.ClientName);
+        var response = await client.GetAsync($"{My.Shared.Constants.Constants.API.Contact.Get}?organizationId={organization.OrganizationId}");
+        if (!response.IsSuccessStatusCode)
+            return;
+        contacts = await response.Content.ReadFromJsonAsync<List<ContactDto>>() ?? new();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            Snackbar.Add("Name is required.", Severity.Warning);
+            return;
+        }
+
+        if (organization != null && string.IsNullOrEmpty(contactChoice))
+        {
+            Snackbar.Add("Select a contact for that organization, or add a new one.", Severity.Warning);
+            return;
+        }
+
+        if (contactChoice == NewContactChoice && string.IsNullOrWhiteSpace(newContactName))
+        {
+            Snackbar.Add("New contact name is required.", Severity.Warning);
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var savedContactId = await ResolveContactIdAsync();
+            if (organization != null && string.IsNullOrEmpty(savedContactId))
+                return;
+
+            HttpResponseMessage response;
+            if (string.IsNullOrEmpty(OpportunityId))
+            {
+                response = await Crm.CreateAsync(new CreateOpportunityDto
+                {
+                    Name = name,
+                    Stage = stage,
+                    Amount = amount,
+                    ExpectedCloseDate = expectedClose,
+                    OrganizationId = organization?.OrganizationId,
+                    ContactId = savedContactId,
+                    Note = note
+                });
+            }
+            else
+            {
+                response = await Crm.UpdateAsync(new UpdateOpportunityDto
+                {
+                    OpportunityId = OpportunityId,
+                    Name = name,
+                    Stage = stage,
+                    Amount = amount,
+                    ExpectedCloseDate = expectedClose,
+                    OrganizationId = organization?.OrganizationId,
+                    ContactId = savedContactId,
+                    Note = note
+                });
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await ReadMessage(response, "Couldn't save the opportunity."), Severity.Error);
+                return;
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't save the opportunity.");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task<string?> ResolveContactIdAsync()
+    {
+        if (organization == null || string.IsNullOrEmpty(contactChoice) || contactChoice != NewContactChoice)
+            return contactChoice;
+
+        var response = await Crm.CreateContactAsync(new CreateContactDto
+        {
+            Name = newContactName.Trim(),
+            ContactType = newContactType,
+            Title = string.IsNullOrWhiteSpace(newContactTitle) ? null : newContactTitle.Trim(),
+            PhoneNumber = string.IsNullOrWhiteSpace(newContactPhone) ? null : newContactPhone.Trim(),
+            Email = string.IsNullOrWhiteSpace(newContactEmail) ? null : newContactEmail.Trim(),
+            OrganizationId = organization.OrganizationId
+        });
+        if (!response.IsSuccessStatusCode)
+        {
+            Snackbar.Add(await ReadMessage(response, "Couldn't save the new contact."), Severity.Error);
+            return null;
+        }
+
+        var created = await response.Content.ReadFromJsonAsync<ContactDto>();
+        if (created == null)
+            return null;
+
+        contacts.Add(created);
+        contactChoice = created.ContactId;
+        newContactName = "";
+        return created.ContactId;
+    }
+
+    private async Task AddActivityAsync()
+    {
+        if (string.IsNullOrWhiteSpace(activitySubject) || string.IsNullOrEmpty(OpportunityId))
+        {
+            Snackbar.Add("Subject is required.", Severity.Warning);
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            var response = await Crm.CreateActivityAsync(new CreateCrmActivityDto
+            {
+                OpportunityId = OpportunityId,
+                ActivityType = activityType,
+                Subject = activitySubject,
+                Body = activityBody
+            });
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await ReadMessage(response, "Couldn't add the activity."), Severity.Error);
+                return;
+            }
+
+            var created = await response.Content.ReadFromJsonAsync<CrmActivityDto>();
+            if (created != null)
+                activities.Insert(0, created);
+            activitySubject = "";
+            activityBody = null;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't add the activity.");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task ToggleTaskAsync(CrmActivityDto activity, bool done)
+    {
+        var response = await Crm.UpdateActivityAsync(new UpdateCrmActivityDto
+        {
+            CrmActivityId = activity.CrmActivityId,
+            ActivityType = activity.ActivityType,
+            Subject = activity.Subject,
+            Body = activity.Body,
+            DueAt = activity.DueAt,
+            CompletedAt = done ? DateTimeOffset.UtcNow : null
+        });
+        if (!response.IsSuccessStatusCode)
+        {
+            Snackbar.Add(await ReadMessage(response, "Couldn't update the activity."), Severity.Error);
+            return;
+        }
+
+        activity.CompletedAt = done ? DateTimeOffset.UtcNow : null;
+    }
+
+    private async Task DeleteActivityAsync(CrmActivityDto activity)
+    {
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Confirm Delete",
+            $"Delete \"{activity.Subject}\"?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true)
+            return;
+
+        var response = await Crm.DeleteActivityAsync(activity.CrmActivityId);
+        if (!response.IsSuccessStatusCode)
+        {
+            Snackbar.Add(await ReadMessage(response, "Couldn't delete the activity."), Severity.Error);
+            return;
+        }
+
+        activities.Remove(activity);
+    }
+
+    private async Task ArchiveAsync()
+    {
+        if (OpportunityId == null) return;
+        saving = true;
+        try
+        {
+            var response = await Crm.ArchiveAsync(OpportunityId, !isArchived);
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await ReadMessage(response, "Couldn't archive the opportunity."), Severity.Error);
+                return;
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (OpportunityId == null) return;
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Delete opportunity",
+            "Delete this opportunity and its activities?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirmed != true) return;
+
+        saving = true;
+        try
+        {
+            var response = await Crm.DeleteAsync(OpportunityId);
+            if (!response.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await ReadMessage(response, "Couldn't delete the opportunity."), Severity.Error);
+                return;
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static async Task<string> ReadMessage(HttpResponseMessage response, string fallback)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        return ApiErrorBodyRules.Format(body, fallback);
+    }
+}
