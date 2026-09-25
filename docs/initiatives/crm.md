@@ -2,7 +2,7 @@
 
 **Branch:** `feature/port-crm-and-fixes-1.3.31-34`  
 **Captured:** 2026-09-25  
-**Status:** Ported from ProfitPoint.My 1.3.33–1.3.34
+**Status:** Shipped (role-gated CRM pipeline)
 
 ## Goal
 
