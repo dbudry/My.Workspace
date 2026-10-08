@@ -8,12 +8,19 @@ using My.Shared.Rules;
 namespace My.Functions.Services;
 
 /// <summary>
-/// Cross-instance lock so two Consumption workers cannot run incremental
-/// Google sync for the same user at once (sync token race). 60s lease, renewed
-/// until dispose. A crashed worker drops the lease within 60s.
+/// Cross-instance lock so two workers cannot run incremental Google sync for
+/// the same user at once (sync token race). 60s lease, renewed until dispose.
+/// A crashed worker drops the lease within 60s.
+///
+/// Acquire waits at most <see cref="AcquireWait"/>. If another import still
+/// holds the lease, <see cref="TryAcquireAsync"/> returns null so the queue
+/// message can complete instead of sitting until the function timeout.
 /// </summary>
 public sealed class GoogleCalendarImportUserLock : IAsyncDisposable
 {
+    /// <summary>How long a queue worker waits for another import to finish.</summary>
+    public static readonly TimeSpan AcquireWait = TimeSpan.FromSeconds(5);
+
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan RenewEvery = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan RetryWait = TimeSpan.FromMilliseconds(500);
@@ -29,7 +36,11 @@ public sealed class GoogleCalendarImportUserLock : IAsyncDisposable
         _renewTask = renewTask;
     }
 
-    public static async Task<GoogleCalendarImportUserLock> AcquireAsync(
+    /// <summary>
+    /// Returns null when another worker still holds this user's lease after
+    /// <see cref="AcquireWait"/>. Does not throw for a busy lock.
+    /// </summary>
+    public static async Task<GoogleCalendarImportUserLock?> TryAcquireAsync(
         BlobServiceClient blobs,
         string userId,
         ILogger logger,
@@ -52,34 +63,41 @@ public sealed class GoogleCalendarImportUserLock : IAsyncDisposable
 
         var leaseClient = blob.GetBlobLeaseClient();
         var waited = false;
-        while (true)
+        var acquired = await TryWaitForLeaseAsync(
+            async ct =>
+            {
+                try
+                {
+                    await leaseClient.AcquireAsync(LeaseDuration, cancellationToken: ct);
+                    return true;
+                }
+                catch (RequestFailedException ex) when (
+                    GoogleCalendarStorageErrorRules.IsLeaseHeld(ex.Status, ex.ErrorCode))
+                {
+                    if (!waited)
+                    {
+                        waited = true;
+                        logger.LogInformation(
+                            GoogleCalendarLogEvents.ImportLockWait,
+                            "Waiting for Google calendar import lock for user {UserId}.",
+                            userId);
+                    }
+                    return false;
+                }
+            },
+            AcquireWait,
+            RetryWait,
+            cancellationToken);
+
+        if (!acquired)
+            return null;
+
+        if (waited)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                await leaseClient.AcquireAsync(LeaseDuration, cancellationToken: cancellationToken);
-                if (waited)
-                {
-                    logger.LogInformation(
-                        GoogleCalendarLogEvents.ImportLockWait,
-                        "Acquired Google calendar import lock for user {UserId} after waiting.",
-                        userId);
-                }
-                break;
-            }
-            catch (RequestFailedException ex) when (
-                GoogleCalendarStorageErrorRules.IsLeaseHeld(ex.Status, ex.ErrorCode))
-            {
-                if (!waited)
-                {
-                    waited = true;
-                    logger.LogInformation(
-                        GoogleCalendarLogEvents.ImportLockWait,
-                        "Waiting for Google calendar import lock for user {UserId}.",
-                        userId);
-                }
-                await Task.Delay(RetryWait, cancellationToken);
-            }
+            logger.LogInformation(
+                GoogleCalendarLogEvents.ImportLockWait,
+                "Acquired Google calendar import lock for user {UserId} after waiting.",
+                userId);
         }
 
         var renewCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -136,6 +154,33 @@ public sealed class GoogleCalendarImportUserLock : IAsyncDisposable
                 ex,
                 "Failed to renew Google calendar import lock for user {UserId}; another worker may take over.",
                 userId);
+        }
+    }
+
+    /// <summary>
+    /// Polls <paramref name="tryAcquire"/> until it returns true, the deadline
+    /// passes, or <paramref name="cancellationToken"/> is cancelled.
+    /// A false result means the lease stayed held — callers must not retry forever.
+    /// </summary>
+    internal static async Task<bool> TryWaitForLeaseAsync(
+        Func<CancellationToken, Task<bool>> tryAcquire,
+        TimeSpan maxWait,
+        TimeSpan retryWait,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow + maxWait;
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (await tryAcquire(cancellationToken))
+                return true;
+
+            var remaining = deadline - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero)
+                return false;
+
+            var delay = remaining < retryWait ? remaining : retryWait;
+            await Task.Delay(delay, cancellationToken);
         }
     }
 

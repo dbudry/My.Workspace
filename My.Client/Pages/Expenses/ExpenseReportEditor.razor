@@ -10,9 +10,25 @@
 
 <PageTitle>@pageTitle</PageTitle>
 
-<PageHeader Title="@pageTitle" Description="@pageDescription">
+<PageHeader Title="@pageTitle">
+    <ChildContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.ArrowBack"
+                       OnClick="@(() => Navigation.NavigateTo("expenses"))">
+                Back to list
+            </MudButton>
+            @if (report != null)
+            {
+                <ExpenseStatusChip Status="@report.Status" Size="Size.Medium" />
+                @if (!string.IsNullOrEmpty(statusNote))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@statusNote</MudText>
+                }
+            }
+        </MudStack>
+    </ChildContent>
     <Actions>
-        <MudButton Variant="Variant.Outlined" OnClick="@(() => Navigation.NavigateTo("expenses"))">Back to list</MudButton>
         @if (report != null)
         {
             <ExpensePdfMenu ReportId="@report.ExpenseReportId"
@@ -73,14 +89,12 @@
                 <MudItem xs="12" sm="6" md="3">
                     <MudDatePicker Date="report.CoverStart" DateChanged="SetCoverStart"
                                    Label="Cover start" DateFormat="MM/dd/yyyy"
-                                   MinDate="ReportMonthStart" MaxDate="ReportMonthEnd"
                                    Variant="Variant.Outlined" Margin="Margin.Dense"
                                    Disabled="@(!canEdit)" Error="@(coverPeriodError != null)" />
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
                     <MudDatePicker Date="report.CoverEnd" DateChanged="SetCoverEnd"
                                    Label="Cover end" DateFormat="MM/dd/yyyy"
-                                   MinDate="ReportMonthStart" MaxDate="ReportMonthEnd"
                                    Variant="Variant.Outlined" Margin="Margin.Dense"
                                    Disabled="@(!canEdit)" Error="@(coverPeriodError != null)"
                                    ErrorText="@coverPeriodError" />
@@ -128,7 +142,6 @@
                             <div class="expense-line-date">
                                 <MudDatePicker Date="line.Date" DateChanged="d => SetLineDate(line, d)"
                                                DateFormat="MM/dd/yyyy" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                               MinDate="ReportMonthStart" MaxDate="ReportMonthEnd"
                                                Disabled="@(!canEdit)"
                                                Error="@lineDateErrors.Contains(index)" />
                             </div>
@@ -257,9 +270,14 @@
                                             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
                                                      Class="expense-receipt-chip"
                                                      title="@receipt.OriginalFileName"
-                                                     OnClick="@(() => DownloadReceiptAsync(receipt))"
+                                                     CloseIcon="@Icons.Material.Filled.Close"
                                                      OnClose="@(() => RemoveReceiptAsync(line, receipt))">
-                                                @receipt.OriginalFileName
+                                                <button type="button" class="expense-receipt-name"
+                                                        title="@receipt.OriginalFileName"
+                                                        @onclick="@(() => DownloadReceiptAsync(receipt))"
+                                                        @onclick:stopPropagation="true">
+                                                    @receipt.OriginalFileName
+                                                </button>
                                             </MudChip>
                                         }
                                         else
@@ -268,7 +286,7 @@
                                                      Class="expense-receipt-chip"
                                                      title="@receipt.OriginalFileName"
                                                      OnClick="@(() => DownloadReceiptAsync(receipt))">
-                                                @receipt.OriginalFileName
+                                                <span class="expense-receipt-name">@receipt.OriginalFileName</span>
                                             </MudChip>
                                         }
                                     }

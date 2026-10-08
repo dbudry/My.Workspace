@@ -67,6 +67,15 @@ public static class GoogleCalendarOAuthRules
         string.Equals(oauthErrorCode, "invalid_grant", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// <c>prompt=consent</c> forces Google's full consent page. That page returns
+    /// "Backend Error" for some Workspace accounts. Send it only when there is no
+    /// refresh token yet, or Google has already rejected the stored one.
+    /// A stored token reconnects without that page.
+    /// </summary>
+    public static bool ShouldForceConsent(bool hasStoredRefreshToken, bool tokenRejected) =>
+        !hasStoredRefreshToken || tokenRejected;
+
+    /// <summary>
     /// Optionally locks the consent screen to a single hosted domain when the tenant
     /// policy has exactly one domain (see <see cref="GoogleIdentityRules.GetSingleHostedDomainHint"/>).
     /// Do not also append <c>login_hint</c>: that plus <c>prompt=consent</c>

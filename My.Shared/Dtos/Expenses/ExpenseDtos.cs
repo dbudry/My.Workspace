@@ -22,6 +22,26 @@ public class ExpenseReportListDto
     public DateTime? SubmittedAt { get; set; }
     public DateTime? ReimbursedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public string? Purpose { get; set; }
+    public string? PlantOrLocation { get; set; }
+    public string? ChargeToNote { get; set; }
+    public List<ExpenseLineSearchDto> Lines { get; set; } = [];
+}
+
+public class ExpenseLineSearchDto
+{
+    [JsonConverter(typeof(CalendarDateJsonConverter))]
+    public DateTime Date { get; set; }
+    public string Description { get; set; } = "";
+    public string Category { get; set; } = "";
+    public decimal Amount { get; set; }
+    public decimal? Miles { get; set; }
+    public string? TransportationCode { get; set; }
+    public string? MiscellaneousCode { get; set; }
+    public bool MealBreakfast { get; set; }
+    public bool MealLunch { get; set; }
+    public bool MealDinner { get; set; }
+    public List<string> ReceiptFileNames { get; set; } = [];
 }
 
 public class ExpenseLineDto
@@ -88,8 +108,10 @@ public class ExpenseReportDto
 
 public class CreateExpenseReportDto
 {
-    public int Year { get; set; }
-    public int Month { get; set; }
+    [JsonConverter(typeof(CalendarDateJsonConverter))]
+    public DateTime CoverStart { get; set; }
+    [JsonConverter(typeof(CalendarDateJsonConverter))]
+    public DateTime CoverEnd { get; set; }
 }
 
 public class UpdateExpenseReportDto

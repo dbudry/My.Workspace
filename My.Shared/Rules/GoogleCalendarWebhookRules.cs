@@ -8,6 +8,13 @@ public static class GoogleCalendarWebhookRules
     public const string ExistsResourceState = "exists";
 
     /// <summary>
+    /// Connect, resume, and the OAuth callback only register the watch.
+    /// The first import is queued. Awaiting it on the HTTP request is what
+    /// made Static Web Apps return "Backend call failure".
+    /// </summary>
+    public const bool InitialImportRunsOnQueue = true;
+
+    /// <summary>
     /// Validates the channel token Google sends on push notifications.
     /// </summary>
     public static bool IsChannelTokenValid(string? incomingToken, string? storedToken) =>

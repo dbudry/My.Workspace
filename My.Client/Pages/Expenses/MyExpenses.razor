@@ -24,27 +24,27 @@
 {
     <div class="expense-filter-row">
         <div class="expense-filter-fields">
-            <MudSelect T="int" MultiSelection="true" Clearable="true"
-                       @bind-SelectedValues="myYears"
-                       MultiSelectionTextFunc="YearChipText"
-                       Label="Year" Variant="Variant.Outlined"
+            <MudSelect T="int?" @bind-Value="myYear" Label="Year" Variant="Variant.Outlined"
                        Margin="Margin.Dense" Dense="true" Style="width:calc(9rem + 50px);">
+                <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
                 @foreach (var y in myYearOptions)
                 {
-                    <MudSelectItem T="int" Value="@y">@y</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@y">@y</MudSelectItem>
                 }
             </MudSelect>
-            <MudSelect T="int" MultiSelection="true" Clearable="true"
-                       @bind-SelectedValues="myMonths"
-                       MultiSelectionTextFunc="MonthChipText"
-                       Label="Month" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:11.25rem;">
-                @for (int m = 1; m <= 12; m++)
+            <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="myStatuses"
+                       MultiSelectionTextFunc="StatusChipText"
+                       Label="Status" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:calc(11rem + 50px);">
+                @foreach (var status in ExpenseStatusRules.Choices)
                 {
-                    var month = m;
-                    <MudSelectItem T="int" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
+                    <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
                 }
             </MudSelect>
+            <MudTextField @bind-Value="mySearch" Label="Search" Placeholder="Description, amount, date"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Clearable="true"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Style="width:18rem;" />
         </div>
         <div class="expense-filter-actions">
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
@@ -63,32 +63,32 @@
             <MudSelect T="string" @bind-Value="userFilter" Label="Employee" Variant="Variant.Outlined"
                        Margin="Margin.Dense" Dense="true" Style="width:12.5rem;">
                 <MudSelectItem T="string" Value="@((string?)null)">All employees</MudSelectItem>
-                @foreach (var u in distinctUsers)
+                @foreach (var u in teamEmployees)
                 {
                     <MudSelectItem T="string" Value="@u.UserId">@u.Name</MudSelectItem>
                 }
             </MudSelect>
-            <MudSelect T="int" MultiSelection="true" Clearable="true"
-                       @bind-SelectedValues="teamYears"
-                       MultiSelectionTextFunc="YearChipText"
-                       Label="Year" Variant="Variant.Outlined"
+            <MudSelect T="int?" @bind-Value="teamYear" Label="Year" Variant="Variant.Outlined"
                        Margin="Margin.Dense" Dense="true" Style="width:calc(9rem + 50px);">
-                @foreach (var y in yearOptions)
+                <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
+                @foreach (var y in teamYearOptions)
                 {
-                    <MudSelectItem T="int" Value="@y">@y</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@y">@y</MudSelectItem>
                 }
             </MudSelect>
-            <MudSelect T="int" MultiSelection="true" Clearable="true"
-                       @bind-SelectedValues="teamMonths"
-                       MultiSelectionTextFunc="MonthChipText"
-                       Label="Month" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:11.25rem;">
-                @for (int m = 1; m <= 12; m++)
+            <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="teamStatuses"
+                       MultiSelectionTextFunc="StatusChipText"
+                       Label="Status" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Style="width:calc(11rem + 50px);">
+                @foreach (var status in ExpenseStatusRules.Choices)
                 {
-                    var month = m;
-                    <MudSelectItem T="int" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
+                    <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
                 }
             </MudSelect>
+            <MudTextField @bind-Value="teamSearch" Label="Search" Placeholder="Description, amount, date"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Clearable="true"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Style="width:18rem;" />
         </div>
         <div class="expense-filter-actions">
             <MudButton Variant="Variant.Outlined" Color="Color.Default"
@@ -110,26 +110,25 @@
         {
             <EmptyState Icon="@Icons.Material.Outlined.ReceiptLong"
                         Title="No expense reports yet"
-                        Message="Click New Report for this month. You'll add line items on the next screen." />
+                        Message="Click New Report. It starts as a draft covering last month. Change the cover dates to match your receipts." />
         }
         else if (visibleMyRows.Count == 0)
         {
             <EmptyState Icon="@Icons.Material.Outlined.FilterList"
                         Title="No reports match"
-                        Message="Clear Year or Month to see more, or create a report with New Report." />
+                        Message="Change Year or Status, or clear Search." />
         }
         else
         {
             <MudDataGrid T="ExpenseReportListDto" Items="@visibleMyRows"
                          Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
-                         Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
-                         FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                         Filterable="false"
                          SortMode="SortMode.Single" ShowColumnOptions="false"
                          RowClass="expense-grid-row"
                          RowClick="OnExpenseRowClick">
                 <Columns>
-                    <PropertyColumn Property="x => MonthLabel(x.Year, x.Month)" Title="Month"
-                                    SortBy="x => x.Year * 100 + x.Month"
+                    <PropertyColumn Property="x => ExpenseReportRules.CoverRangeLabel(x.CoverStart, x.CoverEnd)" Title="Period"
+                                    SortBy="x => x.CoverStart"
                                     InitialDirection="SortDirection.Descending" />
                     <PropertyColumn Property="x => x.Status" Title="Status">
                         <CellTemplate>
@@ -140,7 +139,7 @@
                                     HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
                     <PropertyColumn Property="x => x.TotalAmount" Title="Total" Format="C"
                                     HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
-                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false"
+                    <TemplateColumn Title="Actions" Sortable="false"
                                     HeaderStyle="width:120px; text-align:right;" CellStyle="text-align:right;">
                         <CellTemplate>
                             <div class="d-flex justify-end align-center" @onclick:stopPropagation="true">
@@ -167,12 +166,6 @@
                         </CellTemplate>
                     </TemplateColumn>
                 </Columns>
-                <NoRecordsContent>
-                    <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
-                             Style="color: var(--mud-palette-text-secondary);">
-                        No reports match the column filters.
-                    </MudText>
-                </NoRecordsContent>
             </MudDataGrid>
         }
     }
@@ -182,22 +175,27 @@
         @if (teamRows.Count == 0)
         {
             <EmptyState Icon="@Icons.Material.Outlined.Groups"
-                        Title="No matching reports"
-                        Message="Adjust the filters, or wait for employees to create and submit expense reports." />
+                        Title="No expense reports yet"
+                        Message="Reports show up here once someone creates one, including drafts." />
+        }
+        else if (visibleTeamRows.Count == 0)
+        {
+            <EmptyState Icon="@Icons.Material.Outlined.FilterList"
+                        Title="No reports match"
+                        Message="Change Year, Employee, or Status, or clear Search." />
         }
         else
         {
-            <MudDataGrid T="ExpenseReportListDto" Items="@teamRows"
+            <MudDataGrid T="ExpenseReportListDto" Items="@visibleTeamRows"
                          Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
-                         Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
-                         FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                         Filterable="false"
                          SortMode="SortMode.Single" ShowColumnOptions="false"
                          RowClass="expense-grid-row"
                          RowClick="OnExpenseRowClick">
                 <Columns>
                     <PropertyColumn Property="x => x.EmployeeName" Title="Employee" />
-                    <PropertyColumn Property="x => MonthLabel(x.Year, x.Month)" Title="Month"
-                                    SortBy="x => x.Year * 100 + x.Month"
+                    <PropertyColumn Property="x => ExpenseReportRules.CoverRangeLabel(x.CoverStart, x.CoverEnd)" Title="Period"
+                                    SortBy="x => x.CoverStart"
                                     InitialDirection="SortDirection.Descending" />
                     <PropertyColumn Property="x => x.Status" Title="Status">
                         <CellTemplate>
@@ -208,7 +206,7 @@
                                     HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
                     <PropertyColumn Property="x => x.TotalAmount" Title="Total" Format="C"
                                     HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
-                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false"
+                    <TemplateColumn Title="Actions" Sortable="false"
                                     HeaderStyle="width:120px; text-align:right;" CellStyle="text-align:right;">
                         <CellTemplate>
                             <div class="d-flex justify-end align-center" @onclick:stopPropagation="true">
@@ -244,12 +242,6 @@
                         </CellTemplate>
                     </TemplateColumn>
                 </Columns>
-                <NoRecordsContent>
-                    <MudText Typo="Typo.body2" Class="my-4" Align="Align.Center"
-                             Style="color: var(--mud-palette-text-secondary);">
-                        No reports match the column filters.
-                    </MudText>
-                </NoRecordsContent>
             </MudDataGrid>
         }
     }

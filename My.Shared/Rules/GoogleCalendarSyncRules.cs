@@ -35,6 +35,8 @@ public static class GoogleCalendarSyncRules
         if (string.IsNullOrWhiteSpace(message))
             return "Calendar import log.";
 
+        if (Contains(message, "another import is already running"))
+            return "Another import is already running for that person. This notification was skipped. Pull missed events still works.";
         if (Contains(message, "approaching the poison"))
             return "The import queue failed several times. The next failure drops the message. Use Pull missed events for that person.";
         if (Contains(message, "LeaseIdMissing") || Contains(message, "lease on the blob"))

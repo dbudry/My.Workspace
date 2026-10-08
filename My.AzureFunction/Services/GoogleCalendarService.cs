@@ -50,18 +50,23 @@ namespace My.Functions.Services
         /// <summary>
         /// Builds the consent URL for Calendar-only access. Does not request Drive and does not
         /// send <c>login_hint</c>. Optional <paramref name="hostedDomain"/> sets <c>hd</c> when
-        /// the tenant policy has a single domain hint.
+        /// the tenant policy has a single domain hint. <paramref name="forceConsent"/> sends
+        /// <c>prompt=consent</c> only for a first token or a rejected one.
         /// </summary>
-        public string BuildAuthorizationUrl(string redirectUri, string state, string? hostedDomain = null)
+        public string BuildAuthorizationUrl(
+            string redirectUri, string state, string? hostedDomain = null, bool forceConsent = true)
         {
             var flow = CreateFlow();
             var req = flow.CreateAuthorizationCodeRequest(redirectUri);
             req.State = state;
-            // Force refresh_token issuance even on re-consent
             if (req is GoogleAuthorizationCodeRequestUrl google)
             {
                 google.AccessType = "offline";
-                google.Prompt = "consent";
+                // prompt=consent is only for a first token or a rejected one.
+                // Forcing it on every reconnect is what makes accounts.google.com
+                // return "Backend Error" for some Workspace users.
+                if (forceConsent)
+                    google.Prompt = "consent";
                 // Do not set include_granted_scopes. Re-presenting a prior Drive grant
                 // with prompt=consent is what produces Google's "Backend Error" for
                 // some Workspace users. Intranet Drive uses its own consent URL with

@@ -76,6 +76,15 @@ public class GoogleCalendarOAuthRulesTests
                 watchStartFailed, keptExistingToken, incomingRefreshToken));
 
     [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, true)]
+    public void ShouldForceConsent_only_when_no_token_or_token_was_rejected(
+        bool hasStoredRefreshToken, bool tokenRejected, bool expected) =>
+        Assert.Equal(expected, GoogleCalendarOAuthRules.ShouldForceConsent(hasStoredRefreshToken, tokenRejected));
+
+    [Theory]
     [InlineData("invalid_grant", true)]
     [InlineData("INVALID_GRANT", true)]
     [InlineData("invalid_client", false)]

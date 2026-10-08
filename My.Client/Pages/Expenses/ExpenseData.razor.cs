@@ -31,12 +31,6 @@ public partial class ExpenseData
         get => _yearFilter;
         set { if (_yearFilter == value) return; _yearFilter = value; InvalidatePreview(); }
     }
-    private int? _monthFilter;
-    private int? monthFilter
-    {
-        get => _monthFilter;
-        set { if (_monthFilter == value) return; _monthFilter = value; InvalidatePreview(); }
-    }
     private string? _userFilter;
     private string? userFilter
     {
@@ -134,7 +128,7 @@ public partial class ExpenseData
     private IEnumerable<ExpenseReportExportRow> previewReports =>
         preview.Reports
             .OrderBy(r => r.EmployeeName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.Year).ThenBy(r => r.Month);
+            .ThenBy(r => r.CoverStart);
 
     private IReadOnlyList<IGrouping<string, ExpenseLineExportRow>> groupedLines =>
         preview.Lines
@@ -152,7 +146,7 @@ public partial class ExpenseData
 
     private async Task LoadPreviewAsync()
     {
-        validationMessage = ExpenseDataExtractionRules.ValidateRequest(selectedEntities, yearFilter, monthFilter);
+        validationMessage = ExpenseDataExtractionRules.ValidateRequest(selectedEntities, yearFilter, null);
         if (validationMessage is not null)
         {
             preview = new();
@@ -176,7 +170,7 @@ public partial class ExpenseData
                 selectedEntities,
                 statusFilter,
                 yearFilter,
-                monthFilter,
+                null,
                 userIds);
 
             var response = await client.GetAsync($"{client.BaseAddress}{url}");
@@ -258,9 +252,6 @@ public partial class ExpenseData
 
     private static string EmployeeKey(string? name) =>
         string.IsNullOrWhiteSpace(name) ? "(No name)" : name.Trim();
-
-    private static string MonthLabel(int year, int month) =>
-        new DateTime(year, month, 1).ToString("MMM yyyy");
 
     private static string FileSizeLabel(int bytes) =>
         bytes < 1024 ? $"{bytes} B" : $"{bytes / 1024.0:0.#} KB";

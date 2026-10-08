@@ -8,18 +8,26 @@ namespace My.Tests.Validation;
 public class ExpenseValidatorsTests
 {
     [Fact]
-    public void Create_rejects_invalid_month()
+    public void Create_rejects_cover_end_before_start()
     {
         var result = new CreateExpenseReportDtoValidator()
-            .Validate(new CreateExpenseReportDto { Year = 2026, Month = 13 });
+            .Validate(new CreateExpenseReportDto
+            {
+                CoverStart = new DateTime(2026, 10, 5),
+                CoverEnd = new DateTime(2026, 9, 1)
+            });
         Assert.False(result.IsValid);
     }
 
     [Fact]
-    public void Create_accepts_valid_year_month()
+    public void Create_accepts_a_range_that_crosses_a_month()
     {
         var result = new CreateExpenseReportDtoValidator()
-            .Validate(new CreateExpenseReportDto { Year = 2026, Month = 8 });
+            .Validate(new CreateExpenseReportDto
+            {
+                CoverStart = new DateTime(2026, 9, 1),
+                CoverEnd = new DateTime(2026, 10, 5)
+            });
         Assert.True(result.IsValid);
     }
 
@@ -44,6 +52,8 @@ public class ExpenseValidatorsTests
     {
         var result = new UpdateExpenseReportDtoValidator().Validate(new UpdateExpenseReportDto
         {
+            CoverStart = new DateTime(2026, 8, 1),
+            CoverEnd = new DateTime(2026, 8, 31),
             Lines =
             [
                 new ExpenseLineDto
@@ -63,6 +73,8 @@ public class ExpenseValidatorsTests
     {
         var result = new UpdateExpenseReportDtoValidator().Validate(new UpdateExpenseReportDto
         {
+            CoverStart = new DateTime(2026, 7, 1),
+            CoverEnd = new DateTime(2026, 7, 31),
             Lines =
             [
                 new ExpenseLineDto
@@ -142,10 +154,12 @@ public class ExpenseValidatorsTests
     }
 
     [Fact]
-    public void Update_rejects_line_dates_in_different_months()
+    public void Update_accepts_line_dates_in_different_months()
     {
         var result = new UpdateExpenseReportDtoValidator().Validate(new UpdateExpenseReportDto
         {
+            CoverStart = new DateTime(2026, 9, 1),
+            CoverEnd = new DateTime(2026, 9, 30),
             Lines =
             [
                 new ExpenseLineDto
@@ -164,7 +178,6 @@ public class ExpenseValidatorsTests
                 }
             ]
         });
-        Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.ErrorMessage == ExpenseReportRules.MixedMonthLinesMessage);
+        Assert.True(result.IsValid);
     }
 }

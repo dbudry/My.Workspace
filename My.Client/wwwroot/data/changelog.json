@@ -4,6 +4,14 @@
     "date": "2026-09-22",
     "changes": [
       {
+        "type": "Changed",
+        "text": "Expense reports can cover any dates, and more than one report can be filed in the same month. The filing month is the month the report is submitted. My Expenses and Team list every year a cover period touches, include drafts, and search the lines."
+      },
+      {
+        "type": "Fixed",
+        "text": "Connecting or resuming Google Calendar restarts the watch with the stored token and queues the first import. Google's consent page opens only for a first connect or after that token is rejected. A second import for the same person waits briefly and then skips instead of holding the worker."
+      },
+      {
         "type": "Added",
         "text": "CRM pipeline for deals, stages, and activities. It stays hidden until a user is given a CRM role, and deals are not Tyme projects."
       },

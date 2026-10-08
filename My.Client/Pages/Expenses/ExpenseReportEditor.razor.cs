@@ -74,23 +74,29 @@ public partial class ExpenseReportEditor
     private bool isDirty =>
         report != null && canEdit && Fingerprint(report) != savedFingerprint;
 
-    private string pageTitle => report == null
-        ? "Expense report"
-        : string.IsNullOrWhiteSpace(report.EmployeeNameSnapshot) || isOwner
-            ? $"{MonthLabel(report.Year, report.Month)} expenses"
-            : $"{MonthLabel(report.Year, report.Month)} — {report.EmployeeNameSnapshot}";
+    private string pageTitle
+    {
+        get
+        {
+            if (report == null) return "Expense report";
+            var label = ExpenseStatusRules.IsDraft(report.Status)
+                ? ExpenseReportRules.CoverRangeLabel(report.CoverStart, report.CoverEnd)
+                : ExpenseReportRules.FilingMonthLabel(report.Status, report.Year, report.Month);
+            if (string.IsNullOrWhiteSpace(report.EmployeeNameSnapshot) || isOwner)
+                return $"{label} expenses";
+            return $"{label} — {report.EmployeeNameSnapshot}";
+        }
+    }
 
-    private string pageDescription => report == null
+    private string statusNote => report == null
         ? ""
-        : ExpenseStatusRules.IsReimbursed(report.Status)
-            ? "Reimbursed — this report is locked."
-            : ExpenseStatusRules.IsSubmitted(report.Status)
-                ? "Submitted — this report is locked."
-                : canEdit
-                    ? isDirty
-                        ? "Draft with unsaved changes."
-                        : "Draft."
-                    : "Draft. Only the owner can edit.";
+        : ExpenseStatusRules.IsLocked(report.Status)
+            ? "Locked."
+            : !canEdit
+                ? "Only the owner can edit."
+                : isDirty
+                    ? "Unsaved changes."
+                    : "";
 
     private IReadOnlyList<ExpenseChoiceDto> contextChoices =>
         meta?.Categories ?? [];
@@ -165,12 +171,8 @@ public partial class ExpenseReportEditor
         }
     }
 
-    private static string PdfFileName(ExpenseReportDto report)
-    {
-        var who = string.Join("_", (report.EmployeeNameSnapshot ?? "Employee")
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return $"{report.Year}_{report.Month:00}_{who}_Expenses.pdf";
-    }
+    private static string PdfFileName(ExpenseReportDto report) =>
+        ExpenseDriveNamingRules.StatementFileName(report.CoverStart, report.CoverEnd, report.EmployeeNameSnapshot);
 
     private async Task SubmitAsync()
     {
@@ -190,7 +192,7 @@ public partial class ExpenseReportEditor
 
         var confirmed = await DialogService.ShowMessageBoxAsync(
             "Submit report?",
-            $"Submit {MonthLabel(report.Year, report.Month)}? This locks the report and files the statement PDF on Drive.",
+            ExpenseReportRules.SubmitConfirmMessage(report.CoverStart, report.CoverEnd, DateTime.Today),
             yesText: "Submit", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -209,7 +211,11 @@ public partial class ExpenseReportEditor
             report = await response.Content.ReadFromJsonAsync<ExpenseReportDto>();
             NormalizeLineDates();
             RememberSaved();
-            Snackbar.Add("Submitted.", Severity.Success);
+            Snackbar.Add(
+                report == null
+                    ? "Submitted."
+                    : $"Filed as {ExpenseReportRules.FilingMonthLabel(report.Status, report.Year, report.Month)}.",
+                Severity.Success);
         }
         catch (Exception ex)
         {
@@ -400,9 +406,9 @@ public partial class ExpenseReportEditor
     {
         if (report == null) return;
         var today = ExpenseLineRules.CalendarDate(DateTime.Today);
-        var date = today.Year == report.Year && today.Month == report.Month
-            ? today
-            : new DateTime(report.Year, report.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        var coverStart = ExpenseLineRules.CalendarDate(report.CoverStart);
+        var coverEnd = ExpenseLineRules.CalendarDate(report.CoverEnd);
+        var date = today >= coverStart && today <= coverEnd ? today : coverStart;
         report.Lines.Add(new ExpenseLineDto
         {
             ExpenseLineId = Guid.NewGuid().ToString("N"),
@@ -504,8 +510,6 @@ public partial class ExpenseReportEditor
     {
         if (value is null) return;
         var next = ExpenseLineRules.CalendarDate(value.Value);
-        if (report != null && !ExpenseReportRules.IsLineDateInMonth(next, report.Year, report.Month))
-            return;
         if (line.Date.Date == next.Date) return;
         line.Date = next;
         var index = report?.Lines.IndexOf(line) ?? -1;
@@ -516,8 +520,6 @@ public partial class ExpenseReportEditor
     {
         if (value is null || report is null) return;
         var next = ExpenseLineRules.CalendarDate(value.Value);
-        if (!ExpenseReportRules.IsLineDateInMonth(next, report.Year, report.Month))
-            return;
         report.CoverStart = next;
         ValidateCoverPeriod();
     }
@@ -526,8 +528,6 @@ public partial class ExpenseReportEditor
     {
         if (value is null || report is null) return;
         var next = ExpenseLineRules.CalendarDate(value.Value);
-        if (!ExpenseReportRules.IsLineDateInMonth(next, report.Year, report.Month))
-            return;
         report.CoverEnd = next;
         ValidateCoverPeriod();
     }
@@ -539,12 +539,6 @@ public partial class ExpenseReportEditor
             ? null
             : "Cover end date cannot be before cover start date.";
     }
-
-    private DateTime? ReportMonthStart =>
-        report is null ? null : ExpenseReportRules.DefaultCoverPeriod(report.Year, report.Month).CoverStart;
-
-    private DateTime? ReportMonthEnd =>
-        report is null ? null : ExpenseReportRules.DefaultCoverPeriod(report.Year, report.Month).CoverEnd;
 
     private void SetLineDescription(ExpenseLineDto line, string value)
     {
@@ -595,10 +589,10 @@ public partial class ExpenseReportEditor
                 }
             }
 
-            if (ExpenseReportRules.IsLineDateAfterCoverEnd(line.Date, report.CoverEnd))
+            if (ExpenseReportRules.IsLineDateOutsideCover(line.Date, report.CoverStart, report.CoverEnd))
             {
                 Snackbar.Add(
-                    $"Heads up: this line's date ({line.Date:MM/dd/yyyy}) is after the report's cover end ({report.CoverEnd:MM/dd/yyyy}).",
+                    $"Heads up: this line's date ({line.Date:MM/dd/yyyy}) is outside the cover period ({ExpenseReportRules.CoverRangeLabel(report.CoverStart, report.CoverEnd)}).",
                     Severity.Warning);
             }
 
@@ -786,6 +780,4 @@ public partial class ExpenseReportEditor
             })
         }, FingerprintJson);
 
-    private static string MonthLabel(int year, int month) =>
-        new DateTime(year, month, 1).ToString("MMMM yyyy");
 }

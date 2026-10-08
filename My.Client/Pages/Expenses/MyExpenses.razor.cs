@@ -19,57 +19,41 @@ public partial class MyExpenses
     private bool canManage;
     private string? busyId;
     private string _managerView = "my";
-    /// <summary>Team year picker: current year back five years so a prior year
-    /// remains selectable after the default month filter narrows the result.</summary>
-    private readonly List<int> yearOptions = Enumerable.Range(0, 6)
-        .Select(i => DateTime.Today.Year - i)
-        .ToList();
 
     private List<int> myYearOptions =>
-        ExpenseListFilterRules.YearChoices(rows.Select(r => r.Year));
+        ExpenseListFilterRules.YearChoices(
+            rows.SelectMany(r => ExpenseListFilterRules.YearsOnReport(
+                r.Status, r.Year, r.CoverStart, r.CoverEnd)));
     private List<ExpenseReportListDto> rows = [];
     private List<ExpenseReportListDto> teamRows = [];
-    private List<(string UserId, string Name)> distinctUsers = [];
     private HttpClient client = null!;
 
-    private HashSet<int> _myYears = [DateTime.Today.Year];
-    private HashSet<int> _myMonths = [];
-    private HashSet<int> _teamYears = [ExpenseListFilterRules.PriorMonth(DateTime.Today).Year];
-    private HashSet<int> _teamMonths = [ExpenseListFilterRules.PriorMonth(DateTime.Today).Month];
+    private int? _myYear = DateTime.Today.Year;
+    private int? _teamYear = DateTime.Today.Year;
+    private HashSet<string> _myStatuses = [];
+    private HashSet<string> _teamStatuses = [];
+    private string _mySearch = "";
+    private string _teamSearch = "";
 
-    private IReadOnlyCollection<int> myYears
+    private int? myYear
     {
-        get => _myYears;
-        set => _myYears = ToSet(value);
-    }
-
-    private IReadOnlyCollection<int> myMonths
-    {
-        get => _myMonths;
-        set => _myMonths = ToSet(value);
-    }
-
-    private IReadOnlyCollection<int> teamYears
-    {
-        get => _teamYears;
+        get => _myYear;
         set
         {
-            var next = ToSet(value);
-            if (next.SetEquals(_teamYears)) return;
-            _teamYears = next;
-            _ = ReloadTeamAsync();
+            if (_myYear == value) return;
+            _myYear = value;
         }
     }
 
-    private IReadOnlyCollection<int> teamMonths
+    private int? teamYear
     {
-        get => _teamMonths;
+        get => _teamYear;
         set
         {
-            var next = ToSet(value);
-            if (next.SetEquals(_teamMonths)) return;
-            _teamMonths = next;
-            _ = ReloadTeamAsync();
+            if (_teamYear == value) return;
+            _teamYear = value;
+            if (!string.IsNullOrEmpty(_userFilter) && teamEmployees.All(u => u.UserId != _userFilter))
+                _userFilter = null;
         }
     }
 
@@ -77,11 +61,89 @@ public partial class MyExpenses
     private string? userFilter
     {
         get => _userFilter;
-        set { if (_userFilter == value) return; _userFilter = value; _ = ReloadTeamAsync(); }
+        set { if (_userFilter == value) return; _userFilter = value; }
+    }
+
+    private IReadOnlyCollection<string> myStatuses
+    {
+        get => _myStatuses;
+        set
+        {
+            var next = ToStatusSet(value);
+            if (next.SetEquals(_myStatuses)) return;
+            _myStatuses = next;
+        }
+    }
+
+    private IReadOnlyCollection<string> teamStatuses
+    {
+        get => _teamStatuses;
+        set
+        {
+            var next = ToStatusSet(value);
+            if (next.SetEquals(_teamStatuses)) return;
+            _teamStatuses = next;
+        }
+    }
+
+    private string mySearch
+    {
+        get => _mySearch;
+        set
+        {
+            var next = value ?? "";
+            if (_mySearch == next) return;
+            _mySearch = next;
+        }
+    }
+
+    private string teamSearch
+    {
+        get => _teamSearch;
+        set
+        {
+            var next = value ?? "";
+            if (_teamSearch == next) return;
+            _teamSearch = next;
+        }
     }
 
     private List<ExpenseReportListDto> visibleMyRows =>
-        rows.Where(r => ExpenseListFilterRules.MatchesPeriod(r.Year, r.Month, _myYears, _myMonths)).ToList();
+        rows.Where(r => MatchesVisibleRow(r, _myYear, _myStatuses, _mySearch)).ToList();
+
+    private List<int> teamYearOptions =>
+        ExpenseListFilterRules.YearChoices(
+            teamRows.SelectMany(r => ExpenseListFilterRules.YearsOnReport(
+                r.Status, r.Year, r.CoverStart, r.CoverEnd)));
+
+    private IEnumerable<ExpenseReportListDto> teamRowsForYear =>
+        teamRows.Where(r => ExpenseListFilterRules.MatchesListYear(
+            r.Status, r.Year, r.CoverStart, r.CoverEnd, _teamYear));
+
+    private List<(string UserId, string Name)> teamEmployees =>
+        teamRowsForYear
+            .GroupBy(r => r.UserId)
+            .Select(g => (
+                UserId: g.Key,
+                Name: g.Select(r => r.EmployeeName).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? g.Key))
+            .OrderBy(u => u.Name)
+            .ToList();
+
+    private List<ExpenseReportListDto> visibleTeamRows =>
+        teamRowsForYear
+            .Where(r => string.IsNullOrEmpty(_userFilter) || r.UserId == _userFilter)
+            .Where(r => ExpenseListFilterRules.MatchesStatuses(r.Status, _teamStatuses)
+                && ExpenseListFilterRules.MatchesSearch(r, _teamSearch))
+            .ToList();
+
+    private static bool MatchesVisibleRow(
+        ExpenseReportListDto row,
+        int? year,
+        IReadOnlyCollection<string> statuses,
+        string? search) =>
+        ExpenseListFilterRules.MatchesListYear(row.Status, row.Year, row.CoverStart, row.CoverEnd, year)
+        && ExpenseListFilterRules.MatchesStatuses(row.Status, statuses)
+        && ExpenseListFilterRules.MatchesSearch(row, search);
 
     private bool ShowMyReports => !canManage || _managerView == "my";
     private bool ShowTeamReports => canManage && _managerView == "team";
@@ -136,7 +198,8 @@ public partial class MyExpenses
         {
             var list = await client.GetFromJsonAsync<List<ExpenseReportListDto>>(Constants.API.Expenses.Reports);
             rows = list ?? [];
-            _myYears.IntersectWith(myYearOptions);
+            if (_myYear is int selected && !myYearOptions.Contains(selected))
+                _myYear = myYearOptions.Count == 0 ? null : myYearOptions[0];
         }
         catch (Exception ex)
         {
@@ -184,22 +247,12 @@ public partial class MyExpenses
         await InvokeAsync(StateHasChanged);
         try
         {
-            var url = Constants.API.Expenses.ConstructUrlForTeam(
-                ExpenseDataExtractionRules.StatusAll,
-                userFilter,
-                years: _teamYears,
-                months: _teamMonths);
+            var url = Constants.API.Expenses.ConstructUrlForTeam(ExpenseDataExtractionRules.StatusAll);
             var list = await client.GetFromJsonAsync<List<ExpenseReportListDto>>(url);
             if (gen != teamLoadGen) return;
             teamRows = list ?? [];
-            if (string.IsNullOrEmpty(userFilter))
-            {
-                distinctUsers = teamRows
-                    .GroupBy(r => r.UserId)
-                    .Select(g => (UserId: g.Key, Name: g.First().EmployeeName))
-                    .OrderBy(u => u.Name)
-                    .ToList();
-            }
+            if (_teamYear is int selected && !teamYearOptions.Contains(selected))
+                _teamYear = teamYearOptions.Count == 0 ? null : teamYearOptions[0];
         }
         catch (Exception ex)
         {
@@ -227,7 +280,7 @@ public partial class MyExpenses
 
         var confirmed = await DialogService.ShowMessageBoxAsync(
             "Submit report?",
-            $"Submit {MonthLabel(row.Year, row.Month)}? This locks the report and files the statement PDF on Drive.",
+            ExpenseReportRules.SubmitConfirmMessage(row.CoverStart, row.CoverEnd, DateTime.Today),
             yesText: "Submit", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -241,7 +294,12 @@ public partial class MyExpenses
                 return;
             }
 
-            Snackbar.Add("Submitted.", Severity.Success);
+            var filed = await response.Content.ReadFromJsonAsync<ExpenseReportDto>();
+            Snackbar.Add(
+                filed == null
+                    ? "Submitted."
+                    : $"Filed as {ExpenseReportRules.FilingMonthLabel(filed.Status, filed.Year, filed.Month)}.",
+                Severity.Success);
             await LoadAsync();
         }
         catch (Exception ex)
@@ -258,7 +316,7 @@ public partial class MyExpenses
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
             "Unsubmit report?",
-            $"Unlock {row.EmployeeName}'s {MonthLabel(row.Year, row.Month)} report so it can be edited?",
+            $"Unlock {row.EmployeeName}'s report covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)} so it can be edited?",
             yesText: "Unsubmit", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -296,7 +354,7 @@ public partial class MyExpenses
 
         var confirmed = await DialogService.ShowMessageBoxAsync(
             "Mark reimbursed?",
-            $"Mark {row.EmployeeName}'s {MonthLabel(row.Year, row.Month)} report as reimbursed?",
+            $"Mark {row.EmployeeName}'s report covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)} as reimbursed?",
             yesText: "Reimburse", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -327,7 +385,7 @@ public partial class MyExpenses
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
             "Undo reimbursed?",
-            $"Return {row.EmployeeName}'s {MonthLabel(row.Year, row.Month)} report to submitted?",
+            $"Return {row.EmployeeName}'s report covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)} to submitted?",
             yesText: "Undo", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -359,18 +417,14 @@ public partial class MyExpenses
         isCreating = true;
         try
         {
-            var (year, month) = ExpenseListFilterRules.CreatePeriod(_myYears, _myMonths, DateTime.Today);
+            var prior = DateTime.Today.AddMonths(-1);
+            var (coverStart, coverEnd) = ExpenseReportRules.DefaultCoverPeriod(prior.Year, prior.Month);
             var dto = new CreateExpenseReportDto
             {
-                Year = year,
-                Month = month
+                CoverStart = coverStart,
+                CoverEnd = coverEnd
             };
             var response = await client.PostAsJsonAsync(Constants.API.Expenses.Reports, dto);
-            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
-            {
-                Snackbar.Add("You already have a report for that month.", Severity.Warning);
-                return;
-            }
             if (!response.IsSuccessStatusCode)
             {
                 Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't create the report."), Severity.Error);
@@ -405,18 +459,14 @@ public partial class MyExpenses
 
     private void Open(string id) => Navigation.NavigateTo($"expenses/{id}");
 
-    private static string PdfFileName(ExpenseReportListDto row)
-    {
-        var who = string.Join("_", (row.EmployeeName ?? "Employee")
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
-        return $"{row.Year}_{row.Month:00}_{who}_Expenses.pdf";
-    }
+    private static string PdfFileName(ExpenseReportListDto row) =>
+        ExpenseDriveNamingRules.StatementFileName(row.CoverStart, row.CoverEnd, row.EmployeeName);
 
     private async Task DeleteAsync(ExpenseReportListDto row)
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
             "Delete draft?",
-            $"Delete the {MonthLabel(row.Year, row.Month)} draft? This cannot be undone.",
+            $"Delete the draft covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)}? This cannot be undone.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -442,25 +492,11 @@ public partial class MyExpenses
         }
     }
 
-    private static string MonthLabel(int year, int month) =>
-        new DateTime(year, month, 1).ToString("MMMM yyyy");
+    private static string StatusChipText(IReadOnlyList<string> selected) =>
+        selected.Count == 0 ? "All statuses" : string.Join(", ", selected);
 
-    private static HashSet<int> ToSet(IEnumerable<int>? value) =>
-        value?.ToHashSet() ?? [];
-
-    private static string YearChipText(IReadOnlyList<string> selected) =>
-        selected.Count == 0 ? "All years" : string.Join(", ", selected.OrderByDescending(s => s));
-
-    private static string MonthChipText(IReadOnlyList<string> selected)
-    {
-        if (selected.Count is 0 or 12)
-            return "All months";
-        return string.Join(", ", selected
-            .Select(s => int.TryParse(s, out var m) ? m : 0)
-            .Where(m => m is >= 1 and <= 12)
-            .OrderBy(m => m)
-            .Select(m => new DateTime(2000, m, 1).ToString("MMM")));
-    }
+    private static HashSet<string> ToStatusSet(IEnumerable<string>? value) =>
+        value?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     private static async Task<string> ReadApiMessageAsync(HttpResponseMessage response, string fallback)
     {

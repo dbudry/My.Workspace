@@ -31,6 +31,15 @@ public class GoogleCalendarAuthorizationUrlTests
             Assert.Contains("access_type=offline", decoded, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prompt=consent", decoded, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("include_granted_scopes", decoded, StringComparison.OrdinalIgnoreCase);
+
+            var reconnect = service.BuildAuthorizationUrl(
+                "https://app.example.com/settings", "user-1", hostedDomain: "example.com", forceConsent: false);
+            Assert.Contains("hd=example.com", Uri.UnescapeDataString(reconnect), StringComparison.Ordinal);
+            var reconnectDecoded = Uri.UnescapeDataString(reconnect);
+            Assert.Contains(GoogleCalendarOAuthRules.CalendarScope, reconnectDecoded, StringComparison.Ordinal);
+            Assert.Contains("access_type=offline", reconnectDecoded, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("prompt=consent", reconnectDecoded, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("include_granted_scopes", reconnectDecoded, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {

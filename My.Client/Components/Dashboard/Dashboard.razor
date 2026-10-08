@@ -66,8 +66,8 @@
                     <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Class="dashboard-alert-row__icon" />
                     <span class="dashboard-alert-row__text">
                         You have <b>@overdueExpenseReports.Count</b>
-                        unsubmitted expense month@(overdueExpenseReports.Count == 1 ? string.Empty : "s"):
-                        @string.Join(", ", overdueExpenseReports.Select(r => new DateTime(r.Year, r.Month, 1).ToString("MMM yyyy")))
+                        unsubmitted expense report@(overdueExpenseReports.Count == 1 ? string.Empty : "s"):
+                        @string.Join(", ", overdueExpenseReports.Select(r => ExpenseReportRules.CoverRangeLabel(r.CoverStart, r.CoverEnd)))
                     </span>
                     <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Small"
                                StartIcon="@Icons.Material.Filled.Send"

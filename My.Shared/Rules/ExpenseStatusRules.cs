@@ -6,6 +6,8 @@ public static class ExpenseStatusRules
     public const string Submitted = "Submitted";
     public const string Reimbursed = "Reimbursed";
 
+    public static readonly IReadOnlyList<string> Choices = [Draft, Submitted, Reimbursed];
+
     public static bool IsDraft(string? status) =>
         string.Equals(status, Draft, StringComparison.Ordinal);
 

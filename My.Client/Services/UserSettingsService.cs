@@ -271,9 +271,11 @@ namespace My.Client.Services
         /// Starts Calendar-only Google consent (Settings and post-login auto-connect).
         /// Drive is requested separately from Intranet via <see cref="InitiateGoogleDriveConnectAsync"/>.
         /// </summary>
-        public Task InitiateGoogleConnectAsync(string? returnUrlAfterConnect = null) =>
+        public Task InitiateGoogleConnectAsync(string? returnUrlAfterConnect = null, bool forceConsent = false) =>
             InitiateGoogleOAuthAsync(
-                Constants.API.GoogleCalendar.GetAuthUrl,
+                forceConsent
+                    ? $"{Constants.API.GoogleCalendar.GetAuthUrl}?forceConsent=true"
+                    : Constants.API.GoogleCalendar.GetAuthUrl,
                 GoogleOAuthConnectKindRules.Calendar,
                 "Couldn't start Google Calendar connect",
                 "Server did not return a Google Calendar sign-in URL.",
@@ -319,7 +321,8 @@ namespace My.Client.Services
 
             var client = _clientFactory.CreateClient(Constants.API.ClientName);
             var settingsRedirect = $"{_navigation.BaseUri.TrimEnd('/')}/settings";
-            var url = $"{authUrlRoute}?redirectUri={Uri.EscapeDataString(settingsRedirect)}";
+            var separator = authUrlRoute.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+            var url = $"{authUrlRoute}{separator}redirectUri={Uri.EscapeDataString(settingsRedirect)}";
 
             HttpResponseMessage response;
             try
