@@ -2,17 +2,18 @@
 
 @if (ExpenseStatusRules.IsReimbursed(Status))
 {
-    <MudChip T="string" Color="Color.Tertiary" Size="Size.Small" Icon="@Icons.Material.Filled.Paid">Reimbursed</MudChip>
+    <MudChip T="string" Color="Color.Tertiary" Size="@Size" Icon="@Icons.Material.Filled.Paid">Reimbursed</MudChip>
 }
 else if (ExpenseStatusRules.IsSubmitted(Status))
 {
-    <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.CheckCircle">Submitted</MudChip>
+    <MudChip T="string" Color="Color.Success" Size="@Size" Icon="@Icons.Material.Filled.CheckCircle">Submitted</MudChip>
 }
 else
 {
-    <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.Edit">Draft</MudChip>
+    <MudChip T="string" Color="Color.Info" Size="@Size" Icon="@Icons.Material.Filled.Edit">Draft</MudChip>
 }
 
 @code {
     [Parameter] public string? Status { get; set; }
+    [Parameter] public Size Size { get; set; } = Size.Small;
 }

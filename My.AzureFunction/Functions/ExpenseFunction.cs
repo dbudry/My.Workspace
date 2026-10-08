@@ -223,11 +223,10 @@ namespace My.Functions
             var principal = new ClaimsPrincipal(req.Identities);
             if (AuthGates.RequireScopedExpenses(principal, out var userId) is IActionResult unauth) return unauth;
 
-            var rows = await ProjectList(
-                    _dbContext.ExpenseReports.AsNoTracking()
-                        .Where(r => r.UserId == userId)
-                        .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month))
-                .ToListAsync();
+            var rows = await LoadListAsync(
+                _dbContext.ExpenseReports.AsNoTracking()
+                    .Where(r => r.UserId == userId)
+                    .OrderByDescending(r => r.CoverStart).ThenByDescending(r => r.CreatedAt));
 
             return new OkObjectResult(rows);
         }
@@ -258,17 +257,12 @@ namespace My.Functions
             var query = _dbContext.ExpenseReports.AsNoTracking().AsQueryable();
             if (!string.IsNullOrWhiteSpace(userIdFilter))
                 query = query.Where(r => r.UserId == userIdFilter);
-            if (years.Count > 0)
-                query = query.Where(r => years.Contains(r.Year));
-            if (months.Count > 0)
-                query = query.Where(r => months.Contains(r.Month));
+            query = FilterByFilingMonth(query, years, months);
             query = FilterByStatus(query, status);
 
-            var rows = await ProjectList(
-                    query.OrderByDescending(r => r.Year)
-                        .ThenByDescending(r => r.Month)
-                        .ThenBy(r => r.EmployeeNameSnapshot))
-                .ToListAsync();
+            var rows = await LoadListAsync(
+                query.OrderByDescending(r => r.CoverStart)
+                    .ThenBy(r => r.EmployeeNameSnapshot));
 
             return new OkObjectResult(rows);
         }
@@ -302,10 +296,13 @@ namespace My.Functions
             var query = _dbContext.ExpenseReports.AsNoTracking()
                 .Include(r => r.Lines).ThenInclude(l => l.Receipts)
                 .AsQueryable();
-            if (year.HasValue)
-                query = query.Where(r => r.Year == year.Value);
-            if (month.HasValue)
-                query = query.Where(r => r.Month == month.Value);
+            if (year.HasValue || month.HasValue)
+            {
+                query = FilterByFilingMonth(
+                    query,
+                    year.HasValue ? [year.Value] : [],
+                    month.HasValue ? [month.Value] : []);
+            }
             if (userIds.Count > 0)
                 query = query.Where(r => userIds.Contains(r.UserId));
             query = FilterByStatus(query, status);
@@ -348,6 +345,15 @@ namespace My.Functions
             if (blocked != null)
                 return new ConflictObjectResult(blocked);
 
+            var submittedAt = DateTime.UtcNow;
+            var submitterPrefs = await _dbContext.UserSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UserId == userId);
+            var (submitYear, submitMonth) = ExpenseReportRules.SubmitMonth(submittedAt, submitterPrefs?.TimeZone);
+            var previousYear = report.Year;
+            var previousMonth = report.Month;
+            report.Year = submitYear;
+            report.Month = submitMonth;
+
             try
             {
                 var packet = await BuildReportPdfAsync(report, legacy: false);
@@ -355,6 +361,8 @@ namespace My.Functions
             }
             catch (Exception ex)
             {
+                report.Year = previousYear;
+                report.Month = previousMonth;
                 _logger.LogError(ex, "Could not file expense PDF for {ReportId}.", id);
                 var message = ex is InvalidOperationException
                     ? ex.Message
@@ -363,9 +371,10 @@ namespace My.Functions
             }
 
             report.Status = ExpenseStatusRules.Submitted;
-            report.SubmittedAt = DateTime.UtcNow;
+            report.SubmittedAt = submittedAt;
             report.SubmittedByUserId = userId;
-            report.UpdatedAt = DateTime.UtcNow;
+            report.UpdatedAt = submittedAt;
+            await RelocateExpenseReceiptsAsync(report);
             await _dbContext.SaveChangesAsync();
 
             var reloaded = await LoadOwnedReportAsync(report.ExpenseReportId, userId, tracking: false);
@@ -478,11 +487,6 @@ namespace My.Functions
             if (validationError != null)
                 return validationError;
 
-            var exists = await _dbContext.ExpenseReports
-                .AnyAsync(r => r.UserId == userId && r.Year == dto!.Year && r.Month == dto.Month);
-            if (exists)
-                return new ConflictObjectResult("You already have a report for that month.");
-
             var user = await _dbContext.ApplicationUsers.AsNoTracking()
                 .FirstOrDefaultAsync(u => u.Id == userId);
             if (user == null)
@@ -491,15 +495,18 @@ namespace My.Functions
             var settings = await LoadExpenseSettingsAsync();
             var userPrefs = await _dbContext.UserSettings.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.UserId == userId);
-            var (coverStart, coverEnd) = ExpenseReportRules.DefaultCoverPeriod(dto!.Year, dto.Month);
+            var coverStart = ExpenseLineRules.CalendarDate(dto!.CoverStart);
+            var coverEnd = ExpenseLineRules.CalendarDate(dto.CoverEnd);
+            if (!ExpenseReportRules.IsValidCoverPeriod(coverStart, coverEnd))
+                return new BadRequestObjectResult("Cover end date cannot be before cover start date.");
             var now = DateTime.UtcNow;
 
             var report = new ExpenseReport
             {
                 ExpenseReportId = Guid.NewGuid().ToString("N"),
                 UserId = userId,
-                Year = dto.Year,
-                Month = dto.Month,
+                Year = 0,
+                Month = 0,
                 CoverStart = coverStart,
                 CoverEnd = coverEnd,
                 ReportDate = coverEnd,
@@ -540,14 +547,10 @@ namespace My.Functions
 
             report.UpdatedAt = DateTime.UtcNow;
 
-            if (dto!.Lines.Any(l => !ExpenseReportRules.IsLineDateInMonth(l.Date, report.Year, report.Month)))
-                return new BadRequestObjectResult(ExpenseReportRules.LineDateMonthMessage);
-
-            var coverStart = ExpenseLineRules.CalendarDate(dto.CoverStart);
+            var coverStart = ExpenseLineRules.CalendarDate(dto!.CoverStart);
             var coverEnd = ExpenseLineRules.CalendarDate(dto.CoverEnd);
-            if (!ExpenseReportRules.IsLineDateInMonth(coverStart, report.Year, report.Month)
-                || !ExpenseReportRules.IsLineDateInMonth(coverEnd, report.Year, report.Month))
-                return new BadRequestObjectResult(ExpenseReportRules.CoverPeriodMonthMessage);
+            if (!ExpenseReportRules.IsValidCoverPeriod(coverStart, coverEnd))
+                return new BadRequestObjectResult("Cover end date cannot be before cover start date.");
 
             report.CoverStart = coverStart;
             report.CoverEnd = coverEnd;
@@ -877,24 +880,73 @@ namespace My.Functions
             return stored == null ? query : query.Where(r => r.Status == stored);
         }
 
-        private static IQueryable<ExpenseReportListDto> ProjectList(IQueryable<ExpenseReport> source) =>
-            source.Select(r => new ExpenseReportListDto
+        /// <summary>
+        /// A year or month filter is the submit month. Drafts are excluded because they have no filing month yet.
+        /// </summary>
+        private static IQueryable<ExpenseReport> FilterByFilingMonth(
+            IQueryable<ExpenseReport> query,
+            IReadOnlyCollection<int> years,
+            IReadOnlyCollection<int> months)
+        {
+            if (years.Count == 0 && months.Count == 0)
+                return query;
+
+            query = query.Where(r =>
+                r.Status == ExpenseStatusRules.Submitted || r.Status == ExpenseStatusRules.Reimbursed);
+            if (years.Count > 0)
+                query = query.Where(r => years.Contains(r.Year));
+            if (months.Count > 0)
+                query = query.Where(r => months.Contains(r.Month));
+            return query;
+        }
+
+        private static async Task<List<ExpenseReportListDto>> LoadListAsync(IQueryable<ExpenseReport> source)
+        {
+            var reports = await source
+                .Include(r => r.Lines)
+                .ThenInclude(l => l.Receipts)
+                .ToListAsync();
+            return reports.Select(ToListDto).ToList();
+        }
+
+        private static ExpenseReportListDto ToListDto(ExpenseReport report)
+        {
+            var lines = report.Lines.OrderBy(l => l.SortOrder).ToList();
+            return new ExpenseReportListDto
             {
-                ExpenseReportId = r.ExpenseReportId,
-                UserId = r.UserId,
-                EmployeeName = r.EmployeeNameSnapshot ?? "",
-                Year = r.Year,
-                Month = r.Month,
-                CoverStart = r.CoverStart,
-                CoverEnd = r.CoverEnd,
-                ReportDate = r.ReportDate,
-                Status = r.Status,
-                LineCount = r.Lines.Count,
-                TotalAmount = r.Lines.Sum(l => l.Amount),
-                SubmittedAt = r.SubmittedAt,
-                ReimbursedAt = r.ReimbursedAt,
-                UpdatedAt = r.UpdatedAt
-            });
+                ExpenseReportId = report.ExpenseReportId,
+                UserId = report.UserId,
+                EmployeeName = report.EmployeeNameSnapshot ?? "",
+                Year = report.Year,
+                Month = report.Month,
+                CoverStart = report.CoverStart,
+                CoverEnd = report.CoverEnd,
+                ReportDate = report.ReportDate,
+                Status = report.Status,
+                LineCount = lines.Count,
+                TotalAmount = lines.Sum(l => l.Amount),
+                SubmittedAt = report.SubmittedAt,
+                ReimbursedAt = report.ReimbursedAt,
+                UpdatedAt = report.UpdatedAt,
+                Purpose = report.Purpose,
+                PlantOrLocation = report.PlantOrLocation,
+                ChargeToNote = report.ChargeToNote,
+                Lines = lines.Select(l => new ExpenseLineSearchDto
+                {
+                    Date = l.Date,
+                    Description = l.Description,
+                    Category = l.Category,
+                    Amount = l.Amount,
+                    Miles = l.Miles,
+                    TransportationCode = l.TransportationCode,
+                    MiscellaneousCode = l.MiscellaneousCode,
+                    MealBreakfast = l.MealBreakfast,
+                    MealLunch = l.MealLunch,
+                    MealDinner = l.MealDinner,
+                    ReceiptFileNames = l.Receipts.Select(r => r.OriginalFileName).ToList()
+                }).ToList()
+            };
+        }
 
         private static ExpenseDataExportDto BuildExport(IReadOnlyList<ExpenseReport> reports, IReadOnlyCollection<string> entities)
         {
@@ -1015,9 +1067,8 @@ namespace My.Functions
             var coverEnd = ExpenseLineRules.CalendarDate(report.CoverEnd);
             var reportDate = ExpenseLineRules.CalendarDate(report.ReportDate);
 
-            var safeName = string.Join("_", (report.EmployeeNameSnapshot ?? "Employee")
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries));
-            var fileName = $"{report.Year}_{report.Month:00}_{safeName}_Expenses.pdf";
+            var fileName = ExpenseDriveNamingRules.StatementFileName(
+                coverStart, coverEnd, report.EmployeeNameSnapshot);
 
             var model = new ExpenseForm8743Model
             {
@@ -1506,7 +1557,8 @@ namespace My.Functions
         {
             var user = await _dbContext.ApplicationUsers.AsNoTracking()
                 .FirstOrDefaultAsync(u => u.Id == report.UserId);
-            var periodFolderName = ExpenseDriveNamingRules.PeriodFolderName(report.Year, report.Month);
+            var periodFolderName = ExpenseDriveNamingRules.ReceiptPeriodFolderName(
+                report.Status, report.Year, report.Month);
 
             var existingFolderId = report.DriveUserFolderId
                 ?? await _dbContext.ExpenseReports.AsNoTracking()

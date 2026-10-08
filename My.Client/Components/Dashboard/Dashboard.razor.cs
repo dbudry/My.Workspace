@@ -636,8 +636,8 @@ namespace My.Client.Components.Dashboard
                 var list = await client.GetFromJsonAsync<List<ExpenseReportListDto>>(Constants.API.Expenses.Reports);
                 var today = DateTime.Today;
                 overdueExpenseReports = (list ?? [])
-                    .Where(r => ExpenseReportRules.IsOverdueDraft(r.Status, r.Year, r.Month, r.LineCount, today))
-                    .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month)
+                    .Where(r => ExpenseReportRules.IsOverdueDraft(r.Status, r.CoverEnd, r.LineCount, today))
+                    .OrderBy(r => r.CoverEnd)
                     .ToList();
                 await InvokeAsync(StateHasChanged);
             }

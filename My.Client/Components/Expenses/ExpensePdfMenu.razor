@@ -24,9 +24,11 @@ else
     <MudMenu Dense="true" Disabled="@Disabled"
              AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
         <ActivatorContent>
-            <MudButton Variant="@Variant" Color="@Color" Size="Size.Small"
+            <MudButton Variant="@Variant" Color="@Color"
                        StartIcon="@Icons.Material.Filled.PictureAsPdf"
-                       Disabled="@Disabled">
+                       EndIcon="@Icons.Material.Filled.ArrowDropDown"
+                       Disabled="@Disabled"
+                       OnClick="@context.ToggleAsync">
                 PDF
             </MudButton>
         </ActivatorContent>

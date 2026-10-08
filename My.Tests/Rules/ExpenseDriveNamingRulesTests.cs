@@ -33,6 +33,24 @@ public class ExpenseDriveNamingRulesTests
         Assert.Equal("2026_09", ExpenseDriveNamingRules.PeriodFolderName(2026, 9));
 
     [Fact]
+    public void ReceiptPeriodFolderName_is_draft_until_submitted()
+    {
+        Assert.Equal("Draft", ExpenseDriveNamingRules.ReceiptPeriodFolderName(
+            ExpenseStatusRules.Draft, 2026, 10));
+        Assert.Equal("Draft", ExpenseDriveNamingRules.ReceiptPeriodFolderName(
+            ExpenseStatusRules.Submitted, 0, 0));
+        Assert.Equal("2026_10", ExpenseDriveNamingRules.ReceiptPeriodFolderName(
+            ExpenseStatusRules.Submitted, 2026, 10));
+    }
+
+    [Fact]
+    public void StatementFileName_uses_the_cover_range() =>
+        Assert.Equal(
+            "2026-09-01_2026-09-30_Derek_Budry_Expenses.pdf",
+            ExpenseDriveNamingRules.StatementFileName(
+                new DateTime(2026, 9, 1), new DateTime(2026, 9, 30), "Derek Budry"));
+
+    [Fact]
     public void FiledPacketFileName_is_unique_per_report_and_not_under_the_user_folder()
     {
         Assert.Equal("Filed", ExpenseDriveNamingRules.FiledFolderName);

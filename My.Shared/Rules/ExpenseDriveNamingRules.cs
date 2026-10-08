@@ -38,8 +38,26 @@ public static class ExpenseDriveNamingRules
         return compact.Length <= 6 ? compact : compact[..6];
     }
 
+    public const string DraftFolderName = "Draft";
+
     public static string PeriodFolderName(int year, int month) =>
         $"{year:D4}_{Math.Clamp(month, 1, 12):D2}";
+
+    /// <summary>
+    /// Receipts on a draft sit in <see cref="DraftFolderName"/> until submit,
+    /// then move into the submit-month folder.
+    /// </summary>
+    public static string ReceiptPeriodFolderName(string? status, int year, int month) =>
+        ExpenseStatusRules.IsLocked(status) && year is >= 2000 and <= 9999 && month is >= 1 and <= 12
+            ? PeriodFolderName(year, month)
+            : DraftFolderName;
+
+    public static string StatementFileName(DateTime coverStart, DateTime coverEnd, string? employeeName)
+    {
+        var who = SanitizeSegment(employeeName);
+        if (who.Length == 0) who = "Employee";
+        return $"{coverStart:yyyy-MM-dd}_{coverEnd:yyyy-MM-dd}_{who}_Expenses.pdf";
+    }
 
     /// <summary>
     /// Sibling of per-user receipt folders. Submitted statement PDFs live here so

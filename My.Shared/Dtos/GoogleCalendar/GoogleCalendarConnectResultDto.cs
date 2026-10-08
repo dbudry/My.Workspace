@@ -18,5 +18,11 @@ namespace My.Shared.Dtos.GoogleCalendar
         /// → Tyme) will not run until the user reconnects again.
         /// </summary>
         public bool SyncNotStarted { get; set; }
+
+        /// <summary>
+        /// The stored refresh token was rejected and Google did not issue a replacement.
+        /// The client must start consent again with <c>prompt=consent</c>.
+        /// </summary>
+        public bool NeedsConsent { get; set; }
     }
 }

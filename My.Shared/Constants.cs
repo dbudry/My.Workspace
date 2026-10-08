@@ -934,6 +934,12 @@ namespace My.Shared.Constants
                 /// <summary>POST — revokes the stored refresh token and clears calendar linkage.</summary>
                 public const string Disconnect = $"{Api}/disconnect";
 
+                /// <summary>
+                /// POST — restart the Google watch with the stored refresh token.
+                /// No consent page unless the token is missing or Google rejected it.
+                /// </summary>
+                public const string Resume = $"{Api}/resume";
+
                 /// <summary>POST ?from=YYYY-MM-DD&amp;to=YYYY-MM-DD — pushes the user's tracked tasks
                 /// in the date range onto their primary Google calendar. Idempotent: tasks already
                 /// on the calendar are skipped.</summary>

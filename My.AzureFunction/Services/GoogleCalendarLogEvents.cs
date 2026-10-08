@@ -23,6 +23,7 @@ public static class GoogleCalendarLogEvents
     public static readonly EventId EventImportFailed = new(3112, nameof(EventImportFailed));
     public static readonly EventId ApproachingPoison = new(3113, nameof(ApproachingPoison));
     public static readonly EventId ImportLockWait = new(3114, nameof(ImportLockWait));
+    public static readonly EventId ImportLockBusy = new(3119, nameof(ImportLockBusy));
     public static readonly EventId ProbeOk = new(3115, nameof(ProbeOk));
     public static readonly EventId WatchRenewalSkipped = new(3116, nameof(WatchRenewalSkipped));
     public static readonly EventId WatchRenewed = new(3117, nameof(WatchRenewed));
