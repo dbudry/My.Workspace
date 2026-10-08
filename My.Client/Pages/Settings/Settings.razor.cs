@@ -287,9 +287,39 @@ namespace My.Client.Pages.Settings
             googleError = null;
             try
             {
-                // Same OAuth flow as post-login auto-connect. Navigates away on success;
-                // failures used to be swallowed — surface them so reconnect is not a silent no-op.
-                await SettingsService.InitiateGoogleConnectAsync(Navigation.Uri);
+                // Stored token: restart the watch here. Google's consent page is only
+                // opened when there is no token, or Google has rejected it.
+                var client = ClientFactory.CreateClient(Constants.API.ClientName);
+                var resp = await client.PostAsync(Constants.API.GoogleCalendar.Resume, null);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    googleError = await resp.Content.ReadAsStringAsync();
+                    if (string.IsNullOrWhiteSpace(googleError))
+                        googleError = "Couldn't start Google Calendar sync.";
+                    Snackbar.Add(googleError, Severity.Error);
+                    isGoogleBusy = false;
+                    return;
+                }
+
+                var resume = await resp.Content.ReadFromJsonAsync<GoogleCalendarResumeResultDto>();
+                if (resume?.NeedsConsent == true)
+                {
+                    await SettingsService.InitiateGoogleConnectAsync(Navigation.Uri, forceConsent: true);
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(resume?.Error))
+                {
+                    googleError = resume.Error;
+                    Snackbar.Add(resume.Error, Severity.Warning);
+                    isGoogleBusy = false;
+                    return;
+                }
+
+                SettingsService.InvalidateCache();
+                Snackbar.Add("Google Calendar sync is running.", Severity.Success);
+                await LoadSettings();
+                isGoogleBusy = false;
             }
             catch (Exception ex)
             {
@@ -297,7 +327,6 @@ namespace My.Client.Pages.Settings
                 Snackbar.Add(ex.Message, Severity.Error);
                 isGoogleBusy = false;
             }
-            // On success NavigateTo(forceLoad) tears the page down; only reset busy on failure.
         }
 
         private async Task DisconnectGoogle()
@@ -446,6 +475,12 @@ namespace My.Client.Pages.Settings
                     {
                         var result = await resp.Content.ReadFromJsonAsync<GoogleCalendarConnectResultDto>();
                         SettingsService.InvalidateCache();
+                        if (result?.NeedsConsent == true)
+                        {
+                            await SettingsService.InitiateGoogleConnectAsync(Navigation.Uri, forceConsent: true);
+                            return;
+                        }
+
                         var driveReconnectNeeded = result?.DriveReconnectNeeded == true;
                         var syncNotStarted = result?.SyncNotStarted == true;
                         if (syncNotStarted)

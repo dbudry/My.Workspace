@@ -631,31 +631,36 @@
                         Workspace <code>Admin</code> does not open this menu.
                     </MudText>
                     <MudText Typo="Typo.body2">
-                        Open <strong>Expenses</strong>, pick a month, and click <strong>New Report</strong>.
-                        On the report, <kbd>Ctrl</kbd>+<kbd>N</kbd> adds a line. Add a line per expense.
+                        Open <strong>Expenses</strong> and click <strong>New Report</strong>.
+                        A new draft covers last month. You can have more than one draft, and more than one
+                        report filed in the same month. On the report, <kbd>Ctrl</kbd>+<kbd>N</kbd> adds a line.
+                        Add a line per expense.
                         Personal-car mileage lives under <strong>Transportation</strong> (type Personal car, then miles).
                         Meals can be marked Breakfast / Lunch / Dinner. Attach a PDF or image on the line —
                         receipts are stored under App Drive → Expenses after a workspace Admin
-                        connects that Drive in App Settings. If a line's date is after the report's
-                        <strong>Cover end</strong>, attaching its receipt shows a warning so you can double-check it.
-                        <kbd>Ctrl</kbd>+<kbd>S</kbd> saves. Click <strong>Submit</strong> when the month is
-                        ready — that locks the report, builds the statement PDF (form + receipts), and
-                        files it under App Drive → Expenses → <strong>Filed</strong> → month.
+                        connects that Drive in App Settings. If a line's date is outside the
+                        <strong>Cover period</strong>, attaching its receipt shows a warning so you can widen the dates.
+                        <kbd>Ctrl</kbd>+<kbd>S</kbd> saves. Click <strong>Submit</strong> when the packet is
+                        ready. The report's month is the month you submit it — September receipts submitted
+                        in October are an October expense report. Submit locks the report, builds the
+                        statement PDF (form + receipts), and files it under App Drive → Expenses →
+                        <strong>Filed</strong> → that month.
                         That filed PDF is the copy Open PDF uses after submit. A manager
-                        <strong>Unsubmit</strong> removes it so the next submit files a fresh one.
+                        <strong>Unsubmit</strong> removes it so the next submit files a fresh one, in the month
+                        of that later submit.
                         Deleting the person later can clear their receipt folder; the filed PDF stays.
                         After the company pays you, the report shows as <strong>Reimbursed</strong>.
-                        After a month ends, an unsubmitted report with lines shows on the dashboard
-                        the same way unsubmitted Tyme months do.
+                        After the cover period ends, an unsubmitted draft with lines shows on the dashboard.
                         Click a row to open a report. Home address and your signature live under
                         <strong>Settings → Expenses</strong>. <strong>PDF</strong> has Open / Download
                         and a legacy Form 87-43 option that fills the old Excel template.
                         iPhone HEIC receipts are converted to JPEG for the statement.
                     </MudText>
                     <MudText Typo="Typo.body2" Class="mt-2">
-                        <strong>Cover period</strong> (the Start/End dates on the printed statement) defaults to
-                        the full calendar month. You can shorten it, but start and end must stay in that
-                        same month. Line dates must also be in that month.
+                        <strong>Cover period</strong> is the start and end printed on the statement.
+                        It can be any range, including dates that cross a month. Line dates are not
+                        limited to that range or to a single month. Submitting files the report in that
+                        calendar month, using the timezone in Settings (Eastern Time when none is saved).
                     </MudText>
                 </MudExpansionPanel>
                 @if (hasExpensesManager)
@@ -669,7 +674,10 @@
                             the employee’s next Submit files a new one).
                             After the company has paid the employee, a manager clicks <strong>Reimburse</strong>.
                             <strong>Undo reimbursed</strong> returns it to submitted.
-                            The dashboard lists last month's team reports.
+                            The dashboard lists team reports submitted last month. On My and Team,
+                            Year lists the years a report's cover period touches, so a period that
+                            crosses into January shows under both years. Drafts are included.
+                            Search looks through the report and its lines.
                         </MudText>
                         <MudText Typo="Typo.body2">
                             <strong>Expenses → Data</strong> exports reports, line items, and receipt

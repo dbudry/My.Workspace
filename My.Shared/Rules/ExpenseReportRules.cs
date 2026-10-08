@@ -35,14 +35,11 @@ public static class ExpenseReportRules
         value.Length <= AddressSnapshotMaxLength ? value : value[..AddressSnapshotMaxLength];
     public const int EmployeeNameSnapshotMaxLength = 120;
 
-    public const string MixedMonthLinesMessage =
-        "All line dates on a report must be in the same month.";
-
-    public const string LineDateMonthMessage =
-        "Each line date must be in this report's month.";
-
-    public const string CoverPeriodMonthMessage =
-        "Cover start and cover end must be in this report's month.";
+    /// <summary>
+    /// Used when the submitter has no timezone saved. The Functions host clock is UTC,
+    /// which would file an evening submit on the last day of the month into the next month.
+    /// </summary>
+    public const string DefaultSubmitTimeZoneId = "America/New_York";
 
     public static (DateTime CoverStart, DateTime CoverEnd) DefaultCoverPeriod(int year, int month)
     {
@@ -52,45 +49,56 @@ public static class ExpenseReportRules
     }
 
     public static bool IsValidCoverPeriod(DateTime coverStart, DateTime coverEnd) =>
-        coverStart.Date <= coverEnd.Date;
-
-    /// <summary>True when a line's own date falls after the report's cover end - the submitter should be warned.</summary>
-    public static bool IsLineDateAfterCoverEnd(DateTime lineDate, DateTime coverEnd) =>
-        coverEnd != default && lineDate.Date > coverEnd.Date;
+        coverStart != default
+        && coverEnd != default
+        && coverStart.Date <= coverEnd.Date;
 
     /// <summary>
-    /// One report is one calendar month. True when every date falls in the same month.
-    /// False when <paramref name="dates"/> is empty or spans more than one month.
+    /// True when a line date falls outside the cover range. Save is still allowed;
+    /// attaching a receipt warns so the cover range can be widened.
     /// </summary>
-    public static bool TryPeriodFromLineDates(
-        IEnumerable<DateTime> dates,
-        out int year,
-        out int month)
+    public static bool IsLineDateOutsideCover(DateTime lineDate, DateTime coverStart, DateTime coverEnd)
     {
-        year = 0;
-        month = 0;
-        (int Year, int Month)? period = null;
-        foreach (var raw in dates)
-        {
-            var date = ExpenseLineRules.CalendarDate(raw);
-            var next = (date.Year, date.Month);
-            if (period is null)
-                period = next;
-            else if (period != next)
-                return false;
-        }
-
-        if (period is null)
-            return false;
-
-        (year, month) = period.Value;
-        return true;
+        if (coverStart == default || coverEnd == default) return false;
+        var day = lineDate.Date;
+        return day < coverStart.Date || day > coverEnd.Date;
     }
 
-    public static bool IsLineDateInMonth(DateTime date, int year, int month)
+    public static string CoverRangeLabel(DateTime coverStart, DateTime coverEnd) =>
+        $"{coverStart:MM/dd/yyyy} – {coverEnd:MM/dd/yyyy}";
+
+    /// <summary>
+    /// Filing month is the submit month. Drafts have none yet, even when Year/Month
+    /// still hold a value from before this rule.
+    /// </summary>
+    public static string FilingMonthLabel(string? status, int year, int month)
     {
-        var day = ExpenseLineRules.CalendarDate(date);
-        return day.Year == year && day.Month == month;
+        if (!ExpenseStatusRules.IsLocked(status)) return "—";
+        if (year is < 2000 or > 9999 || month is < 1 or > 12) return "—";
+        return new DateTime(year, month, 1).ToString("MMMM yyyy");
+    }
+
+    public static string SubmitConfirmMessage(DateTime coverStart, DateTime coverEnd, DateTime today)
+    {
+        var filedAs = new DateTime(today.Year, today.Month, 1).ToString("MMMM yyyy");
+        return $"Submit the report covering {CoverRangeLabel(coverStart, coverEnd)}? It will be filed as {filedAs}. This locks the report and files the statement PDF on Drive.";
+    }
+
+    /// <summary>
+    /// Calendar month of <paramref name="submittedAtUtc"/> in the submitter's timezone.
+    /// A blank timezone uses <see cref="DefaultSubmitTimeZoneId"/>.
+    /// </summary>
+    public static (int Year, int Month) SubmitMonth(DateTime submittedAtUtc, string? timeZoneId)
+    {
+        var utc = submittedAtUtc.Kind switch
+        {
+            DateTimeKind.Utc => submittedAtUtc,
+            DateTimeKind.Local => submittedAtUtc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(submittedAtUtc, DateTimeKind.Utc)
+        };
+        var zoneId = string.IsNullOrWhiteSpace(timeZoneId) ? DefaultSubmitTimeZoneId : timeZoneId;
+        var local = TimeZoneInfo.ConvertTimeFromUtc(utc, UserTimeZoneRules.Resolve(zoneId));
+        return (local.Year, local.Month);
     }
 
     public static string EmployeeDisplayName(string firstName, string lastName)
@@ -138,14 +146,13 @@ public static class ExpenseReportRules
         || string.Equals(reportUserId, callerUserId, StringComparison.Ordinal);
 
     /// <summary>
-    /// Draft with lines for a month that has already ended — same idea as Tyme overdue
-    /// (tracked time in a prior month that is not submitted).
+    /// Draft with lines whose cover period has already ended.
     /// </summary>
-    public static bool IsOverdueDraft(string? status, int year, int month, int lineCount, DateTime today)
+    public static bool IsOverdueDraft(string? status, DateTime coverEnd, int lineCount, DateTime today)
     {
         if (lineCount <= 0) return false;
         if (!ExpenseStatusRules.IsDraft(status)) return false;
-        if (year < today.Year) return true;
-        return year == today.Year && month < today.Month;
+        if (coverEnd == default) return false;
+        return coverEnd.Date < today.Date;
     }
 }

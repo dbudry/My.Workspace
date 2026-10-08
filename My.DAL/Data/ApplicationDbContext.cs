@@ -432,7 +432,6 @@ namespace My.DAL.Data
 
             builder.Entity<ExpenseReport>()
                 .HasIndex(r => new { r.UserId, r.Year, r.Month })
-                .IsUnique()
                 .HasDatabaseName("IX_ExpenseReports_UserId_Year_Month");
 
             builder.Entity<ExpenseReport>()

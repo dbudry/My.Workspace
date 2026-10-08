@@ -14,7 +14,7 @@ Replace the monthly Excel Form 87-43 + Drive PDF working folder (`Expenses/Worki
 - v1 workflow: **Draft → Submit** (lock). No in-app approve/reimbursed yet. Manager+ can view team and unsubmit.
 - Employee entry is **month + line items** (date, description, category, amount, mileage, meals B/L/D). Not Form 87-43 header fields (department, mail-to, purpose, plant, charge-to, cover dates) — those are blank or constant on real reports.
 - Charge-to is **not** a Tyme project. Home company is the home company (`HomeOrganizationId` App Setting — Organizations has no “this is us” flag today).
-- Receipts: Drive via a **privileged owner token**, not each employee’s token. Folder is not company-shared (unlike Intranet). Layout `{root}/{LastName}_{FirstName}/{yyyy}_{MM}/{yyyy_MM_dd}_{Slug}.ext`. Submitted statement PDFs are filed under `{root}/Filed/{yyyy}_{MM}/` (outside the person folder) so they survive user-delete. Unsubmit removes the filed PDF; the next submit writes a new one.
+- Receipts: Drive via a **privileged owner token**, not each employee’s token. Folder is not company-shared (unlike Intranet). Draft receipts sit in `{root}/{LastName}_{FirstName}/Draft/`. Submit moves them to `{root}/{LastName}_{FirstName}/{yyyy}_{MM}/` for the submit month. Submitted statement PDFs are filed under `{root}/Filed/{yyyy}_{MM}/` (outside the person folder) so they survive user-delete. Unsubmit removes the filed PDF; the next submit writes a new one.
 - Accounting later: **QuickBooks**. v1 does not integrate. Keep closed category enum + SQL money so a Data page (`/expenses/data`) and QBO push can land without remodeling.
 
 ## What is in this slice
@@ -22,7 +22,7 @@ Replace the monthly Excel Form 87-43 + Drive PDF working folder (`Expenses/Worki
 - Scope, assignable roles, `AuthGates.RequireScopedExpenses`, role seed.
 - Nav group + **My Expenses** list (`/expenses`) and report editor (`/expenses/{id}`).
 - App Settings → **Expenses**: home organization, mileage rate (default 0.555), Drive folder ID (connect/create later).
-- Draft reports: one per user per calendar month. Employees add line items (closed categories including Software), Purpose of trip, and cover period. Mileage amount = miles × rate. Totals by category.
+- Draft reports: as many as needed. Cover start and cover end are a free range (they can cross a month). Line dates are not locked to that range. The report's month is the month it is submitted, so two reports can be filed in the same month. Mileage amount = miles × rate. Totals by category.
 - Private App Drive owner OAuth (separate from the per-user Google Drive/Calendar grant), folder layout, receipt upload/download/proxy.
 - Draft → Submit → Reimbursed workflow, with Unsubmit and Undo-reimbursed for Manager:Expenses+.
 - PDF export: modern QuestPDF packet plus a legacy Form 87-43 layout (Excel-templated, printed via Excel COM automation when available on the host; otherwise the filled `.xlsx` workbook is returned for the user to print themselves).
@@ -55,3 +55,5 @@ Replace the monthly Excel Form 87-43 + Drive PDF working folder (`Expenses/Worki
 | 2026-09-17 | Added Purpose of trip field to the editor | Field existed on the entity/DTO/PDF but had no input, so it was always blank |
 | 2026-09-17 | Address snapshot refreshes on every draft save, not just create | Editing home address in Settings after creating a report left the printed PDF address stale |
 | 2026-09-17 | Submit files the statement PDF under Expenses/Filed | Packet is built on demand today, so user-delete of the receipt folder would destroy the only copy. Filed PDFs sit outside the person folder and survive account delete. Unsubmit drops the file so the next submit files a new one. |
+| 2026-10-07 | Filing month is the submit month; cover range is free | Receipts arrive late and a packet can cross a month. One report per calendar month blocked September receipts on an October filing. Drafts have no month until submit. More than one report may be submitted in the same month. |
+| 2026-10-08 | List year follows the cover period | My and Team year choices are the years a report covers, plus the submit year once it is filed. A cover that crosses a year shows under each year it touches. Drafts stay on Team. Status is a preset list, and search includes line items. |

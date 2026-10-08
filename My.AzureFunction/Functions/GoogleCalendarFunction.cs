@@ -131,10 +131,68 @@ namespace My.Functions
             // Calendar-only consent. Do not send login_hint: with prompt=consent it
             // 500s Google's consent page for some Workspace users. Optional hd hint
             // locks the chooser when the tenant policy has a single domain.
+            // prompt=consent only when there is no stored token, or the client is
+            // retrying after Google rejected that token.
             var domains = await AuthDomainSettingsLoader.ResolveAsync(dbContext, cache);
             var hostedDomain = GoogleIdentityRules.GetSingleHostedDomainHint(domains);
-            var url = google.BuildAuthorizationUrl(redirectUri!, state: userId, hostedDomain);
+            var settings = (await settingsRepository.Get(s => s.UserId == userId)).FirstOrDefault();
+            var hasToken = !string.IsNullOrEmpty(settings?.GoogleRefreshToken);
+            var tokenRejected = string.Equals(req.Query["forceConsent"], "true", StringComparison.OrdinalIgnoreCase);
+            var url = google.BuildAuthorizationUrl(
+                redirectUri!,
+                state: userId,
+                hostedDomain,
+                forceConsent: GoogleCalendarOAuthRules.ShouldForceConsent(hasToken, tokenRejected));
             return new OkObjectResult(new { url });
+        }
+
+        /// <summary>
+        /// Restart the watch with the stored refresh token. Connect and Resume both
+        /// call this first so a person who already granted Calendar never sees
+        /// Google's consent page unless the token is missing or rejected.
+        /// </summary>
+        [Function("ResumeGoogleCalendarSync")]
+        public async Task<IActionResult> ResumeAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "googlecalendar/resume")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            var userId = principal.FindFirstValue(Constants.Claims.UserId);
+            if (string.IsNullOrEmpty(userId))
+                return new UnauthorizedResult();
+
+            var settings = (await settingsRepository.Get(s => s.UserId == userId)).FirstOrDefault();
+            if (settings == null || string.IsNullOrEmpty(settings.GoogleRefreshToken))
+            {
+                return new OkObjectResult(new GoogleCalendarResumeResultDto { NeedsConsent = true });
+            }
+
+            var reconnecting = string.IsNullOrEmpty(settings.GoogleCalendarId);
+            if (reconnecting)
+            {
+                settings.GoogleCalendarId = PrimaryCalendarId;
+                settings.PublishToGoogleCalendar = true;
+                settings.ImportFromGoogleCalendar = true;
+                settings.GoogleCalendarAutoConnectOptOut = false;
+                await settingsRepository.Update(settings);
+            }
+
+            var watchOutcome = await TryStartWatchAsync(settings, req);
+            if (watchOutcome == WatchStartOutcome.TokenInvalid)
+                return new OkObjectResult(new GoogleCalendarResumeResultDto { NeedsConsent = true });
+            if (watchOutcome == WatchStartOutcome.Started)
+                return new OkObjectResult(new GoogleCalendarResumeResultDto { Resumed = true });
+            if (watchOutcome == WatchStartOutcome.NoWebhookConfigured)
+            {
+                return new OkObjectResult(new GoogleCalendarResumeResultDto
+                {
+                    Error = "Live import needs a public site. It cannot register from localhost."
+                });
+            }
+
+            return new OkObjectResult(new GoogleCalendarResumeResultDto
+            {
+                Error = "Google Calendar sync could not be started. Try again in a moment."
+            });
         }
 
         [Function("CompleteGoogleCalendarCallback")]
@@ -213,12 +271,17 @@ namespace My.Functions
             }
 
             var syncNotStarted = watchOutcome is WatchStartOutcome.TokenInvalid or WatchStartOutcome.Failed;
+            // Stored token was rejected and this visit did not bring a replacement.
+            // Ask for the consent page once. Do not loop if a new token also failed.
+            var needsConsent = watchOutcome == WatchStartOutcome.TokenInvalid
+                && string.IsNullOrEmpty(refresh);
             return new OkObjectResult(new GoogleCalendarConnectResultDto
             {
                 Connected = true,
                 Email = settings.GoogleCalendarEmail ?? email,
                 DriveReconnectNeeded = driveReconnectNeeded,
-                SyncNotStarted = syncNotStarted
+                SyncNotStarted = syncNotStarted && !needsConsent,
+                NeedsConsent = needsConsent
             });
         }
 
@@ -754,8 +817,19 @@ namespace My.Functions
                 return;
             }
 
-            await using var importLock = await GoogleCalendarImportUserLock.AcquireAsync(
+            await using var importLock = await GoogleCalendarImportUserLock.TryAcquireAsync(
                 blobService, settings.UserId, logger, cancellationToken);
+            if (importLock is null)
+            {
+                // Another worker is already importing this user. Completing the
+                // message avoids a 30-minute retry storm that starves HTTP (Pull).
+                logger.LogInformation(
+                    GoogleCalendarLogEvents.ImportLockBusy,
+                    "Google calendar import skipped; another import is already running for user {UserId}.",
+                    settings.UserId);
+                return;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             await ImportChangesAsync(settings, dequeueCount);
         }
@@ -1269,16 +1343,11 @@ namespace My.Functions
                 settings.GoogleSyncToken = null;
                 await settingsRepository.Update(settings);
 
-                // Initial pull so existing calendar events land in Tyme immediately,
-                // and so subsequent webhooks have a syncToken to diff from.
-                if (settings.ImportFromGoogleCalendar)
-                {
-                    try { await ImportChangesAsync(settings); }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Initial Google Calendar import failed for {UserId}; webhook will retry.", settings.UserId);
-                    }
-                }
+                // Never import inside this HTTP call. Connect, resume, and the OAuth
+                // callback all wait on this method. The import can take minutes and
+                // the host then returns a backend failure. The queue worker does that
+                // work with its own timeout.
+                await EnqueueInitialImportAsync(settings.GoogleChannelId, channelToken, settings.UserId);
 
                 return WatchStartOutcome.Started;
             }
@@ -1300,6 +1369,36 @@ namespace My.Functions
             {
                 logger.LogWarning(ex, "StartWatch failed for user {UserId} — inbound sync disabled until next connect.", settings.UserId);
                 return WatchStartOutcome.Failed;
+            }
+        }
+
+        /// <summary>
+        /// Hands the first import to the queue. A failure here must not fail the
+        /// HTTP call: the watch is already registered, and Google will send
+        /// <c>exists</c> later.
+        /// </summary>
+        private async Task EnqueueInitialImportAsync(string? channelId, string channelToken, string userId)
+        {
+            if (string.IsNullOrEmpty(channelId))
+                return;
+
+            try
+            {
+                await importQueue.EnqueueAsync(
+                    new GoogleCalendarImportQueueMessage
+                    {
+                        ChannelId = channelId,
+                        ChannelToken = channelToken,
+                        ResourceState = GoogleCalendarWebhookRules.ExistsResourceState
+                    },
+                    CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Watch started for user {UserId} but the initial import was not queued. ChannelId={ChannelId}",
+                    userId, channelId);
             }
         }
 

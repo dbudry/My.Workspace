@@ -31,15 +31,6 @@
                             <MudSelectItem T="int?" Value="@y">@y</MudSelectItem>
                         }
                     </MudSelect>
-                    <MudSelect T="int?" @bind-Value="monthFilter" Label="Month" Variant="Variant.Outlined"
-                               Margin="Margin.Dense" Dense="true">
-                        <MudSelectItem T="int?" Value="@((int?)null)">All months</MudSelectItem>
-                        @for (int m = 1; m <= 12; m++)
-                        {
-                            var month = m;
-                            <MudSelectItem T="int?" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
-                        }
-                    </MudSelect>
                     <MudSelect T="string" @bind-Value="statusFilter" Label="Status" Variant="Variant.Outlined"
                                Margin="Margin.Dense" Dense="true">
                         <MudSelectItem Value="@ExpenseDataExtractionRules.StatusSubmitted">Submitted</MudSelectItem>
@@ -104,14 +95,14 @@
                 <MudTable Items="@previewReports" Hover="true" Dense="true" Breakpoint="Breakpoint.Sm" Class="mb-4">
                     <HeaderContent>
                         <MudTh>Employee</MudTh>
-                        <MudTh>Month</MudTh>
+                        <MudTh>Period</MudTh>
                         <MudTh>Status</MudTh>
                         <MudTh Style="text-align:right;">Lines</MudTh>
                         <MudTh Style="text-align:right;">Total</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Employee">@context.EmployeeName</MudTd>
-                        <MudTd DataLabel="Month">@MonthLabel(context.Year, context.Month)</MudTd>
+                        <MudTd DataLabel="Period">@ExpenseReportRules.CoverRangeLabel(context.CoverStart, context.CoverEnd)</MudTd>
                         <MudTd DataLabel="Status"><ExpenseStatusChip Status="@context.Status" /></MudTd>
                         <MudTd DataLabel="Lines" Style="text-align:right;">@context.LineCount</MudTd>
                         <MudTd DataLabel="Total" Style="text-align:right;">@context.TotalAmount.ToString("C")</MudTd>

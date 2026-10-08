@@ -29,6 +29,15 @@ public class GoogleCalendarSyncRulesTests
     }
 
     [Fact]
+    public void ExplainTrace_busy_lock_is_plain_language()
+    {
+        var text = GoogleCalendarSyncRules.ExplainTrace(
+            "Google calendar import skipped; another import is already running for user abc.");
+        Assert.Contains("already running", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Pull missed events", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ExplainTrace_poison_is_plain_language()
     {
         var text = GoogleCalendarSyncRules.ExplainTrace(

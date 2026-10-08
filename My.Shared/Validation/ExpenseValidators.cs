@@ -8,11 +8,18 @@ namespace My.Shared.Validation
     {
         public CreateExpenseReportDtoValidator()
         {
-            RuleFor(x => x.Year)
-                .InclusiveBetween(2000, 9999).WithMessage("Invalid year/month.");
+            RuleFor(x => x.CoverStart)
+                .Must(d => d != default)
+                .WithMessage("Cover start is required.");
 
-            RuleFor(x => x.Month)
-                .InclusiveBetween(1, 12).WithMessage("Invalid year/month.");
+            RuleFor(x => x.CoverEnd)
+                .Must(d => d != default)
+                .WithMessage("Cover end is required.");
+
+            RuleFor(x => x)
+                .Must(x => ExpenseReportRules.IsValidCoverPeriod(x.CoverStart, x.CoverEnd))
+                .When(x => x.CoverStart != default && x.CoverEnd != default)
+                .WithMessage("Cover end date cannot be before cover start date.");
         }
     }
 
@@ -77,12 +84,6 @@ namespace My.Shared.Validation
                 .NotNull()
                 .Must(lines => lines.Count <= ExpenseLineRules.MaxLinesPerReport)
                 .WithMessage($"A report can have at most {ExpenseLineRules.MaxLinesPerReport} lines.");
-
-            RuleFor(x => x.Lines)
-                .Must(lines => lines.Count == 0
-                    || ExpenseReportRules.TryPeriodFromLineDates(lines.Select(l => l.Date), out _, out _))
-                .When(x => x.Lines != null)
-                .WithMessage(ExpenseReportRules.MixedMonthLinesMessage);
 
             RuleForEach(x => x.Lines).SetValidator(new ExpenseLineDtoValidator());
         }

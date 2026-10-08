@@ -6,22 +6,23 @@ namespace My.Tests.Rules;
 public class ExpenseReportRulesTests
 {
     [Fact]
-    public void TryPeriodFromLineDates_same_month()
+    public void SubmitMonth_uses_submitter_timezone_and_eastern_when_blank()
     {
-        Assert.True(ExpenseReportRules.TryPeriodFromLineDates(
-            [new DateTime(2026, 8, 10), new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc)],
-            out var year, out var month));
-        Assert.Equal(2026, year);
-        Assert.Equal(8, month);
+        var utc = new DateTime(2026, 11, 1, 2, 30, 0, DateTimeKind.Utc);
+        Assert.Equal((2026, 10), ExpenseReportRules.SubmitMonth(utc, "America/New_York"));
+        Assert.Equal((2026, 10), ExpenseReportRules.SubmitMonth(utc, null));
+        Assert.Equal((2026, 10), ExpenseReportRules.SubmitMonth(utc, "  "));
+
+        var tokyo = new DateTime(2026, 10, 31, 15, 0, 0, DateTimeKind.Utc);
+        Assert.Equal((2026, 11), ExpenseReportRules.SubmitMonth(tokyo, "Asia/Tokyo"));
     }
 
     [Fact]
-    public void TryPeriodFromLineDates_mixed_or_empty_is_false()
+    public void FilingMonthLabel_is_blank_until_submitted()
     {
-        Assert.False(ExpenseReportRules.TryPeriodFromLineDates(
-            [new DateTime(2026, 9, 9), new DateTime(2026, 8, 10)],
-            out _, out _));
-        Assert.False(ExpenseReportRules.TryPeriodFromLineDates([], out _, out _));
+        Assert.Equal("—", ExpenseReportRules.FilingMonthLabel(ExpenseStatusRules.Draft, 2026, 10));
+        Assert.Equal("October 2026", ExpenseReportRules.FilingMonthLabel(ExpenseStatusRules.Submitted, 2026, 10));
+        Assert.Equal("—", ExpenseReportRules.FilingMonthLabel(ExpenseStatusRules.Reimbursed, 0, 0));
     }
 
     [Fact]
@@ -32,14 +33,6 @@ public class ExpenseReportRulesTests
         Assert.Equal(("", ""), ExpenseReportRules.SplitHomeAddress(null));
         Assert.Equal(("2393 Viola Dr", "Bay City MI 48706"),
             ExpenseReportRules.SplitHomeAddress("2393 Viola Dr\nBay City MI 48706"));
-    }
-
-    [Fact]
-    public void IsLineDateInMonth_matches_calendar_month_only()
-    {
-        Assert.True(ExpenseReportRules.IsLineDateInMonth(new DateTime(2026, 8, 10), 2026, 8));
-        Assert.False(ExpenseReportRules.IsLineDateInMonth(new DateTime(2026, 9, 9), 2026, 8));
-        Assert.False(ExpenseReportRules.IsLineDateInMonth(new DateTime(2026, 8, 31), 2026, 9));
     }
 
     [Fact]
@@ -112,29 +105,32 @@ public class ExpenseReportRulesTests
         Assert.True(ExpenseReportRules.IsValidCoverPeriod(new DateTime(2026, 9, 1), new DateTime(2026, 9, 30)));
         Assert.True(ExpenseReportRules.IsValidCoverPeriod(new DateTime(2026, 9, 1), new DateTime(2026, 9, 1)));
         Assert.False(ExpenseReportRules.IsValidCoverPeriod(new DateTime(2026, 9, 15), new DateTime(2026, 9, 1)));
+        Assert.False(ExpenseReportRules.IsValidCoverPeriod(default, default));
     }
 
     [Fact]
-    public void IsLineDateAfterCoverEnd_flags_dates_past_cover_end()
+    public void IsLineDateOutsideCover_flags_dates_outside_the_range()
     {
-        var coverEnd = new DateTime(2026, 9, 30);
-        Assert.True(ExpenseReportRules.IsLineDateAfterCoverEnd(new DateTime(2026, 10, 1), coverEnd));
-        Assert.False(ExpenseReportRules.IsLineDateAfterCoverEnd(new DateTime(2026, 9, 30), coverEnd));
-        Assert.False(ExpenseReportRules.IsLineDateAfterCoverEnd(new DateTime(2026, 9, 1), coverEnd));
-        Assert.False(ExpenseReportRules.IsLineDateAfterCoverEnd(new DateTime(2026, 10, 1), default));
+        var start = new DateTime(2026, 9, 1);
+        var end = new DateTime(2026, 9, 30);
+        Assert.True(ExpenseReportRules.IsLineDateOutsideCover(new DateTime(2026, 10, 1), start, end));
+        Assert.True(ExpenseReportRules.IsLineDateOutsideCover(new DateTime(2026, 8, 31), start, end));
+        Assert.False(ExpenseReportRules.IsLineDateOutsideCover(new DateTime(2026, 9, 30), start, end));
+        Assert.False(ExpenseReportRules.IsLineDateOutsideCover(new DateTime(2026, 9, 1), start, end));
+        Assert.False(ExpenseReportRules.IsLineDateOutsideCover(new DateTime(2026, 10, 1), default, default));
     }
 
     [Fact]
-    public void IsOverdueDraft_prior_month_with_lines()
+    public void IsOverdueDraft_when_cover_end_is_before_today()
     {
-        var today = new DateTime(2026, 9, 10);
+        var today = new DateTime(2026, 10, 7);
         Assert.True(ExpenseReportRules.IsOverdueDraft(
-            ExpenseStatusRules.Draft, 2026, 8, lineCount: 1, today));
+            ExpenseStatusRules.Draft, new DateTime(2026, 9, 30), lineCount: 1, today));
         Assert.False(ExpenseReportRules.IsOverdueDraft(
-            ExpenseStatusRules.Submitted, 2026, 8, lineCount: 1, today));
+            ExpenseStatusRules.Submitted, new DateTime(2026, 9, 30), lineCount: 1, today));
         Assert.False(ExpenseReportRules.IsOverdueDraft(
-            ExpenseStatusRules.Draft, 2026, 9, lineCount: 1, today));
+            ExpenseStatusRules.Draft, new DateTime(2026, 10, 31), lineCount: 1, today));
         Assert.False(ExpenseReportRules.IsOverdueDraft(
-            ExpenseStatusRules.Draft, 2026, 8, lineCount: 0, today));
+            ExpenseStatusRules.Draft, new DateTime(2026, 9, 30), lineCount: 0, today));
     }
 }
