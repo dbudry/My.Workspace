@@ -734,24 +734,26 @@ namespace My.Client.Pages.Tyme
             if (activeReportTab == TaskDetailsTabIndex)
             {
                 var columns = availableColumns.Where(c => IsColumnVisible(c.Key)).ToList();
-                sb.AppendLine(string.Join(",", columns.Select(c => $"\"{Escape(c.Label)}\"")));
+                sb.AppendLine(string.Join(",", columns.Select(c => $"\"{Escape(GetExportHeader(c))}\"")));
 
                 foreach (var task in filteredTasks)
                 {
                     var row = GetTaskRowDisplay(task);
-                    var cells = columns.Select(c => $"\"{Escape(GetExportCellValue(row, c.Key))}\"");
+                    var cells = columns.Select(c => c.Key == "duration"
+                        ? DurationCsvRules.ToDecimalHours(row.DurationSeconds)
+                        : $"\"{Escape(GetExportCellValue(row, c.Key))}\"");
                     sb.AppendLine(string.Join(",", cells));
                 }
             }
             else
             {
-                sb.AppendLine("\"Employee\",\"Tasks\",\"Total Time\"");
+                sb.AppendLine("\"Employee\",\"Tasks\",\"Total Time (hours)\"");
                 foreach (var summary in userSummaries)
                 {
                     sb.AppendLine(
                         $"\"{Escape(summary.UserName)}\"," +
                         $"{summary.TaskCount}," +
-                        $"\"{Escape(summary.TotalTimeFormatted)}\"");
+                        DurationCsvRules.ToDecimalHours(summary.TotalTimeSeconds));
                 }
             }
 
@@ -770,6 +772,9 @@ namespace My.Client.Pages.Tyme
                 $"a.download='{fileName}';" +
                 $"document.body.appendChild(a);a.click();document.body.removeChild(a);");
         }
+
+        private static string GetExportHeader((string Key, string Label) column) =>
+            column.Key == "duration" ? "Duration (hours)" : column.Label;
 
         private static string? GetExportCellValue(TaskRowDisplay row, string columnKey) =>
             columnKey switch
@@ -831,6 +836,7 @@ namespace My.Client.Pages.Tyme
                 Organization = displayOrganization,
                 Group = displayGroup,
                 Duration = FormatDuration(displayDuration),
+                DurationSeconds = displayDuration,
                 Billable = displayIsBillable ? "Yes" : "No",
                 Status = string.Join(", ", statusParts)
             };
@@ -957,6 +963,7 @@ namespace My.Client.Pages.Tyme
             public string? Organization { get; init; }
             public string? Group { get; init; }
             public string Duration { get; init; } = "";
+            public double DurationSeconds { get; init; }
             public string Billable { get; init; } = "";
             public string Status { get; init; } = "";
         }

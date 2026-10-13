@@ -1,3 +1,4 @@
+using My.Shared.Constants;
 using My.Shared.Rules;
 using Xunit;
 
@@ -103,6 +104,61 @@ public class GoogleCalendarOAuthRulesTests
             "https://accounts.google.com/o/oauth2/v2/auth?client_id=x&hd=example.com",
             url);
         Assert.DoesNotContain("login_hint", url, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(true, true, true)]
+    public void ShouldRestoreReconnectSettings_only_after_a_saved_reconnect_and_a_rejected_token(
+        bool reconnectSettingsWereSaved, bool tokenInvalid, bool expected) =>
+        Assert.Equal(
+            expected,
+            GoogleCalendarOAuthRules.ShouldRestoreReconnectSettings(reconnectSettingsWereSaved, tokenInvalid));
+
+    [Theory]
+    [InlineData(false, "old-channel", "old-resource", "new-channel", false)]
+    [InlineData(true, null, "old-resource", "new-channel", false)]
+    [InlineData(true, "old-channel", null, "new-channel", false)]
+    [InlineData(true, "same-channel", "old-resource", "same-channel", false)]
+    [InlineData(true, "old-channel", "old-resource", "new-channel", true)]
+    public void ShouldStopReplacedChannel_only_after_a_different_channel_has_started(
+        bool watchStarted,
+        string? previousChannelId,
+        string? previousResourceId,
+        string? newChannelId,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            GoogleCalendarOAuthRules.ShouldStopReplacedChannel(
+                watchStarted, previousChannelId, previousResourceId, newChannelId));
+
+    [Theory]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(true, true, false, true)]
+    public void NeedsAnotherConsent_stops_after_the_forced_page(
+        bool tokenInvalid,
+        bool incomingRefreshTokenEmpty,
+        bool consentAlreadyForced,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            GoogleCalendarOAuthRules.NeedsAnotherConsent(
+                tokenInvalid, incomingRefreshTokenEmpty, consentAlreadyForced));
+
+    [Theory]
+    [InlineData(false, "googlecalendar/authurl?redirectUri=https%3A%2F%2Flocalhost%3A7047%2Fsettings")]
+    [InlineData(true, "googlecalendar/authurl?forceConsent=true&redirectUri=https%3A%2F%2Flocalhost%3A7047%2Fsettings")]
+    public void Calendar_client_auth_url_uses_ampersand_when_forceConsent_is_already_present(
+        bool forceConsent, string expected)
+    {
+        var route = GoogleCalendarOAuthRules.CalendarClientAuthRoute(
+            Constants.API.GoogleCalendar.GetAuthUrl, forceConsent);
+        var url = GoogleOAuthRedirectRules.AppendRedirectUri(route, "https://localhost:7047/settings");
+        Assert.Equal(expected, url);
     }
 
     [Fact]
