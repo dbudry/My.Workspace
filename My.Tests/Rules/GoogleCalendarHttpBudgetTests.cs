@@ -23,6 +23,28 @@ public class GoogleCalendarHttpBudgetTests
         Assert.Contains("EnqueueInitialImportAsync", method, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Resume_and_callback_stop_a_replaced_channel_only_after_the_watch_starts()
+    {
+        var source = File.ReadAllText(FindFunctionSource());
+        AssertStopAfterStart(source, "public async Task<IActionResult> ResumeAsync(", "public async Task<IActionResult> CompleteCallbackAsync(");
+        AssertStopAfterStart(source, "public async Task<IActionResult> CompleteCallbackAsync(", "public async Task<IActionResult> DisconnectAsync(");
+    }
+
+    private static void AssertStopAfterStart(string source, string startSignature, string endSignature)
+    {
+        var start = source.IndexOf(startSignature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Missing {startSignature}");
+        var end = source.IndexOf(endSignature, start + startSignature.Length, StringComparison.Ordinal);
+        Assert.True(end > start, $"Missing {endSignature}");
+        var method = source[start..end];
+
+        var watch = method.IndexOf("TryStartWatchAsync", StringComparison.Ordinal);
+        var stop = method.IndexOf("ShouldStopReplacedChannel", StringComparison.Ordinal);
+        Assert.True(watch >= 0 && stop > watch, $"{startSignature} stops the previous channel before the new watch starts.");
+        Assert.DoesNotContain("TryStopWatchAsync", method, StringComparison.Ordinal);
+    }
+
     private static string FindFunctionSource()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

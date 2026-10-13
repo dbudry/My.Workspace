@@ -76,6 +76,47 @@ public static class GoogleCalendarOAuthRules
         !hasStoredRefreshToken || tokenRejected;
 
     /// <summary>
+    /// Resume saved calendar id and the publish/import flags before the watch.
+    /// Put them back only when Google rejected the token. A localhost miss or a
+    /// Google 5xx still leaves the account looking connected so export can run.
+    /// </summary>
+    public static bool ShouldRestoreReconnectSettings(bool reconnectSettingsWereSaved, bool tokenInvalid) =>
+        reconnectSettingsWereSaved && tokenInvalid;
+
+    /// <summary>
+    /// Open Google's consent page once after a rejected token. A visit that already
+    /// used <c>prompt=consent</c> and still came back with no replacement token
+    /// must stop as <c>SyncNotStarted</c>. Asking again loops.
+    /// A new token that also failed is not this case: the incoming token is not empty.
+    /// </summary>
+    public static bool NeedsAnotherConsent(
+        bool tokenInvalid,
+        bool incomingRefreshTokenEmpty,
+        bool consentAlreadyForced) =>
+        tokenInvalid && incomingRefreshTokenEmpty && !consentAlreadyForced;
+
+    /// <summary>
+    /// Stop the channel this request replaced. A failed start, including localhost
+    /// and a Google 5xx, must leave the previous channel running.
+    /// </summary>
+    public static bool ShouldStopReplacedChannel(
+        bool watchStarted,
+        string? previousChannelId,
+        string? previousResourceId,
+        string? newChannelId) =>
+        watchStarted
+        && !string.IsNullOrEmpty(previousChannelId)
+        && !string.IsNullOrEmpty(previousResourceId)
+        && !string.Equals(previousChannelId, newChannelId, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Settings → Connect route. <paramref name="forceConsent"/> is the one retry
+    /// after Google rejected the stored refresh token.
+    /// </summary>
+    public static string CalendarClientAuthRoute(string authUrlRoute, bool forceConsent) =>
+        forceConsent ? $"{authUrlRoute}?forceConsent=true" : authUrlRoute;
+
+    /// <summary>
     /// Optionally locks the consent screen to a single hosted domain when the tenant
     /// policy has exactly one domain (see <see cref="GoogleIdentityRules.GetSingleHostedDomainHint"/>).
     /// Do not also append <c>login_hint</c>: that plus <c>prompt=consent</c>

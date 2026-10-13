@@ -717,12 +717,12 @@ namespace My.Client.Pages.Tyme
             var sb = new StringBuilder();
 
             if (canViewTeamReports)
-                sb.AppendLine("\"Date\",\"Employee\",\"Project\",\"Details\",\"Duration\"");
+                sb.AppendLine("\"Date\",\"Employee\",\"Project\",\"Details\",\"Duration (hours)\"");
             else
-                sb.AppendLine("\"Date\",\"Project\",\"Details\",\"Duration\"");
+                sb.AppendLine("\"Date\",\"Project\",\"Details\",\"Duration (hours)\"");
             foreach (var task in taskDetailRows)
             {
-                var duration = $"{(int)task.Duration.TotalHours:00}:{task.Duration.Minutes:00}";
+                var duration = DurationCsvRules.ToDecimalHours(task.Duration.TotalSeconds);
                 var project = task.Project?.DisplayName ?? task.Project?.Name ?? "None";
                 if (canViewTeamReports)
                 {
@@ -731,7 +731,7 @@ namespace My.Client.Pages.Tyme
                         $"\"{Escape(task.UserName ?? "Unknown")}\"," +
                         $"\"{Escape(project)}\"," +
                         $"\"{Escape(task.Details)}\"," +
-                        $"\"{Escape(duration)}\"");
+                        duration);
                 }
                 else
                 {
@@ -739,7 +739,7 @@ namespace My.Client.Pages.Tyme
                         $"\"{Escape(FormatReportDate(task.StartDate))}\"," +
                         $"\"{Escape(project)}\"," +
                         $"\"{Escape(task.Details)}\"," +
-                        $"\"{Escape(duration)}\"");
+                        duration);
                 }
             }
 

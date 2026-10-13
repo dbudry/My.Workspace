@@ -15,6 +15,21 @@ public static class GoogleOAuthRedirectRules
         "https://zealous-grass-01d92eb0f.7.azurestaticapps.net/settings",
     };
 
+    /// <summary>
+    /// Adds <c>redirectUri</c> to an auth-url route. A route that already has a query
+    /// (<c>?forceConsent=true</c>) must use <c>&amp;</c>.
+    /// </summary>
+    public static string AppendRedirectUri(string route, string redirectUri)
+    {
+        if (string.IsNullOrWhiteSpace(route))
+            throw new ArgumentException("Auth URL route is required.", nameof(route));
+        if (string.IsNullOrWhiteSpace(redirectUri))
+            throw new ArgumentException("Redirect URI is required.", nameof(redirectUri));
+
+        var separator = route.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+        return $"{route}{separator}redirectUri={Uri.EscapeDataString(redirectUri)}";
+    }
+
     public static bool IsAllowedRedirectUri(string? redirectUri, out string? error)
     {
         error = null;

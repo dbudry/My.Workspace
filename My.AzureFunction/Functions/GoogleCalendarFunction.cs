@@ -167,18 +167,36 @@ namespace My.Functions
             }
 
             var reconnecting = string.IsNullOrEmpty(settings.GoogleCalendarId);
+            var priorReconnect = CaptureReconnectFields(settings);
+            var previousChannelId = settings.GoogleChannelId;
+            var previousResourceId = settings.GoogleResourceId;
             if (reconnecting)
             {
-                settings.GoogleCalendarId = PrimaryCalendarId;
-                settings.PublishToGoogleCalendar = true;
-                settings.ImportFromGoogleCalendar = true;
-                settings.GoogleCalendarAutoConnectOptOut = false;
+                MarkReconnecting(settings);
                 await settingsRepository.Update(settings);
             }
 
             var watchOutcome = await TryStartWatchAsync(settings, req);
+            // A failed start must leave the previous channel. Localhost never reaches Google.
+            if (GoogleCalendarOAuthRules.ShouldStopReplacedChannel(
+                    watchOutcome == WatchStartOutcome.Started,
+                    previousChannelId,
+                    previousResourceId,
+                    settings.GoogleChannelId))
+            {
+                await StopChannelAsync(settings.GoogleRefreshToken, previousChannelId, previousResourceId);
+            }
+
             if (watchOutcome == WatchStartOutcome.TokenInvalid)
+            {
+                if (GoogleCalendarOAuthRules.ShouldRestoreReconnectSettings(reconnecting, tokenInvalid: true))
+                {
+                    RestoreReconnectFields(settings, priorReconnect);
+                    await settingsRepository.Update(settings);
+                }
+
                 return new OkObjectResult(new GoogleCalendarResumeResultDto { NeedsConsent = true });
+            }
             if (watchOutcome == WatchStartOutcome.Started)
                 return new OkObjectResult(new GoogleCalendarResumeResultDto { Resumed = true });
             if (watchOutcome == WatchStartOutcome.NoWebhookConfigured)
@@ -245,6 +263,8 @@ namespace My.Functions
 
             var watchOutcome = WatchStartOutcome.Failed;
             var driveReconnectNeeded = false;
+            var previousChannelId = settings.GoogleChannelId;
+            var previousResourceId = settings.GoogleResourceId;
             try
             {
                 watchOutcome = await TryStartWatchAsync(settings, req);
@@ -270,11 +290,22 @@ namespace My.Functions
                 watchOutcome = WatchStartOutcome.Failed;
             }
 
+            if (GoogleCalendarOAuthRules.ShouldStopReplacedChannel(
+                    watchOutcome == WatchStartOutcome.Started,
+                    previousChannelId,
+                    previousResourceId,
+                    settings.GoogleChannelId))
+            {
+                await StopChannelAsync(settings.GoogleRefreshToken, previousChannelId, previousResourceId);
+            }
+
             var syncNotStarted = watchOutcome is WatchStartOutcome.TokenInvalid or WatchStartOutcome.Failed;
             // Stored token was rejected and this visit did not bring a replacement.
-            // Ask for the consent page once. Do not loop if a new token also failed.
-            var needsConsent = watchOutcome == WatchStartOutcome.TokenInvalid
-                && string.IsNullOrEmpty(refresh);
+            // One forced consent page. A return that was already that page stops here.
+            var needsConsent = GoogleCalendarOAuthRules.NeedsAnotherConsent(
+                tokenInvalid: watchOutcome == WatchStartOutcome.TokenInvalid,
+                incomingRefreshTokenEmpty: string.IsNullOrEmpty(refresh),
+                consentAlreadyForced: body.ConsentAlreadyForced);
             return new OkObjectResult(new GoogleCalendarConnectResultDto
             {
                 Connected = true,
@@ -1310,6 +1341,35 @@ namespace My.Functions
         /// </summary>
         private enum WatchStartOutcome { Started, NoWebhookConfigured, NotConfigured, TokenInvalid, Failed }
 
+        internal readonly record struct ReconnectFieldSnapshot(
+            string? CalendarId,
+            bool PublishToGoogleCalendar,
+            bool ImportFromGoogleCalendar,
+            bool AutoConnectOptOut);
+
+        internal static ReconnectFieldSnapshot CaptureReconnectFields(UserSettings settings) =>
+            new(
+                settings.GoogleCalendarId,
+                settings.PublishToGoogleCalendar,
+                settings.ImportFromGoogleCalendar,
+                settings.GoogleCalendarAutoConnectOptOut);
+
+        internal static void MarkReconnecting(UserSettings settings)
+        {
+            settings.GoogleCalendarId = PrimaryCalendarId;
+            settings.PublishToGoogleCalendar = true;
+            settings.ImportFromGoogleCalendar = true;
+            settings.GoogleCalendarAutoConnectOptOut = false;
+        }
+
+        internal static void RestoreReconnectFields(UserSettings settings, ReconnectFieldSnapshot prior)
+        {
+            settings.GoogleCalendarId = prior.CalendarId;
+            settings.PublishToGoogleCalendar = prior.PublishToGoogleCalendar;
+            settings.ImportFromGoogleCalendar = prior.ImportFromGoogleCalendar;
+            settings.GoogleCalendarAutoConnectOptOut = prior.AutoConnectOptOut;
+        }
+
         private async Task<WatchStartOutcome> TryStartWatchAsync(UserSettings settings, HttpRequestData req)
         {
             if (string.IsNullOrEmpty(settings.GoogleRefreshToken) || string.IsNullOrEmpty(settings.GoogleCalendarId))
@@ -1402,21 +1462,23 @@ namespace My.Functions
             }
         }
 
-        private async Task TryStopWatchAsync(UserSettings settings)
+        private Task TryStopWatchAsync(UserSettings settings) =>
+            StopChannelAsync(settings.GoogleRefreshToken, settings.GoogleChannelId, settings.GoogleResourceId);
+
+        private async Task StopChannelAsync(string? refreshToken, string? channelId, string? resourceId)
         {
-            if (string.IsNullOrEmpty(settings.GoogleRefreshToken)
-                || string.IsNullOrEmpty(settings.GoogleChannelId)
-                || string.IsNullOrEmpty(settings.GoogleResourceId))
+            if (string.IsNullOrEmpty(refreshToken)
+                || string.IsNullOrEmpty(channelId)
+                || string.IsNullOrEmpty(resourceId))
                 return;
 
             try
             {
-                await google.StopWatchAsync(settings.GoogleRefreshToken,
-                    settings.GoogleChannelId, settings.GoogleResourceId);
+                await google.StopWatchAsync(refreshToken, channelId, resourceId);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "StopWatch failed for channel {ChannelId}.", settings.GoogleChannelId);
+                logger.LogWarning(ex, "StopWatch failed for channel {ChannelId}.", channelId);
             }
         }
 

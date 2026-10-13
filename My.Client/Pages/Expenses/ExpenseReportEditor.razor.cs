@@ -176,29 +176,30 @@ public partial class ExpenseReportEditor
 
     private async Task SubmitAsync()
     {
-        if (report == null) return;
-        if (isDirty)
-        {
-            await SaveAsync();
-            if (isDirty) return;
-        }
-
-        var blocked = ExpenseReportRules.SubmitBlockedReason(report.Status, report.Lines.Count);
-        if (blocked != null)
-        {
-            Snackbar.Add(blocked, Severity.Warning);
-            return;
-        }
-
-        var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Submit report?",
-            ExpenseReportRules.SubmitConfirmMessage(report.CoverStart, report.CoverEnd, DateTime.Today),
-            yesText: "Submit", cancelText: "Cancel");
-        if (confirmed != true) return;
-
+        if (report == null || isSubmitting) return;
         isSubmitting = true;
+        await InvokeAsync(StateHasChanged);
         try
         {
+            if (isDirty)
+            {
+                await SaveAsync();
+                if (isDirty) return;
+            }
+
+            var blocked = ExpenseReportRules.SubmitBlockedReason(report.Status, report.Lines.Count);
+            if (blocked != null)
+            {
+                Snackbar.Add(blocked, Severity.Warning);
+                return;
+            }
+
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Submit report?",
+                ExpenseReportRules.SubmitConfirmMessage(report.CoverStart, report.CoverEnd, DateTime.Today),
+                yesText: "Submit", cancelText: "Cancel");
+            if (confirmed != true) return;
+
             var response = await client.PostAsync(Constants.API.Expenses.Submit(report.ExpenseReportId), null);
             if (!response.IsSuccessStatusCode)
             {

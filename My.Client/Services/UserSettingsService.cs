@@ -268,18 +268,24 @@ namespace My.Client.Services
         public const string GoogleAutoConnectDisconnectedValue = "disconnected";
 
         /// <summary>
+        /// Set just before the browser leaves for a forced Calendar consent page.
+        /// The settings callback reads it once so a rejected token cannot reopen that page forever.
+        /// </summary>
+        public const string GoogleCalendarConsentForcedKey = "googleCalendarConsentForced";
+
+        /// <summary>
         /// Starts Calendar-only Google consent (Settings and post-login auto-connect).
         /// Drive is requested separately from Intranet via <see cref="InitiateGoogleDriveConnectAsync"/>.
         /// </summary>
         public Task InitiateGoogleConnectAsync(string? returnUrlAfterConnect = null, bool forceConsent = false) =>
             InitiateGoogleOAuthAsync(
-                forceConsent
-                    ? $"{Constants.API.GoogleCalendar.GetAuthUrl}?forceConsent=true"
-                    : Constants.API.GoogleCalendar.GetAuthUrl,
+                GoogleCalendarOAuthRules.CalendarClientAuthRoute(
+                    Constants.API.GoogleCalendar.GetAuthUrl, forceConsent),
                 GoogleOAuthConnectKindRules.Calendar,
                 "Couldn't start Google Calendar connect",
                 "Server did not return a Google Calendar sign-in URL.",
-                returnUrlAfterConnect);
+                returnUrlAfterConnect,
+                rememberConsentForced: forceConsent);
 
         /// <summary>
         /// Starts Drive-only Google consent for Intranet browse/attach. Incremental on
@@ -306,13 +312,45 @@ namespace My.Client.Services
                 "Server did not return a Google sign-in URL.",
                 "/admin/appsettings");
 
+        /// <summary>
+        /// Reads and clears the one-shot forced-consent flag. False when storage is blocked.
+        /// </summary>
+        public async Task<bool> ConsumeGoogleCalendarConsentForcedAsync()
+        {
+            try
+            {
+                var value = await _js.InvokeAsync<string?>("localStorage.getItem", GoogleCalendarConsentForcedKey);
+                await _js.InvokeVoidAsync("localStorage.removeItem", GoogleCalendarConsentForcedKey);
+                return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private async Task InitiateGoogleOAuthAsync(
             string authUrlRoute,
             string connectKind,
             string startFailedPrefix,
             string missingUrlMessage,
-            string? returnUrlAfterConnect)
+            string? returnUrlAfterConnect,
+            bool rememberConsentForced = false)
         {
+            if (!rememberConsentForced)
+            {
+                // A closed consent tab leaves the one-shot flag behind. A later normal
+                // connect must not treat that as "already forced".
+                try
+                {
+                    await _js.InvokeVoidAsync("localStorage.removeItem", GoogleCalendarConsentForcedKey);
+                }
+                catch
+                {
+                    // Storage blocked. A missing flag is treated as not forced.
+                }
+            }
+
             await _js.InvokeVoidAsync("localStorage.setItem", GoogleOAuthConnectKindRules.LocalStorageKey, connectKind);
             if (!string.IsNullOrWhiteSpace(returnUrlAfterConnect))
             {
@@ -321,8 +359,7 @@ namespace My.Client.Services
 
             var client = _clientFactory.CreateClient(Constants.API.ClientName);
             var settingsRedirect = $"{_navigation.BaseUri.TrimEnd('/')}/settings";
-            var separator = authUrlRoute.Contains('?', StringComparison.Ordinal) ? "&" : "?";
-            var url = $"{authUrlRoute}{separator}redirectUri={Uri.EscapeDataString(settingsRedirect)}";
+            var url = GoogleOAuthRedirectRules.AppendRedirectUri(authUrlRoute, settingsRedirect);
 
             HttpResponseMessage response;
             try
@@ -356,6 +393,11 @@ namespace My.Client.Services
 
             if (resp == null || string.IsNullOrWhiteSpace(resp.Url))
                 throw new InvalidOperationException(missingUrlMessage);
+
+            if (rememberConsentForced)
+            {
+                await _js.InvokeVoidAsync("localStorage.setItem", GoogleCalendarConsentForcedKey, "true");
+            }
 
             _navigation.NavigateTo(resp.Url, forceLoad: true);
         }
