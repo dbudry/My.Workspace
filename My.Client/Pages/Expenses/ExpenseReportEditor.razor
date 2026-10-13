@@ -62,14 +62,22 @@
         {
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Save"
-                       OnClick="@(() => SaveAsync())" Disabled="@isSaving"
+                       OnClick="@(() => SaveAsync())" Disabled="@(isSaving || isSubmitting)"
                        data-expense-save="true">
                 Save
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Success"
-                       StartIcon="@Icons.Material.Filled.Send"
-                       OnClick="SubmitAsync" Disabled="@(isSaving || isSubmitting)">
-                Submit
+                       StartIcon="@(isSubmitting ? null : Icons.Material.Filled.Send)"
+                       OnClick="SubmitAsync" Disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Submitting</span>
+                }
+                else
+                {
+                    <span>Submit</span>
+                }
             </MudButton>
         }
     </Actions>

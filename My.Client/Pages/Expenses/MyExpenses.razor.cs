@@ -271,6 +271,8 @@ public partial class MyExpenses
 
     private async Task SubmitAsync(ExpenseReportListDto row)
     {
+        if (!string.IsNullOrEmpty(busyId)) return;
+
         var blocked = ExpenseReportRules.SubmitBlockedReason(row.Status, row.LineCount);
         if (blocked != null)
         {
@@ -278,15 +280,16 @@ public partial class MyExpenses
             return;
         }
 
-        var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Submit report?",
-            ExpenseReportRules.SubmitConfirmMessage(row.CoverStart, row.CoverEnd, DateTime.Today),
-            yesText: "Submit", cancelText: "Cancel");
-        if (confirmed != true) return;
-
         busyId = row.ExpenseReportId;
+        await InvokeAsync(StateHasChanged);
         try
         {
+            var confirmed = await DialogService.ShowMessageBoxAsync(
+                "Submit report?",
+                ExpenseReportRules.SubmitConfirmMessage(row.CoverStart, row.CoverEnd, DateTime.Today),
+                yesText: "Submit", cancelText: "Cancel");
+            if (confirmed != true) return;
+
             var response = await client.PostAsync(Constants.API.Expenses.Submit(row.ExpenseReportId), null);
             if (!response.IsSuccessStatusCode)
             {

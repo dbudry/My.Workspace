@@ -326,6 +326,7 @@ namespace My.Client.Pages.Settings
                 googleError = ex.Message;
                 Snackbar.Add(ex.Message, Severity.Error);
                 isGoogleBusy = false;
+                await SettingsService.ConsumeGoogleCalendarConsentForcedAsync();
             }
         }
 
@@ -422,6 +423,8 @@ namespace My.Client.Pages.Settings
                     GetQueryParam("error"), GetQueryParam("error_description"));
                 if (oauthMsg == null)
                     return;
+                // A cancelled consent page must not leave the one-shot flag set.
+                await SettingsService.ConsumeGoogleCalendarConsentForcedAsync();
                 activeTab = 1;
                 googleError = oauthMsg;
                 try
@@ -454,10 +457,13 @@ namespace My.Client.Pages.Settings
                     : isDrive
                         ? Constants.API.GoogleDrive.Callback
                         : Constants.API.GoogleCalendar.Callback;
+                var consentAlreadyForced = !isDrive && !isAppDrive
+                    && await SettingsService.ConsumeGoogleCalendarConsentForcedAsync();
                 var resp = await client.PostAsJsonAsync(callback, new
                 {
                     code,
-                    redirectUri = BuildRedirectUri()
+                    redirectUri = BuildRedirectUri(),
+                    consentAlreadyForced
                 });
 
                 if (resp.IsSuccessStatusCode)

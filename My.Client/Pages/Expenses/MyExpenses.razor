@@ -149,12 +149,18 @@
                                                 Disabled="@(busyId == context.Item.ExpenseReportId)" />
                                 @if (ExpenseStatusRules.IsDraft(context.Item.Status))
                                 {
-                                    <MudTooltip Text="Submit">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
-                                                       aria-label="Submit"
-                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
-                                                       OnClick="@(() => SubmitAsync(context.Item))" />
-                                    </MudTooltip>
+                                    @if (busyId == context.Item.ExpenseReportId)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mx-2" aria-label="Submitting" />
+                                    }
+                                    else
+                                    {
+                                        <MudTooltip Text="Submit">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                                                           aria-label="Submit"
+                                                           OnClick="@(() => SubmitAsync(context.Item))" />
+                                        </MudTooltip>
+                                    }
                                     <MudTooltip Text="Delete draft">
                                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                                        aria-label="Delete draft"

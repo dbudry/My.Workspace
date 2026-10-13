@@ -4,6 +4,18 @@
     "date": "2026-09-22",
     "changes": [
       {
+        "type": "Fixed",
+        "text": "Submitting an expense report shows that filing is in progress and ignores a second click until it finishes."
+      },
+      {
+        "type": "Fixed",
+        "text": "Reconnecting Google Calendar no longer stays marked connected when the stored token is rejected. Consent is asked once, and the previous watch stops only after the new one has started."
+      },
+      {
+        "type": "Fixed",
+        "text": "CSV downloads from Management and Reports write Duration as decimal hours (2.5 for 2:30) so Excel can add and sort it. The column is now named Duration (hours)."
+      },
+      {
         "type": "Changed",
         "text": "Expense reports can cover any dates, and more than one report can be filed in the same month. The filing month is the month the report is submitted. My Expenses and Team list every year a cover period touches, include drafts, and search the lines."
       },
