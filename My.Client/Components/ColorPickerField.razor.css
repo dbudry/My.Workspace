@@ -1,3 +1,56 @@
 .color-picker-field {
     width: 100%;
 }
+
+.color-picker-swatch {
+    --color-swatch: #1976d2;
+    width: 2.75rem;
+    flex: 0 0 2.75rem;
+}
+
+.color-picker-swatch ::deep .mud-picker,
+.color-picker-swatch ::deep .mud-input-control {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    max-width: 2.75rem;
+    margin: 0;
+}
+
+.color-picker-swatch ::deep .mud-input-control-helper-container,
+.color-picker-swatch ::deep .mud-input-helper-text {
+    display: none;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+}
+
+/* The browser insets a fieldset, so a background on the input shows outside the border. */
+.color-picker-swatch ::deep .mud-input.mud-input-outlined {
+    background: transparent !important;
+    width: 2.75rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    overflow: hidden;
+    border-radius: var(--mud-default-borderradius);
+    cursor: pointer;
+}
+
+.color-picker-swatch ::deep .mud-input.mud-input-outlined > input.mud-input-root {
+    color: transparent !important;
+    caret-color: transparent;
+    cursor: pointer;
+    padding: 0 !important;
+    height: 100%;
+    background: transparent !important;
+}
+
+.color-picker-swatch ::deep .mud-input-outlined-border {
+    margin: 0;
+    padding: 0;
+    min-inline-size: 0;
+    background-color: var(--color-swatch);
+    background-clip: padding-box;
+    border-width: 1px;
+    border-radius: var(--mud-default-borderradius);
+}

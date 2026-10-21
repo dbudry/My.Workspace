@@ -7,7 +7,7 @@
     This single script:
     - Ensures a SQL Server Docker container is running (pulls image / creates container / starts as needed)
     - Starts Azurite (in a separate window) if not already running
-    - Starts the Functions host (func start) in a separate window on port 7074 (clean, no debugger attached during startup)
+    - Starts the Functions host (dotnet run, which starts Core Tools from the build output) in a separate window on port 7074 (clean, no debugger attached during startup)
     - Starts the Blazor client (dotnet watch) in a separate window on port 7047
     - Waits for the Functions worker process to appear
     - Attaches the Visual Studio debugger to the worker so your breakpoints work
@@ -310,12 +310,12 @@ Write-Host '  Using existing certificate: $certPath' -ForegroundColor Green
 if ($UseHttps) {
     $hostCmd += @"
 
-func start --port $FunctionsPort --useHttps --cert '$certPath' --password $certPassword
+dotnet run --no-launch-profile --configuration Debug -- --port $FunctionsPort --useHttps --cert '$certPath' --password $certPassword
 "@
 } else {
     $hostCmd += @"
 
-func start --port $FunctionsPort
+dotnet run --no-launch-profile --configuration Debug -- --port $FunctionsPort
 "@
 }
 

@@ -37,6 +37,14 @@ namespace My.DAL.Models
         [MaxLength(200)]
         public string? ChargeToNote { get; set; }
 
+        /// <summary>The organization this expense is charged to. Set when the report is created.</summary>
+        [MaxLength(450)]
+        public string? ChargeToOrganizationId { get; set; }
+        public Organization? ChargeToOrganization { get; set; }
+
+        [MaxLength(100)]
+        public string? ChargeToName { get; set; }
+
         [MaxLength(120)]
         public string? EmployeeNameSnapshot { get; set; }
 
@@ -51,16 +59,15 @@ namespace My.DAL.Models
         [MaxLength(128)]
         public string? DrivePeriodFolderId { get; set; }
 
-        /// <summary>
-        /// App Drive file id of the statement PDF filed on submit, under
-        /// Expenses/Filed — not the per-user receipt folder. Survives user delete.
-        /// </summary>
-        [MaxLength(128)]
-        public string? DriveFiledPdfFileId { get; set; }
-
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 
         public ICollection<ExpenseLine> Lines { get; set; } = new List<ExpenseLine>();
+
+        /// <summary>Credits typed onto this expense. They reduce this expense only.</summary>
+        public ICollection<ExpenseCredit> FormCredits { get; set; } = new List<ExpenseCredit>();
+
+        /// <summary>The filed statement for this expense, under Expenses/Filed.</summary>
+        public ICollection<ExpenseFiledPdf> FiledPdfs { get; set; } = new List<ExpenseFiledPdf>();
     }
 }

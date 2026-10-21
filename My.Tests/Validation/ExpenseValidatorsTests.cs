@@ -14,7 +14,8 @@ public class ExpenseValidatorsTests
             .Validate(new CreateExpenseReportDto
             {
                 CoverStart = new DateTime(2026, 10, 5),
-                CoverEnd = new DateTime(2026, 9, 1)
+                CoverEnd = new DateTime(2026, 9, 1),
+                ChargeToOrganizationId = "org-1"
             });
         Assert.False(result.IsValid);
     }
@@ -26,7 +27,8 @@ public class ExpenseValidatorsTests
             .Validate(new CreateExpenseReportDto
             {
                 CoverStart = new DateTime(2026, 9, 1),
-                CoverEnd = new DateTime(2026, 10, 5)
+                CoverEnd = new DateTime(2026, 10, 5),
+                ChargeToOrganizationId = "org-1"
             });
         Assert.True(result.IsValid);
     }

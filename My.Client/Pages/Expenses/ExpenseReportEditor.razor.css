@@ -1,149 +1,572 @@
 .expense-lines {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.85rem;
     min-width: 0;
     max-width: 100%;
 }
 
 .expense-line {
-    display: grid;
-    grid-template-columns: 10.5rem minmax(10rem, 1fr) minmax(12rem, 15rem) 7.5rem 2.25rem 2.25rem;
-    grid-template-areas:
-        "date desc cat amt attach del"
-        ". files files files files files";
-    column-gap: 0.5rem;
-    row-gap: 0.35rem;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
     min-width: 0;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--mud-palette-lines-default);
+    padding: 0.85rem 0.9rem 1rem;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    background: var(--mud-palette-background-gray);
+}
+
+.expense-line-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* Dense outlined labels keep an 8px top and 4px bottom margin. That margin
+   is on the field, so end-aligning Remove puts the shorter button above the boxes. */
+.expense-line-main ::deep .mud-input-control.mud-input-control-margin-dense,
+.expense-line-main ::deep .mud-input-control.mud-input-control-margin-dense.mud-input-outlined-with-label {
+    margin: 0;
+}
+
+/* Size the wrapper. A flex basis on MudDatePicker itself becomes the input height. */
+.expense-line-date {
+    flex: 0 0 10.5rem;
+    width: 10.5rem;
+    max-width: 100%;
+    align-self: flex-end;
+}
+
+.expense-line-date ::deep .mud-picker,
+.expense-line-date ::deep .mud-input-control {
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    flex: 1 1 auto;
+}
+
+.expense-line-main ::deep .mud-input-control.expense-line-category {
+    flex: 1 1 12rem;
+    width: 12rem;
+    min-width: 10rem;
+    max-width: 14rem;
+}
+
+.expense-currency-chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    align-self: stretch;
+    padding: 0 0.45rem;
+    border-radius: var(--mud-default-borderradius);
+    background: var(--expense-currency);
+    color: var(--expense-currency-ink);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.expense-line-remove {
+    display: flex;
+    justify-content: flex-end;
+    align-items: stretch;
+    flex: 0 0 auto;
+    margin-left: auto;
+}
+
+/* Dense outlined fields are 40px (10.5px padding plus the text line). Size.Small is shorter. */
+.expense-line-remove ::deep .mud-button-root {
+    width: max-content;
+    height: 40px;
+    min-height: 40px;
+    padding-top: 0;
+    padding-bottom: 0;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    align-self: flex-end;
+    white-space: nowrap;
+}
+
+.expense-line-copy ::deep .counted-textarea {
+    background: transparent;
+}
+
+.expense-line-copy ::deep .counted-textarea__label {
+    background: var(--mud-palette-background-gray);
+}
+
+.expense-line-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: start;
+}
+
+.expense-line-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.expense-line-group {
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: var(--mud-default-borderradius);
+    background: var(--mud-palette-background-gray);
+    padding: 0.55rem 0.75rem 0.7rem;
+}
+
+.expense-line-group-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+    margin-bottom: 0.35rem;
+}
+
+.expense-line-group-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: flex-end;
+}
+
+.expense-field-meal-type,
+.expense-field-type {
+    width: 14rem;
+    max-width: 100%;
+}
+
+.expense-field-head,
+.expense-field-head ::deep .mud-input-control {
+    width: 11rem;
+    min-width: 11rem;
+    max-width: 11rem;
+    flex: 0 0 11rem;
+}
+
+.expense-field-miles {
+    width: 7.5rem;
+    flex: 0 0 7.5rem;
+}
+
+.expense-line-files {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    min-height: 6.5rem;
+    padding: 0.5rem 0.65rem 0.65rem;
+    border: 2px solid var(--mud-palette-primary);
+    border-radius: var(--mud-default-borderradius);
+    background: color-mix(in srgb, var(--mud-palette-primary) 10%, var(--mud-palette-surface));
+}
+
+.expense-line-files-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+    min-width: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+}
+
+.expense-line-files-head > span {
+    min-width: 0;
+}
+
+.expense-line-files-head ::deep .mud-button-root {
+    flex: 0 0 auto;
+    margin: 0;
+    white-space: nowrap;
+}
+
+.expense-no-receipt {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--mud-palette-warning);
+}
+
+.expense-receipt-row {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.expense-receipt-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 0.8125rem;
 }
 
-.expense-line--head {
-    grid-template-areas: "date desc cat amt attach del";
-    grid-template-rows: auto;
-    row-gap: 0;
-    padding-bottom: 0.15rem;
-    border-bottom: none;
+.expense-line ::deep .mud-input-control,
+.expense-line ::deep .mud-picker {
+    margin-top: 0;
+}
+
+.expense-field-meal-type ::deep .mud-input-control,
+.expense-field-type ::deep .mud-input-control,
+.expense-field-head ::deep .mud-input-control,
+.expense-field-miles ::deep .mud-input-control,
+.expense-line-main ::deep .mud-input-control {
+    width: 100%;
+    max-width: 100%;
+}
+
+.expense-line.is-open-detail {
+    padding: 0.55rem 0.65rem 0.7rem;
+}
+
+.expense-currency-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0;
+    margin-bottom: 0.85rem;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+
+.expense-view-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--mud-palette-text-secondary);
+}
+
+/* MudSelect's root is flex: 1 1 auto, so a class on the component has to
+   outrank that or Add currency grows across the tab row. */
+.expense-currency-tabs ::deep .mud-input-control.expense-currency-add {
+    flex: 0 0 11rem;
+    width: 11rem;
+    max-width: 11rem;
+    margin-left: auto;
+    margin-bottom: 0.35rem;
+}
+
+.expense-currency-tab {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0 -1px;
+    color: var(--mud-palette-text-secondary);
+    border-bottom: 2px solid transparent;
+}
+
+.expense-currency-tab-select,
+.expense-currency-tab-remove {
+    appearance: none;
+    background: transparent;
+    color: inherit;
+    border: none;
+    border-radius: 0;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.expense-currency-tab-select {
+    padding: 0.55rem 0.9rem;
+}
+
+.expense-currency-tab-remove {
+    padding: 0.35rem 0.55rem 0.35rem 0;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.expense-currency-tab:has(.expense-currency-tab-remove) .expense-currency-tab-select {
+    padding-right: 0.2rem;
+}
+
+.expense-currency-tab.is-active {
+    color: var(--expense-currency, var(--mud-palette-primary));
+    border-bottom-color: var(--expense-currency, var(--mud-palette-primary));
+}
+
+.expense-form-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 100%;
+    min-width: 0;
+    border: 1px solid var(--mud-palette-table-lines);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.expense-form-head,
+.expense-form-row {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    grid-template-columns:
+        4.6rem minmax(0, 1.7fr) 2.6rem 3rem
+        minmax(0, 0.9fr) minmax(0, 0.75fr)
+        1.2rem 1.2rem 1.2rem
+        minmax(0, 0.75fr) minmax(0, 0.95fr) minmax(0, 0.95fr)
+        3rem minmax(0, 0.75fr) 1.6rem;
+    column-gap: 0;
+    align-items: stretch;
+    font-size: 0.7rem;
+}
+
+.expense-form-head > span,
+.expense-form-row > span {
+    min-width: 0;
+    overflow: hidden;
+    padding: 0.4rem 0.3rem;
+    border-right: 1px solid var(--mud-palette-table-lines);
+}
+
+.expense-form-head > span:last-child,
+.expense-form-row > span:last-child {
+    border-right: none;
+}
+
+.expense-form-head {
+    font-weight: 700;
+    color: var(--mud-palette-text-secondary);
+    background: var(--mud-palette-background-gray);
+    border-bottom: 1px solid var(--mud-palette-table-lines);
+}
+
+.expense-form-head > span {
+    white-space: normal;
+    line-height: 1.15;
+}
+
+.expense-form-row {
+    text-align: left;
+    white-space: normal;
+    border: none;
+    border-bottom: 1px solid var(--mud-palette-table-lines);
+    border-radius: 0;
+    background: var(--mud-palette-surface);
+    color: inherit;
+    padding: 0;
+    cursor: pointer;
+}
+
+.expense-form-row > span {
+    white-space: normal;
+    overflow-wrap: break-word;
+    display: flex;
+    align-items: center;
+    line-height: 1.25;
+}
+
+.expense-form-row.is-open {
+    background: var(--mud-palette-primary-hover);
+}
+
+.expense-form-total {
+    cursor: default;
+    font-weight: 700;
+    background: #fff59d;
+}
+
+.expense-form-span {
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.expense-form-pay {
+    background: #fff59d;
+}
+
+.expense-form-grand {
+    justify-content: flex-start;
+    gap: 0.75rem;
+}
+
+.expense-form-num {
+    justify-content: flex-end;
+    text-align: right;
+}
+
+.expense-form-file {
+    justify-content: center;
+}
+
+.expense-form-head > .expense-form-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.expense-form-desc {
+    display: block;
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+
+.expense-cover-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+}
+
+.expense-cover-row ::deep .mud-input-control {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.expense-cover-date {
+    width: 10.5rem;
+    flex: 0 0 10.5rem;
+}
+
+.expense-cover-charge {
+    flex: 0 1 20rem;
+    width: 20rem;
+    max-width: 100%;
+    min-width: 12rem;
+}
+
+.expense-cover-rate {
+    width: 8.5rem;
+    flex: 0 0 8.5rem;
+    max-width: 100%;
+}
+
+.expense-cover-credits {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.85rem;
+}
+
+.expense-cover-credit {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.expense-cover-total {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: 40px;
+    margin: 0;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.expense-cover-total span {
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--mud-palette-text-secondary);
 }
 
-.expense-line-date { grid-area: date; min-width: 0; }
-.expense-line-desc { grid-area: desc; min-width: 0; position: relative; }
-.expense-line-cat { grid-area: cat; min-width: 0; }
-.expense-line-amt { grid-area: amt; min-width: 0; }
-.expense-line-attach { grid-area: attach; display: flex; justify-content: center; align-items: center; }
-.expense-line-del { grid-area: del; display: flex; justify-content: center; align-items: center; }
-.expense-line-details { grid-area: extra; min-width: 0; max-width: 14rem; }
-
-.expense-line:has(.expense-line-details) {
-    grid-template-columns: 10.5rem minmax(8rem, 1fr) minmax(11rem, 14rem) minmax(8rem, 12rem) 7.5rem 2.25rem 2.25rem;
-    grid-template-areas:
-        "date desc cat extra amt attach del"
-        ". files files files files files files";
+.expense-yellow {
+    background: #fff59d;
+    border: 1px solid #f9a825;
+    border-radius: var(--mud-default-borderradius);
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
-.expense-line-files {
-    grid-area: files;
+.expense-yellow-cats {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+}
+
+.expense-yellow-cat,
+.expense-yellow-pay {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.expense-yellow-cat span,
+.expense-yellow-pay span {
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+.expense-yellow-foot {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
-    min-width: 0;
-    justify-content: flex-start;
-    align-self: start;
+    align-items: flex-end;
+    gap: 0.75rem 1.5rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid #f9a825;
 }
 
-.expense-line--head .expense-line-amt { text-align: right; }
-
-.expense-line ::deep .mud-input-control,
-.expense-line ::deep .mud-picker {
-    margin: 0 !important;
+.expense-yellow-currencies {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin-right: auto;
 }
 
-.expense-line ::deep .mud-input-control-helper-container,
-.expense-line ::deep .mud-input-helper-text {
-    display: none !important;
-    height: 0;
-    margin: 0;
-    min-height: 0;
-    overflow: hidden;
+.expense-yellow-currency {
+    display: grid;
+    grid-template-columns: 4.5rem 5rem 6.5rem;
+    gap: 0.5rem;
 }
 
-.expense-line-date ::deep .mud-picker,
-.expense-line-date ::deep .mud-input-control,
-.expense-line-cat ::deep .mud-input-control,
-.expense-line-amt ::deep .mud-input-control {
-    width: 100% !important;
-    max-width: 100%;
+.expense-yellow-currency span:nth-child(n + 2) {
+    text-align: right;
 }
 
-.expense-line-files ::deep .mud-chip {
-    max-width: 16rem;
-    height: 26px;
+.expense-yellow-head {
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.expense-yellow-results {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1.25rem 1.75rem;
+    margin-left: auto;
+}
+
+.expense-yellow-pay {
+    align-items: flex-end;
+}
+
+.expense-line-return {
+    display: flex;
+    justify-content: flex-end;
     align-items: center;
+    gap: 0.75rem;
 }
 
-.expense-line-files ::deep .mud-chip-content {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    max-width: 100%;
-    overflow: visible;
-}
-
-.expense-receipt-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    border: 0;
-    background: transparent;
-    padding: 0;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-    text-align: left;
-}
-
-.expense-line-files ::deep .mud-chip .mud-chip-close-button {
-    flex: 0 0 auto;
-    align-self: center;
-    width: 18px;
-    height: 18px;
-    min-width: 18px;
-    padding: 0;
-    margin: 0 0 0 4px;
-    margin-inline: 4px 0;
-}
-
-.expense-line-files ::deep .mud-chip .mud-chip-close-button .mud-icon-root {
-    font-size: 16px;
-    width: 16px;
-    height: 16px;
-}
-
-@media (max-width: 960px) {
-    .expense-line {
-        grid-template-columns: 10.5rem minmax(0, 1fr) 7.5rem 2.25rem 2.25rem;
-        grid-template-areas:
-            "date cat amt attach del"
-            "desc desc desc desc desc"
-            ". files files files files";
+@media (max-width: 720px) {
+    .expense-line-body {
+        grid-template-columns: 1fr;
+        row-gap: 0.65rem;
     }
 
-    .expense-line:has(.expense-line-details) {
-        grid-template-columns: 10.5rem minmax(0, 1fr) minmax(8rem, 12rem) 7.5rem 2.25rem 2.25rem;
-        grid-template-areas:
-            "date cat extra amt attach"
-            "desc desc desc desc del"
-            ". files files files files";
+    .expense-yellow-cats {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
-    .expense-line--head {
-        display: none;
+    .expense-yellow-results {
+        margin-left: 0;
     }
 }

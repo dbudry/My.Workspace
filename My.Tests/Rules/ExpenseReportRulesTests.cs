@@ -18,6 +18,13 @@ public class ExpenseReportRulesTests
     }
 
     [Fact]
+    public void CoverRangeLabel_uses_a_two_digit_year()
+    {
+        Assert.Equal("09/01/26 – 09/30/26",
+            ExpenseReportRules.CoverRangeLabel(new DateTime(2026, 9, 1), new DateTime(2026, 9, 30)));
+    }
+
+    [Fact]
     public void FilingMonthLabel_is_blank_until_submitted()
     {
         Assert.Equal("—", ExpenseReportRules.FilingMonthLabel(ExpenseStatusRules.Draft, 2026, 10));
@@ -30,9 +37,17 @@ public class ExpenseReportRulesTests
     {
         Assert.Equal("2393 Viola Dr\nBay City MI 48706",
             ExpenseReportRules.CombineHomeAddress(" 2393 Viola Dr ", "Bay City MI 48706"));
-        Assert.Equal(("", ""), ExpenseReportRules.SplitHomeAddress(null));
-        Assert.Equal(("2393 Viola Dr", "Bay City MI 48706"),
+        Assert.Equal(("", "", ""), ExpenseReportRules.SplitHomeAddress(null));
+        Assert.Equal(("2393 Viola Dr", "Bay City MI 48706", ""),
             ExpenseReportRules.SplitHomeAddress("2393 Viola Dr\nBay City MI 48706"));
+        Assert.Equal("10 King St\nLondon\nUnited Kingdom",
+            ExpenseReportRules.CombineHomeAddress("10 King St", "London", "United Kingdom"));
+        Assert.Equal(("10 King St", "London", "United Kingdom"),
+            ExpenseReportRules.SplitHomeAddress("10 King St\nLondon\nUnited Kingdom"));
+        Assert.Equal("GBP", ExpenseAddressCurrencyRules.CurrencyForCountry("United Kingdom"));
+        Assert.Equal("EUR", ExpenseAddressCurrencyRules.CurrencyForAddress("10 King St\nLondon\nGermany"));
+        Assert.Null(ExpenseAddressCurrencyRules.CurrencyForCountry(""));
+        Assert.Null(ExpenseAddressCurrencyRules.CurrencyForAddress("2393 Viola Dr\nBay City MI 48706"));
     }
 
     [Fact]
@@ -64,7 +79,9 @@ public class ExpenseReportRulesTests
             ExpenseReportRules.SubmitBlockedReason(ExpenseStatusRules.Submitted, 2));
         Assert.Equal("Add at least one line before submitting.",
             ExpenseReportRules.SubmitBlockedReason(ExpenseStatusRules.Draft, 0));
-        Assert.Null(ExpenseReportRules.SubmitBlockedReason(ExpenseStatusRules.Draft, 1));
+        Assert.Equal("This expense needs a Charge to.",
+            ExpenseReportRules.SubmitBlockedReason(ExpenseStatusRules.Draft, 1, null));
+        Assert.Null(ExpenseReportRules.SubmitBlockedReason(ExpenseStatusRules.Draft, 1, "org-1"));
     }
 
     [Fact]

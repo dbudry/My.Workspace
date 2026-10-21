@@ -1,0 +1,38 @@
+@namespace My.Client.Components.Expenses
+
+<div class="expense-amount @(ShowPicker ? "has-picker" : "no-picker") @(Foreign ? "is-foreign" : null)"
+     style="@CurrencyStyle">
+    <MudNumericField T="decimal" Value="Amount" ValueChanged="AmountChanged"
+                     Label="Amount" Variant="Variant.Outlined" Margin="Margin.Dense"
+                     Adornment="@(StartText == null ? Adornment.None : Adornment.Start)"
+                     AdornmentText="@StartText"
+                     Min="0m" HideSpinButtons="true" Format="N2"
+                     Disabled="@Disabled"
+                     Class="expense-amount-input"
+                     aria-label="Amount" />
+    @if (ShowPicker)
+    {
+        <div class="expense-amount-picker">
+            <MudMenu Dense="true" Disabled="@PickerDisabled"
+                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                     AriaLabel="Currency">
+                <ActivatorContent>
+                    <button type="button" class="expense-amount-code" disabled="@PickerDisabled"
+                            aria-label="Currency" @onclick="context.ToggleAsync">
+                        <span>@DisplayCode</span>
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" />
+                    </button>
+                </ActivatorContent>
+                <ChildContent>
+                    @foreach (var currency in Currencies)
+                    {
+                        var code = currency.Code;
+                        var selected = string.Equals(code, DisplayCode, StringComparison.Ordinal);
+                        <MudMenuItem Icon="@(selected ? Icons.Material.Filled.Check : null)"
+                                     OnClick="@(() => Choose(code))">@currency.Code</MudMenuItem>
+                    }
+                </ChildContent>
+            </MudMenu>
+        </div>
+    }
+</div>

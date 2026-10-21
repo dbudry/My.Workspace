@@ -7,7 +7,6 @@ namespace My.Shared.Rules;
 /// </summary>
 public static class ExpenseForm8743Rules
 {
-    public const string FormNumber = "FORM 87-43";
     public const string DefaultPlant = "Home Office";
     public const string MiscSoftwareCode = "Z";
 
@@ -19,9 +18,8 @@ public static class ExpenseForm8743Rules
         decimal? miles,
         string? transportationCode,
         string? miscellaneousCode,
-        bool mealBreakfast,
-        bool mealLunch,
-        bool mealDinner)
+        string? mealType = null,
+        int? headCount = null)
     {
         var (storedCategory, transport) = ExpenseCategoryRules.ForStorage(category, transportationCode);
         var line = new ExpenseForm8743Line
@@ -51,9 +49,10 @@ public static class ExpenseForm8743Rules
 
         if (string.Equals(storedCategory, ExpenseCategoryRules.Meals, StringComparison.Ordinal))
         {
-            line.MealBreakfast = mealBreakfast;
-            line.MealLunch = mealLunch;
-            line.MealDinner = mealDinner;
+            var meal = ExpenseMealRules.Columns(mealType, headCount);
+            line.MealBreakfastCount = meal.Breakfast;
+            line.MealLunchCount = meal.Lunch;
+            line.MealDinnerCount = meal.Dinner;
             line.MealsAmount = amount;
             return line;
         }
@@ -115,9 +114,9 @@ public sealed class ExpenseForm8743Line
     public string? TransportCode { get; set; }
     public decimal? TransportAmount { get; set; }
     public decimal? HotelAmount { get; set; }
-    public bool MealBreakfast { get; set; }
-    public bool MealLunch { get; set; }
-    public bool MealDinner { get; set; }
+    public int? MealBreakfastCount { get; set; }
+    public int? MealLunchCount { get; set; }
+    public int? MealDinnerCount { get; set; }
     public decimal? MealsAmount { get; set; }
     public decimal? EntertainmentAmount { get; set; }
     public decimal? TelephoneAmount { get; set; }
@@ -151,7 +150,21 @@ public sealed class ExpenseForm8743Model
     public decimal MileageRate { get; set; }
     public string? Purpose { get; set; }
     public List<ExpenseForm8743Line> Lines { get; set; } = [];
+    public List<ExpenseFormCurrencyRow> CurrencyRows { get; set; } = [];
+    public decimal CreditUsd { get; set; }
+    public decimal NetReimbursement { get; set; }
+    public bool HasCurrencyFooter { get; set; }
     public byte[]? EmployeeSignature { get; set; }
     public byte[]? ManagerSignature { get; set; }
     public string FileName { get; set; } = "Expenses.pdf";
+
+    /// <summary>Column title for amounts converted into the company default currency.</summary>
+    public string HomeCurrencyLabel { get; set; } = "US dollars";
+}
+
+public sealed class ExpenseFormCurrencyRow
+{
+    public string Code { get; set; } = ExpenseCurrencyRules.UsdCode;
+    public decimal Spent { get; set; }
+    public decimal Usd { get; set; }
 }

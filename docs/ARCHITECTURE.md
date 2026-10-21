@@ -321,6 +321,48 @@ for the sidebar (draft pages filtered for non-editors).
 **Not in v1:** page versioning, full-text search, forms builder, per-page ACLs beyond
 module roles.
 
+## Expenses — reports, receipts, and the statement PDF
+
+The Expenses module tracks employee reimbursements against the home company,
+not Tyme client/project time. Full product notes:
+[`docs/initiatives/expenses.md`](initiatives/expenses.md).
+
+**Data model:** `ExpenseReport` (Draft → Submitted → Reimbursed) with `ExpenseLine`
+children (date, description, category, amount, currency, mileage, meal type, head count)
+and `ExpenseReceipt` attachments. The stored paid status remains Reimbursed. Screens say Paid.
+Charge to is on the report. Cover start and cover end are a free range. `Year` and `Month` are the
+submit month, stamped at submit from the submitter's timezone, and are not unique —
+a person can file more than one report in the same month. A draft is not in a month until it is submitted.
+`AddressSnapshot`, `EmployeeNameSnapshot`, and
+`MileageRateSnapshot` capture Settings/App Settings values at report-edit time; they
+refresh on every draft save (`ExpenseFunction.UpdateAsync`) and freeze once submitted.
+
+**API:** `ExpenseFunction.cs` — CRUD, submit/unsubmit/reimburse/undo-reimburse, receipt
+upload/download, and PDF export (`GET …/pdf`). The statement is QuestPDF
+(`ExpenseStatementPdfService` / `ExpenseFormDocument`). The lower left prints
+`ExpenseFormVersionRules.Current`. Increment that constant only when the generated
+form changes. Submit stores the same number on each `ExpenseFiledPdf`.
+
+**Receipts:** stored in a private Google Drive folder reached through a dedicated App
+Drive OAuth grant (`AppDriveFunction.cs`, `AppDriveCredential`) — separate from each
+user's personal Google Drive/Calendar grant — laid out as
+`{root}/{LastName}_{FirstName}/Draft/{yyyy_MM_dd}_{Slug}.ext` while the report is a draft,
+then `{root}/{LastName}_{FirstName}/{yyyy}_{MM}/…` for the submit month. Receipts are
+relocated/renamed on save only when a line's date or description actually changed,
+and again on submit into that month folder. Submit files one statement under
+`{root}/Filed/{yyyy}_{MM}/`. That file has one form per currency, then that currency's
+receipts, and the row stores the form version. Unsubmit deletes that file so the next
+submit writes a new one. User delete may remove the per-user receipt folder; it must not
+delete Filed packets.
+
+**Auth:** `AuthGates.RequireScopedExpenses` — scoped-only, global Admin does not pass.
+`User:Expenses` files and edits own drafts. `Manager:Expenses` is required for team
+list, unsubmit, and reimburse. `UserAccess:Expenses` assigns Expenses roles on Users
+and does not operate the module.
+
+**Not in v1:** QuickBooks push, historical `Expense Working` import, any link to Tyme
+projects.
+
 ## Background jobs
 
 TimerTrigger functions:

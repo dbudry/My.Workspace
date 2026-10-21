@@ -23,7 +23,7 @@ public class ExpenseForm8743ExcelFillerTests
             [
                 ExpenseForm8743Rules.MapLine(
                     new DateTime(2026, 8, 10), "GitHub", ExpenseCategoryRules.Software,
-                    24m, null, null, null, false, false, false)
+                    24m, null, null, null)
             ]
         });
 

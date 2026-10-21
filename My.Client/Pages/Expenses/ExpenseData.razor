@@ -34,7 +34,7 @@
                     <MudSelect T="string" @bind-Value="statusFilter" Label="Status" Variant="Variant.Outlined"
                                Margin="Margin.Dense" Dense="true">
                         <MudSelectItem Value="@ExpenseDataExtractionRules.StatusSubmitted">Submitted</MudSelectItem>
-                        <MudSelectItem Value="@ExpenseDataExtractionRules.StatusReimbursed">Reimbursed</MudSelectItem>
+                        <MudSelectItem Value="@ExpenseDataExtractionRules.StatusReimbursed">Paid</MudSelectItem>
                         <MudSelectItem Value="@ExpenseDataExtractionRules.StatusDraft">Draft</MudSelectItem>
                         <MudSelectItem Value="@ExpenseDataExtractionRules.StatusAll">All</MudSelectItem>
                     </MudSelect>
@@ -103,7 +103,10 @@
                     <RowTemplate>
                         <MudTd DataLabel="Employee">@context.EmployeeName</MudTd>
                         <MudTd DataLabel="Period">@ExpenseReportRules.CoverRangeLabel(context.CoverStart, context.CoverEnd)</MudTd>
-                        <MudTd DataLabel="Status"><ExpenseStatusChip Status="@context.Status" /></MudTd>
+                        <MudTd DataLabel="Status">
+                            <ExpenseStatusChip Status="@context.Status"
+                                               PaymentDate="@ExpensePaymentDateRules.CalendarDay(context.ReimbursedAt)" />
+                        </MudTd>
                         <MudTd DataLabel="Lines" Style="text-align:right;">@context.LineCount</MudTd>
                         <MudTd DataLabel="Total" Style="text-align:right;">@context.TotalAmount.ToString("C")</MudTd>
                     </RowTemplate>

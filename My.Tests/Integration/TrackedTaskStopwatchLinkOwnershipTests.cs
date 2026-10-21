@@ -118,11 +118,11 @@ public class TrackedTaskStopwatchLinkOwnershipTests
     }
 
     [Fact]
-    public void No_stopwatch_item_requested_is_never_rejected()
+    public async Task No_stopwatch_item_requested_is_never_rejected()
     {
         // Pure branch, no DB needed: matches the `!string.IsNullOrWhiteSpace(...)` guard
         // in TrackedTaskFunction.cs — a plain manual task with no StopwatchItemId must
         // never be blocked by this check.
-        Assert.False(IsRejectedAsync(null!, null, "any-user").GetAwaiter().GetResult());
+        Assert.False(await IsRejectedAsync(null!, null, "any-user"));
     }
 }

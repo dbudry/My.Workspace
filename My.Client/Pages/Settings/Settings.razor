@@ -6,7 +6,7 @@
 
 <PageTitle>Settings</PageTitle>
 
-<PageHeader Title="Settings" Description="@settingsDescription" />
+<PageHeader Title="Settings" />
 
 <PageLoader IsLoading="@isLoading">
     <div class="settings-stack">
@@ -67,6 +67,17 @@
                     </MudText>
                 </MudItem>
             </MudGrid>
+        </SectionCard>
+        <SectionCard Title="Home address">
+            <MudTextField @bind-Value="expenseHomeStreet" @bind-Value:after="PersistDebounced"
+                          Label="Street" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" MaxLength="120" />
+            <MudTextField @bind-Value="expenseHomeCityLine" @bind-Value:after="PersistDebounced"
+                          Label="City, state ZIP" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" MaxLength="120" Class="mt-2" />
+            <MudAutocomplete T="string" Value="expenseHomeCountry" ValueChanged="SetHomeCountryAsync"
+                             Label="Country" SearchFunc="SearchCountries" Variant="Variant.Outlined"
+                             Margin="Margin.Dense" CoerceText="true" MaxItems="12" Class="mt-2 expense-home-country" />
         </SectionCard>
             </MudTabPanel>
             <MudTabPanel Text="Tyme" Icon="@Icons.Material.Filled.Schedule">
@@ -318,17 +329,15 @@
             @if (hasExpensesAccess)
             {
                 <MudTabPanel Text="Expenses" Icon="@Icons.Material.Filled.ReceiptLong">
-                    <SectionCard Title="Home address">
-                        <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                            Printed on Form 87-43 under ADDRESS. Street on the first line, city and ZIP on the second.
-                            Copied onto new expense reports.
-                        </MudText>
-                        <MudTextField @bind-Value="expenseHomeStreet" @bind-Value:after="PersistDebounced"
-                                      Label="Street" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                      Immediate="true" MaxLength="120" />
-                        <MudTextField @bind-Value="expenseHomeCityLine" @bind-Value:after="PersistDebounced"
-                                      Label="City, state ZIP" Variant="Variant.Outlined" Margin="Margin.Dense"
-                                      Immediate="true" MaxLength="120" Class="mt-2" />
+                    <SectionCard Title="Default currency">
+                        <MudSelect T="string" Value="expenseDefaultCurrency" ValueChanged="SetExpenseDefaultCurrency"
+                                   Label="Default currency" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   Clearable="true" Class="expense-default-currency">
+                            @foreach (var currency in ProfileCurrencyOptions)
+                            {
+                                <MudSelectItem Value="@currency.Code">@currency.Code — @currency.Name</MudSelectItem>
+                            }
+                        </MudSelect>
                     </SectionCard>
                     <SectionCard Title="Expense signature">
                         <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
@@ -349,5 +358,10 @@
 <style>
     .settings-stack {
         max-width: 960px;
+    }
+
+    .expense-default-currency,
+    .expense-home-country {
+        max-width: 20rem;
     }
 </style>

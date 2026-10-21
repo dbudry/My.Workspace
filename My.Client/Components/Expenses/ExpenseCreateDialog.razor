@@ -1,0 +1,37 @@
+@namespace My.Client.Components.Expenses
+@using My.Shared.Rules
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            An expense covers one date range and one Charge to. Line items do not choose their own.
+        </MudText>
+        <div class="expense-create-fields">
+            <MudDatePicker Date="coverStart" DateChanged="SetStart"
+                           Label="Cover start" DateFormat="MM/dd/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Error="@(!string.IsNullOrEmpty(coverError))" />
+            <MudDatePicker Date="coverEnd" DateChanged="SetEnd"
+                           Label="Cover end" DateFormat="MM/dd/yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Error="@(!string.IsNullOrEmpty(coverError))"
+                           ErrorText="@coverError" />
+            <OrganizationPickerFields OrganizationId="@chargeToId"
+                                      OrganizationName="@chargeToName"
+                                      OrganizationIdChanged="SetChargeToId"
+                                      OrganizationNameChanged="SetChargeToName"
+                                      ShowDepartment="false"
+                                      PreferOpenUpward="false"
+                                      InputVariant="Variant.Outlined"
+                                      OrganizationLabel="Charge to"
+                                      Placeholder="Type to search…"
+                                      AriaLabel="Charge to" />
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanCreate)" OnClick="Create">
+            Create
+        </MudButton>
+    </DialogActions>
+</MudDialog>

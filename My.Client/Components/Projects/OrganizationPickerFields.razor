@@ -13,17 +13,19 @@
     active org is reachable; typing searches the full catalog.
 *@
 
-<div class="org-picker-field @(_orgOpen ? "org-picker-open" : null)" @onfocusin="OnOrgFocusInAsync">
+<div class="org-picker-field @(_orgOpen ? "org-picker-open" : null)" @onfocusin="OnOrgFocusInAsync" @onmousedown="OnOrgPointerDownAsync" @onclick="OnOrgFieldClickAsync">
     <MudTextField @ref="_orgTextField"
                   T="string"
                   Value="_orgText"
                   ValueChanged="OnOrgTextChangedAsync"
                   Label="@OrganizationLabel"
-                  Placeholder="Type to search organizations…"
+                  Placeholder="@Placeholder"
                   Variant="@InputVariant"
                   Margin="Margin.Dense"
                   Immediate="true"
-                  Clearable="true"
+                  Disabled="@Disabled"
+                  Clearable="@(!Disabled)"
+                  aria-label="@AriaLabel"
                   Adornment="Adornment.End"
                   AdornmentIcon="@Icons.Material.Filled.Search"
                   AdornmentColor="Color.Default"
@@ -45,6 +47,8 @@
                 Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
         <div @ref="_orgScrollEl"
              @onmousedown:preventDefault="true"
+             @onmousedown:stopPropagation="true"
+             @onclick:stopPropagation="true"
              class="org-picker-scroll"
              @onscroll="OnOrgListScrollAsync">
             @if (_orgLoading && _orgResults.Count == 0)
@@ -103,7 +107,7 @@
     var depts = DepartmentOptions;
     if (depts.Count > 0)
     {
-        <div class="org-picker-field @(_deptOpen ? "org-picker-open" : null)" @onfocusin="OnDeptFocusInAsync">
+        <div class="org-picker-field @(_deptOpen ? "org-picker-open" : null)" @onfocusin="OnDeptFocusInAsync" @onmousedown="OnDeptPointerDownAsync" @onclick="OnDeptFieldClickAsync">
             <MudTextField @ref="_deptTextField"
                           T="string"
                           Value="_deptText"
@@ -126,7 +130,7 @@
                         OverflowBehavior="OverflowBehavior.FlipOnOpen"
                         Class="org-picker-popover"
                         Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
-                <div @ref="_deptScrollEl" @onmousedown:preventDefault="true" class="org-picker-scroll">
+                <div @ref="_deptScrollEl" @onmousedown:preventDefault="true" @onmousedown:stopPropagation="true" @onclick:stopPropagation="true" class="org-picker-scroll">
                     @if (_deptResults.Count == 0)
                     {
                         <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
@@ -167,6 +171,10 @@
     [Parameter] public string DepartmentLabel { get; set; } = "Department";
     [Parameter] public string? OrganizationHelperText { get; set; }
     [Parameter] public string? DepartmentHelperText { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Type to search organizations…";
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string?> OrganizationNameChanged { get; set; }
 
     /// <summary>Open the list above the field (project dialog sits near the bottom).</summary>
     [Parameter] public bool PreferOpenUpward { get; set; } = true;
@@ -187,6 +195,8 @@
     private bool _orgLoading;
     private bool _orgTextDirty;
     private bool _suppressOrgBlurClose;
+    private bool _orgInputFocused;
+    private int _orgBlurGeneration;
     private List<Organization> _orgResults = new();
     private CancellationTokenSource? _orgDebounceCts;
     private CancellationTokenSource? _orgSearchCts;
@@ -203,6 +213,8 @@
     private bool _deptOpen;
     private bool _deptTextDirty;
     private bool _suppressDeptBlurClose;
+    private bool _deptInputFocused;
+    private int _deptBlurGeneration;
     private List<DepartmentModel> _deptResults = new();
 
     private static string OrgName(Organization? org) => org?.Name ?? string.Empty;
@@ -289,18 +301,43 @@
 
     // ---------- Organization popover ----------
 
-    private async Task OnOrgFocusInAsync()
+    private Task OnOrgFocusInAsync()
     {
-        if (!_orgOpen)
-        {
-            _orgDebounceCts?.Cancel();
-            // Empty query on open — show the catalog, not only the current name.
-            await ResetAndSearchOrgsAsync(string.Empty, CancellationToken.None);
-        }
+        _orgInputFocused = true;
+        return OpenOrgCatalogAsync();
     }
+
+    // The clear button leaves the input focused, so the next press is not a focusin.
+    private Task OnOrgPointerDownAsync()
+    {
+        if (Disabled)
+            return Task.CompletedTask;
+        _orgInputFocused = true;
+        return OpenOrgCatalogAsync();
+    }
+
+    private Task OnOrgFieldClickAsync() => OnOrgPointerDownAsync();
+
+    private async Task OpenOrgCatalogAsync()
+    {
+        if (Disabled || _orgOpen)
+            return;
+
+        CancelPendingOrgBlurClose();
+        _orgDebounceCts?.Cancel();
+        // Empty query on open — show the catalog, not only the current name.
+        await ResetAndSearchOrgsAsync(string.Empty, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The clear button blurs the input, then focuses it again. The blur handler
+    /// waits 150ms and would close a list that clear or a later click just opened.
+    /// </summary>
+    private void CancelPendingOrgBlurClose() => _orgBlurGeneration++;
 
     private async Task OnOrgTextChangedAsync(string? value)
     {
+        if (Disabled) return;
         _orgText = value ?? string.Empty;
         _orgTextDirty = true;
 
@@ -309,6 +346,7 @@
             _selectedOrg = null;
             _selectedDept = null;
             await OrganizationIdChanged.InvokeAsync(null);
+            await OrganizationNameChanged.InvokeAsync(null);
             await DepartmentIdChanged.InvokeAsync(null);
         }
 
@@ -480,30 +518,46 @@
         _deptTextDirty = false;
 
         await OrganizationIdChanged.InvokeAsync(org.OrganizationId);
+        await OrganizationNameChanged.InvokeAsync(org.Name);
         await DepartmentIdChanged.InvokeAsync(null);
         _suppressOrgBlurClose = false;
     }
 
     private async Task ClearOrgAsync()
     {
+        // MudTextField clears the text before this runs, then focuses the input again.
+        // Drop any list opened against the disappearing clear button and open a new one
+        // once the field has settled. A blur from that button must not close it.
+        CancelPendingOrgBlurClose();
+        _orgDebounceCts?.Cancel();
         _orgText = string.Empty;
         _orgTextDirty = false;
-        _orgOpen = false;
-        _orgResults = new List<Organization>();
-        _orgHasMore = false;
         _selectedOrg = null;
         _selectedDept = null;
         _syncedOrgId = null;
         _syncedDeptId = null;
         _deptText = string.Empty;
+        _orgOpen = false;
         await OrganizationIdChanged.InvokeAsync(null);
+        await OrganizationNameChanged.InvokeAsync(null);
         await DepartmentIdChanged.InvokeAsync(null);
+        if (Disabled)
+            return;
+        _orgInputFocused = true;
+        CancelPendingOrgBlurClose();
+        await Task.Yield();
+        CancelPendingOrgBlurClose();
+        await ResetAndSearchOrgsAsync(string.Empty, CancellationToken.None);
     }
 
     private async Task OnOrgBlurAsync()
     {
+        _orgInputFocused = false;
+        var generation = ++_orgBlurGeneration;
         await Task.Delay(150);
-        if (_suppressOrgBlurClose) return;
+        // Focus often returns before this delay ends (the clear button focuses the input again).
+        if (_orgInputFocused || generation != _orgBlurGeneration || _suppressOrgBlurClose)
+            return;
         _orgOpen = false;
         if (_orgTextDirty && _selectedOrg == null)
         {
@@ -520,6 +574,7 @@
 
     private async Task OnOrgKeyDownAsync(KeyboardEventArgs e)
     {
+        if (Disabled) return;
         if (e.Key == "Escape")
         {
             _orgOpen = false;
@@ -557,10 +612,29 @@
 
     private Task OnDeptFocusInAsync()
     {
-        if (!_deptOpen)
-            FilterDepartments(_deptText);
+        _deptInputFocused = true;
+        return OpenDeptListAsync();
+    }
+
+    private Task OnDeptPointerDownAsync()
+    {
+        _deptInputFocused = true;
+        return OpenDeptListAsync();
+    }
+
+    private Task OnDeptFieldClickAsync() => OnDeptPointerDownAsync();
+
+    private Task OpenDeptListAsync()
+    {
+        if (_deptOpen)
+            return Task.CompletedTask;
+
+        CancelPendingDeptBlurClose();
+        FilterDepartments(_deptText);
         return Task.CompletedTask;
     }
+
+    private void CancelPendingDeptBlurClose() => _deptBlurGeneration++;
 
     private Task OnDeptTextChangedAsync(string? value)
     {
@@ -600,19 +674,24 @@
 
     private Task ClearDeptAsync()
     {
+        CancelPendingDeptBlurClose();
         _deptText = string.Empty;
         _deptTextDirty = false;
-        _deptOpen = false;
-        _deptResults = new List<DepartmentModel>();
         _selectedDept = null;
         _syncedDeptId = null;
+        _deptInputFocused = true;
+        FilterDepartments(string.Empty);
+        CancelPendingDeptBlurClose();
         return DepartmentIdChanged.InvokeAsync(null);
     }
 
     private async Task OnDeptBlurAsync()
     {
+        _deptInputFocused = false;
+        var generation = ++_deptBlurGeneration;
         await Task.Delay(150);
-        if (_suppressDeptBlurClose) return;
+        if (_deptInputFocused || generation != _deptBlurGeneration || _suppressDeptBlurClose)
+            return;
         _deptOpen = false;
         if (_deptTextDirty && _selectedDept == null)
         {

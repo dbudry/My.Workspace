@@ -19,6 +19,7 @@ namespace My.Functions
     {
         private readonly IRepository<UserSettings> settingsRepository;
         private readonly IRepository<ExpenseReport> reportsRepository;
+        private readonly IRepository<ExpenseCurrency> currenciesRepository;
         private readonly AppMapper mapper;
         private readonly IValidator<UpdateUserSettingsDto> updateValidator;
 
@@ -31,6 +32,7 @@ namespace My.Functions
             this.updateValidator = updateValidator;
             settingsRepository = repositoryFactory.GetRepository<UserSettings>();
             reportsRepository = repositoryFactory.GetRepository<ExpenseReport>();
+            currenciesRepository = repositoryFactory.GetRepository<ExpenseCurrency>();
         }
 
         [Function("GetUserSettings")]
@@ -100,6 +102,9 @@ namespace My.Functions
             }
 
             mapper.UpdateUserSettingsFromDto(dto!, settings);
+            settings.ExpenseDefaultCurrencyCode = await ResolveDefaultCurrencyAsync(settings);
+            settings.ExpenseEditorView = ExpenseCurrencyRules.NormalizeView(settings.ExpenseEditorView);
+            settings.ExpenseCurrencyLayout = ExpenseCurrencyRules.NormalizeLayout(settings.ExpenseCurrencyLayout);
 
             // Favorites list is not handled by the Mapperly partial (ignored to avoid json column issues),
             // so we map it manually here.
@@ -111,6 +116,25 @@ namespace My.Functions
             await SyncDraftExpenseAddressesAsync(userId, settings.ExpenseHomeAddress);
 
             return new OkObjectResult(mapper.UserSettingsToDto(settings));
+        }
+
+        private async Task<string?> ResolveDefaultCurrencyAsync(UserSettings settings)
+        {
+            var chosen = ExpenseCurrencyRules.OptionalCode(settings.ExpenseDefaultCurrencyCode);
+            if (chosen != null)
+                return chosen;
+
+            var inferred = ExpenseAddressCurrencyRules.CurrencyForAddress(settings.ExpenseHomeAddress);
+            if (inferred == null || !await CurrencyIsActiveAsync(inferred))
+                return null;
+            return inferred;
+        }
+
+        private async Task<bool> CurrencyIsActiveAsync(string code)
+        {
+            var rows = await currenciesRepository.Get(currency =>
+                currency.Code == code && currency.IsActive && !currency.IsRemoved);
+            return rows.Any();
         }
 
         private async Task SyncDraftExpenseAddressesAsync(string userId, string? address)

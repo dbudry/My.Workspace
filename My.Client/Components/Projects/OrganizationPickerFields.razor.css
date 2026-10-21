@@ -1,13 +1,9 @@
 .org-picker-field {
     position: relative;
     width: 100%;
-    /* List is portaled via MudPopover Fixed — row height must not grow with results. */
+    /* List is portaled via MudPopover Fixed — row height must not grow with results.
+       No z-index here: a raised field paints over the sticky app bar while scrolling. */
     overflow: visible;
-    z-index: 5;
-}
-
-.org-picker-open {
-    z-index: 100;
 }
 
 /* Portaled panel — only .org-picker-scroll may show a scrollbar. */

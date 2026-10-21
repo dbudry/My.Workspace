@@ -2,7 +2,16 @@
 
 @if (ExpenseStatusRules.IsReimbursed(Status))
 {
-    <MudChip T="string" Color="Color.Tertiary" Size="@Size" Icon="@Icons.Material.Filled.Paid">Reimbursed</MudChip>
+    @if (PaymentDate is DateTime paidOn)
+    {
+        <MudTooltip Text="@paidOn.ToString("MM/dd/yyyy")">
+            <MudChip T="string" Color="Color.Tertiary" Size="@Size" Icon="@Icons.Material.Filled.Paid">@PaidWord</MudChip>
+        </MudTooltip>
+    }
+    else
+    {
+        <MudChip T="string" Color="Color.Tertiary" Size="@Size" Icon="@Icons.Material.Filled.Paid">@PaidWord</MudChip>
+    }
 }
 else if (ExpenseStatusRules.IsSubmitted(Status))
 {
@@ -15,5 +24,8 @@ else
 
 @code {
     [Parameter] public string? Status { get; set; }
+    [Parameter] public DateTime? PaymentDate { get; set; }
     [Parameter] public Size Size { get; set; } = Size.Small;
+
+    private string PaidWord => ExpensePayLabelRules.StatusWord(Status);
 }

@@ -12,6 +12,8 @@ public sealed class ExpenseStatementPdfService
     public byte[] BuildPacket(ExpenseForm8743Model model, IReadOnlyList<ExpenseReceiptPdfPage> receipts) =>
         BuildPacket(ExpenseFormDocument.Generate(model), receipts);
 
+    public byte[] Combine(IReadOnlyList<byte[]> packets) => Merge(packets);
+
     public byte[] BuildPacket(byte[] formPdf, IReadOnlyList<ExpenseReceiptPdfPage> receipts)
     {
         var parts = new List<byte[]> { formPdf };

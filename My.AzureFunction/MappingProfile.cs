@@ -230,7 +230,10 @@ namespace My.Functions
                 CalendarBackfillPromptAcknowledged = settings.CalendarBackfillAcknowledgedUtc != null,
                 GoogleCalendarAutoConnectOptOut = settings.GoogleCalendarAutoConnectOptOut,
                 HasExpenseSignature = settings.ExpenseSignature != null && settings.ExpenseSignature.Length > 0,
-                ExpenseHomeAddress = settings.ExpenseHomeAddress
+                ExpenseHomeAddress = settings.ExpenseHomeAddress,
+                ExpenseDefaultCurrencyCode = ExpenseCurrencyRules.OptionalCode(settings.ExpenseDefaultCurrencyCode),
+                ExpenseEditorView = ExpenseCurrencyRules.NormalizeView(settings.ExpenseEditorView),
+                ExpenseCurrencyLayout = ExpenseCurrencyRules.NormalizeLayout(settings.ExpenseCurrencyLayout)
             };
         }
 

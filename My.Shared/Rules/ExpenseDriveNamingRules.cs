@@ -52,11 +52,17 @@ public static class ExpenseDriveNamingRules
             ? PeriodFolderName(year, month)
             : DraftFolderName;
 
-    public static string StatementFileName(DateTime coverStart, DateTime coverEnd, string? employeeName)
+    public static string StatementFileName(DateTime coverStart, DateTime coverEnd, string? employeeName) =>
+        StatementFileName(coverStart, coverEnd, employeeName, chargeToName: null);
+
+    public static string StatementFileName(
+        DateTime coverStart, DateTime coverEnd, string? employeeName, string? chargeToName)
     {
         var who = SanitizeSegment(employeeName);
         if (who.Length == 0) who = "Employee";
-        return $"{coverStart:yyyy-MM-dd}_{coverEnd:yyyy-MM-dd}_{who}_Expenses.pdf";
+        var charge = ChargeSlug(chargeToName);
+        var chargePart = charge.Length == 0 ? "" : charge + "_";
+        return $"{coverStart:yyyy-MM-dd}_{coverEnd:yyyy-MM-dd}_{who}_{chargePart}Expenses.pdf";
     }
 
     /// <summary>
@@ -65,14 +71,28 @@ public static class ExpenseDriveNamingRules
     /// </summary>
     public const string FiledFolderName = "Filed";
 
-    public static string FiledPacketFileName(int year, int month, string? employeeName, string reportId)
+    public static string FiledPacketFileName(int year, int month, string? employeeName, string reportId) =>
+        FiledPacketFileName(year, month, employeeName, reportId, chargeToName: null);
+
+    public static string FiledPacketFileName(
+        int year, int month, string? employeeName, string reportId, string? chargeToName)
     {
         var who = SanitizeSegment(employeeName);
         if (who.Length == 0) who = "Employee";
         var id = (reportId ?? "").Replace("-", "", StringComparison.Ordinal);
         if (id.Length > 8) id = id[..8];
         if (id.Length == 0) id = "report";
-        return $"{PeriodFolderName(year, month)}_{who}_{id}_Expenses.pdf";
+        var charge = ChargeSlug(chargeToName);
+        var chargePart = charge.Length == 0 ? "" : charge + "_";
+        return $"{PeriodFolderName(year, month)}_{who}_{id}_{chargePart}Expenses.pdf";
+    }
+
+    private static string ChargeSlug(string? chargeToName)
+    {
+        var slug = SanitizeSegment(chargeToName);
+        if (slug.Length > 24)
+            slug = slug[..24].Trim('_');
+        return slug;
     }
 
     public static string ReceiptFileName(DateTime date, string? description, string extension)

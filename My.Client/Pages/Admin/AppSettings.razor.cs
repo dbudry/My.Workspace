@@ -48,6 +48,10 @@ namespace My.Client.Pages.Admin
         private List<Organization> homeOrganizationChoices = [];
         private string intranetDriveParentFolderId = string.Empty;
         private string expensesDriveParentFolderId = string.Empty;
+        private bool expenseUserEntersRates;
+        private string expenseCompanyCurrencyCode = ExpenseCurrencyRules.UsdCode;
+        private string expenseCreditEntryMode = ExpenseCreditEntryRules.FromLine;
+        private List<ExpenseCurrencyDto> expenseCurrencies = [];
         private AppDriveStatusDto? appDriveStatus;
         private bool appDriveStatusLoaded;
         private bool isAppDriveBusy;
@@ -195,6 +199,16 @@ namespace My.Client.Pages.Admin
                     if (expensesDriveVal != null)
                         expensesDriveParentFolderId = expensesDriveVal.Value ?? string.Empty;
 
+                    var userRatesVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.ExpensesUserEntersRates);
+                    expenseUserEntersRates = userRatesVal != null
+                        && bool.TryParse(userRatesVal.Value, out var userRates)
+                        && userRates;
+                    var companyCurrencyVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.ExpensesCompanyCurrencyCode);
+                    expenseCompanyCurrencyCode = ExpenseCurrencyRules.OptionalCode(companyCurrencyVal?.Value)
+                        ?? ExpenseCurrencyRules.UsdCode;
+                    var creditModeVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.ExpensesCreditEntryMode);
+                    expenseCreditEntryMode = ExpenseCreditEntryRules.NormalizeMode(creditModeVal?.Value);
+
                     var navDepthVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.IntranetNavigationMaxDepth);
                     if (navDepthVal != null)
                         intranetNavigationMaxDepth = IntranetNavigationRules.ParseMaxDepth(navDepthVal.Value);
@@ -230,6 +244,7 @@ namespace My.Client.Pages.Admin
                 }
 
                 await LoadAppDriveStatusAsync();
+                await LoadExpenseCurrenciesAsync();
             }
             catch (Exception ex)
             {
@@ -237,6 +252,30 @@ namespace My.Client.Pages.Admin
             }
 
             isLoading = false;
+        }
+
+        private IEnumerable<ExpenseCurrencyDto> ExpenseCurrencyChoices
+        {
+            get
+            {
+                var code = ExpenseCurrencyRules.NormalizeCode(expenseCompanyCurrencyCode);
+                if (expenseCurrencies.Any(currency => string.Equals(currency.Code, code, StringComparison.Ordinal)))
+                    return expenseCurrencies;
+                return expenseCurrencies.Append(new ExpenseCurrencyDto { Code = code, Name = code, IsActive = true });
+            }
+        }
+
+        private async Task LoadExpenseCurrenciesAsync()
+        {
+            try
+            {
+                var rows = await client.GetFromJsonAsync<List<ExpenseCurrencyDto>>(Constants.API.AppSettings.ExpenseCurrencies);
+                expenseCurrencies = rows ?? [];
+            }
+            catch
+            {
+                expenseCurrencies = [];
+            }
         }
 
         private async Task LoadAppDriveStatusAsync()
@@ -474,6 +513,24 @@ namespace My.Client.Pages.Admin
                         Key = Constants.SettingKeys.ExpensesDriveParentFolderId,
                         Value = (expensesDriveParentFolderId ?? string.Empty).Trim(),
                         Description = "Google Drive folder ID for the private Expenses root."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.ExpensesCompanyCurrencyCode,
+                        Value = ExpenseCurrencyRules.NormalizeCode(expenseCompanyCurrencyCode),
+                        Description = "Company default currency. Its exchange rate is 1."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.ExpensesUserEntersRates,
+                        Value = expenseUserEntersRates ? "true" : "false",
+                        Description = "When true, exchange rates are entered on the expense."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.ExpensesCreditEntryMode,
+                        Value = ExpenseCreditEntryRules.NormalizeMode(expenseCreditEntryMode),
+                        Description = "Line credits a paid line. Form types the credit on the expense."
                     }
                 };
 

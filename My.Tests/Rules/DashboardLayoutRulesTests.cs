@@ -163,7 +163,7 @@ public class DashboardLayoutRulesTests
         Assert.True(favorites.Columns >= 3);
         Assert.True(favorites.Rows >= 1);
         Assert.True(unsubmitted.Columns >= 6);
-        Assert.True(unsubmitted.Rows >= 2);
+        Assert.True(unsubmitted.Rows >= 1);
         Assert.False(DashboardLayoutRules.Overlaps(favorites, unsubmitted));
     }
 
@@ -185,6 +185,23 @@ public class DashboardLayoutRulesTests
         Assert.Equal(8, layout.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Columns);
         Assert.Equal(2, layout.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Rows);
         Assert.Equal(5, layout.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Col);
+    }
+
+    [Fact]
+    public void List_widgets_can_shrink_to_one_row()
+    {
+        foreach (var id in new[] { DashboardLayoutRules.UnsubmittedTime, DashboardLayoutRules.LastMonthExpenses })
+        {
+            var layout = new List<DashboardLayoutItem>
+            {
+                new() { Id = id, Col = 1, Row = 1, Columns = 12, Rows = 2 }
+            };
+
+            var result = DashboardLayoutRules.TryResize(layout, id, 12, 1);
+
+            Assert.Equal(1, result.Single().Rows);
+            Assert.Equal(12, result.Single().Columns);
+        }
     }
 
     [Fact]

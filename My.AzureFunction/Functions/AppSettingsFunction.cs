@@ -11,6 +11,7 @@ using My.Functions.Authorization;
 using My.Functions.Helpers;
 using My.Shared.Constants;
 using My.Shared.Dtos;
+using My.Shared.Dtos.Expenses;
 using My.Shared.Rules;
 
 namespace My.Functions
@@ -103,6 +104,33 @@ namespace My.Functions
             return new OkObjectResult(usage);
         }
 
+        [Function("GetAppSettingsExpenseCurrencies")]
+        public async Task<IActionResult> GetExpenseCurrenciesAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "appsettings/expense-currencies")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (!principal.IsInRole(Constants.Roles.Admin))
+                return new StatusCodeResult(403);
+
+            var rows = await _dbContext.ExpenseCurrencies.AsNoTracking()
+                .Where(row => row.IsActive && !row.IsRemoved)
+                .OrderBy(row => row.SortOrder)
+                .ThenBy(row => row.Code)
+                .Select(row => new ExpenseCurrencyDto
+                {
+                    ExpenseCurrencyId = row.ExpenseCurrencyId,
+                    Code = row.Code,
+                    Name = row.Name,
+                    Color = row.Color,
+                    RateToUsd = row.RateToUsd,
+                    IsActive = row.IsActive,
+                    IsLocked = row.IsLocked,
+                    SortOrder = row.SortOrder
+                })
+                .ToListAsync();
+            return new OkObjectResult(rows);
+        }
+
         [Function("UpdateAppSettings")]
         public async Task<IActionResult> UpdateAppSettingsAsync(
             [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "appsettings")] HttpRequestData req)
@@ -123,6 +151,11 @@ namespace My.Functions
 
             if (await RequestValidator.BadRequestIfInvalidAsync(_updateValidator, dtos) is { } validationError)
                 return validationError;
+
+            var companyCurrencyError = await ApplyExpenseCompanyCurrencyAsync(dtos!);
+            if (companyCurrencyError != null)
+                return companyCurrencyError;
+            NormalizeExpensePolicy(dtos!);
 
             foreach (var dto in dtos!)
             {
@@ -169,6 +202,40 @@ namespace My.Functions
                     Description = s.Description
                 })
                 .ToListAsync());
+        }
+
+        private async Task<IActionResult?> ApplyExpenseCompanyCurrencyAsync(List<AppSettingDto> dtos)
+        {
+            var company = dtos.FirstOrDefault(dto =>
+                string.Equals(dto.Key, Constants.SettingKeys.ExpensesCompanyCurrencyCode, StringComparison.Ordinal));
+            if (company == null)
+                return null;
+
+            var code = ExpenseCurrencyRules.NormalizeCode(company.Value);
+            var currency = await _dbContext.ExpenseCurrencies
+                .FirstOrDefaultAsync(row => row.Code == code && row.IsActive && !row.IsRemoved);
+            if (currency == null)
+                return new BadRequestObjectResult("Choose an active default currency.");
+
+            currency.RateToUsd = 1m;
+            company.Value = code;
+            return null;
+        }
+
+        private static void NormalizeExpensePolicy(List<AppSettingDto> dtos)
+        {
+            foreach (var dto in dtos)
+            {
+                if (string.Equals(dto.Key, Constants.SettingKeys.ExpensesUserEntersRates, StringComparison.Ordinal)
+                    || string.Equals(dto.Key, Constants.SettingKeys.ExpensesCreditBucketEnabled, StringComparison.Ordinal))
+                {
+                    dto.Value = string.Equals(dto.Value, "true", StringComparison.OrdinalIgnoreCase) ? "true" : "false";
+                }
+                else if (string.Equals(dto.Key, Constants.SettingKeys.ExpensesCreditEntryMode, StringComparison.Ordinal))
+                {
+                    dto.Value = ExpenseCreditEntryRules.NormalizeMode(dto.Value);
+                }
+            }
         }
 
         private async Task<Dictionary<string, int>> GetContactTypeUsageCountsAsync()

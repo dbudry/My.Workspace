@@ -1,0 +1,42 @@
+.expense-submit-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    color: var(--mud-palette-text-primary);
+    font-size: 0.9375rem;
+    line-height: 1.45;
+}
+
+.expense-submit-question,
+.expense-submit-note,
+.expense-submit-issue,
+.expense-submit-issue-line {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.expense-submit-issues {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-top: 0.45rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.expense-submit-issue-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.expense-submit-issue,
+.expense-submit-issue-line {
+    color: var(--mud-palette-warning);
+    font-weight: 600;
+}
+
+.expense-submit-issue-line {
+    padding-left: 0.75rem;
+    font-weight: 500;
+}

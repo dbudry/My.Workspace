@@ -32,12 +32,18 @@ function Stop-DevBlazorClientListeners {
     $processes += Get-Process -Name pwsh,powershell -ErrorAction SilentlyContinue |
         Where-Object { $_.Id -ne $currentPid -and $_.MainWindowTitle -like '*Blazor Client*' }
 
-    # Orphan dotnet watch/run for My.Client (common when port was already freed).
-    $processes += Get-Process -Name dotnet -ErrorAction SilentlyContinue |
+    # Orphan dotnet watch/run for My.Client (common when the port was already freed).
+    # Get-Process has no CommandLine. The watch command is `dotnet watch --urls https://localhost:7047`
+    # and does not contain the project path, so match the client URL as well as a My.Client path.
+    $processes += Get-CimInstance Win32_Process -Filter "Name = 'dotnet.exe'" -ErrorAction SilentlyContinue |
         Where-Object {
             $cmd = $_.CommandLine
-            $cmd -and ($cmd -like '*My.Client*') -and ($cmd -like '*watch*' -or $cmd -like '*run*')
-        }
+            if (-not $cmd) { return $false }
+            $clientWatch = ($cmd -like '*watch*' -or $cmd -like '*dotnet-watch*') -and $cmd -like "*localhost:$HttpsPort*"
+            $clientProject = $cmd -like '*My.Client*' -and ($cmd -like '*watch*' -or $cmd -like '* run *')
+            $clientWatch -or $clientProject
+        } |
+        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }
 
     $processes = $processes | Where-Object { $_ } | Sort-Object Id -Unique
     if (-not $processes) { return $false }

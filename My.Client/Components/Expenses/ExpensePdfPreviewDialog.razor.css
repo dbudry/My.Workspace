@@ -1,0 +1,13 @@
+.expense-receipt-preview-status {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 0;
+}
+
+.expense-receipt-frame {
+    display: block;
+    width: 100%;
+    height: min(70vh, calc(100vh - 12rem));
+    border: 0;
+    background: var(--mud-palette-background-gray);
+}

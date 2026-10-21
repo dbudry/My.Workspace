@@ -74,5 +74,9 @@ namespace My.Shared.Dtos.UserSettings
 
         /// <summary>Home address for Form 87-43. Street, then city/state/ZIP on the next line.</summary>
         public string? ExpenseHomeAddress { get; set; }
+
+        public string? ExpenseDefaultCurrencyCode { get; set; }
+        public string ExpenseEditorView { get; set; } = "Detail";
+        public string ExpenseCurrencyLayout { get; set; } = "Mixed";
     }
 }

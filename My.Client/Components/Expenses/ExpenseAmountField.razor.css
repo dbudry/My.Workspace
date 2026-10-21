@@ -1,0 +1,65 @@
+.expense-amount {
+    position: relative;
+    flex: 0 0 14rem;
+    width: 14rem;
+    max-width: 100%;
+}
+
+.expense-amount.no-picker {
+    flex-basis: 9rem;
+    width: 9rem;
+}
+
+.expense-amount ::deep .mud-input-control.expense-amount-input {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+
+.expense-amount.has-picker ::deep input {
+    padding-right: 4.6rem;
+}
+
+.expense-amount.is-foreign ::deep .mud-input-outlined-border {
+    border-color: var(--expense-currency);
+    border-width: 2px;
+}
+
+.expense-amount-picker {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    bottom: 1px;
+    display: flex;
+    align-items: center;
+    z-index: 2;
+}
+
+.expense-amount-code {
+    display: inline-flex;
+    align-items: center;
+    height: calc(100% - 8px);
+    margin-right: 4px;
+    padding: 0 0.1rem 0 0.45rem;
+    border: 0;
+    border-left: 1px solid var(--mud-palette-lines-default);
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
+.expense-amount.is-foreign .expense-amount-code {
+    color: var(--expense-currency);
+    border-left-color: var(--expense-currency);
+}
+
+.expense-amount-code:disabled {
+    cursor: default;
+}
+
+.expense-amount-code ::deep .mud-icon-root {
+    font-size: 1.25rem;
+}

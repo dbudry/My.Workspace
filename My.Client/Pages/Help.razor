@@ -633,12 +633,18 @@
                     </MudText>
                     <MudText Typo="Typo.body2">
                         Open <strong>Expenses</strong> and click <strong>New Report</strong>.
-                        A new draft covers last month. You can have more than one draft, and more than one
+                        Choose the cover dates and the Charge to. That Charge to is for the whole expense, not each line.
+                        You can have more than one draft, and more than one
                         report filed in the same month. On the report, <kbd>Ctrl</kbd>+<kbd>N</kbd> adds a line.
                         Add a line per expense.
-                        Personal-car mileage lives under <strong>Transportation</strong> (type Personal car, then miles).
-                        Meals can be marked Breakfast / Lunch / Dinner. Attach a PDF or image on the line —
-                        receipts are stored under App Drive → Expenses after a workspace Admin
+                        Personal-car miles go in Mileage (code M); the dollars are miles times the rate.
+                        A meal line has a meal type (Breakfast, Lunch, or Dinner) and a head count for how many people. The price stays in Amount. The statement prints that number under B, L, or D.
+                        Submit is refused until the expense has a Charge to.
+                        The filed PDF has one form for each currency on the expense, then that currency's receipts, in one file.
+                        A line with no receipt is marked, and Submit names those lines. You can still submit them.
+                        The Copy action on a report copies that entire expense into a new draft. Receipts are not copied.
+                        Attach a PDF or image on the line. Each receipt can be previewed in a window, downloaded, or deleted.
+                        Receipts are stored under App Drive → Expenses after a workspace Admin
                         connects that Drive in App Settings. If a line's date is outside the
                         <strong>Cover period</strong>, attaching its receipt shows a warning so you can widen the dates.
                         <kbd>Ctrl</kbd>+<kbd>S</kbd> saves. Click <strong>Submit</strong> when the packet is
@@ -650,11 +656,21 @@
                         <strong>Unsubmit</strong> removes it so the next submit files a fresh one, in the month
                         of that later submit.
                         Deleting the person later can clear their receipt folder; the filed PDF stays.
-                        After the company pays you, the report shows as <strong>Reimbursed</strong>.
+                        After the company pays you, the report shows as <strong>Paid</strong>.
+                        A line's amount can be in another currency. The company default currency is set by an Admin
+                        under App Settings → Expenses. When people enter exchange rates, each rate other than the
+                        default is entered on the expense, next to the cover period. Otherwise the rate on the
+                        currency list is copied onto the line when it is saved.
+                        Detail and Form are the line views. Inline shows every currency together. Grouped shows
+                        one currency at a time, with that currency's totals on the form and the full totals under
+                        the report. When credits are entered on the expense, <strong>Add credit</strong> sits
+                        between PDF and Save. When a credit comes from a paid line, <strong>Credit Back</strong>
+                        is on that line and it reduces the next unpaid expense with the same Charge to.
                         After the cover period ends, an unsubmitted draft with lines shows on the dashboard.
                         Click a row to open a report. Home address and your signature live under
-                        <strong>Settings → Expenses</strong>. <strong>PDF</strong> has Open / Download
-                        and a legacy Form 87-43 option that fills the old Excel template.
+                        <strong>Settings → Expenses</strong>. <strong>PDF</strong> opens or downloads
+                        the statement with the receipt pages. The lower left of the form is its version.
+                        That number changes only when the form itself changes, and the filed copy records it.
                         iPhone HEIC receipts are converted to JPEG for the statement.
                     </MudText>
                     <MudText Typo="Typo.body2" Class="mt-2">
@@ -673,8 +689,9 @@
                             everyone's reports, open a report to review lines and download receipts, and
                             <strong>Unsubmit</strong> if a correction is needed (that drops the filed PDF;
                             the employee’s next Submit files a new one).
-                            After the company has paid the employee, a manager clicks <strong>Reimburse</strong>.
-                            <strong>Undo reimbursed</strong> returns it to submitted.
+                            After the company has paid the employee, a manager clicks <strong>Mark paid</strong>
+                            and chooses the payment date. The report shows as Paid.
+                            <strong>Undo payment</strong> returns it to submitted.
                             The dashboard lists team reports submitted last month. On My and Team,
                             Year lists the years a report's cover period touches, so a period that
                             crosses into January shows under both years. Drafts are included.
@@ -692,7 +709,16 @@
                             <strong>Expenses → Settings</strong> is for <code>Manager:Expenses</code>.
                             Set the personal-car mileage rate — it saves when
                             you finish typing or leave the field. New reports copy
-                            the rate at create time. The same page links to Team collection and Data export.
+                            the rate at create time. Miscellaneous codes (A–Z or A.00–A.99) are added,
+                            renamed, or retired on that page. Transportation codes stay fixed.
+                            Submission email lists who is mailed, with the PDFs and a link, when someone submits.
+                            The person who filled out the report is copied.
+                            The currency list is on that page. When people enter exchange rates, the rate
+                            column is hidden and the rate is entered on the expense. Use credits turns credits
+                            on or off. Which way a credit is entered, the company default currency, and who
+                            enters exchange rates are under App Settings → Expenses, not on this page.
+                            A person's own starting currency is under Settings → Expenses.
+                            The same page links to Team collection and Data export.
                             Home company (which Organizations row is the home company)
                             is a workspace Admin setting under App Settings → Organizations.
                             Receipts still need a workspace Admin to connect App Drive under
