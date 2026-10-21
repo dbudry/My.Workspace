@@ -24,9 +24,9 @@ Replace the monthly Excel Form 87-43 + Drive PDF working folder (`Expenses/Worki
 - App Settings → **Expenses**: home organization, mileage rate (default 0.555), Drive folder ID (connect/create later).
 - Draft reports: as many as needed. Cover start and cover end are a free range (they can cross a month). Line dates are not locked to that range. The report's month is the month it is submitted, so two reports can be filed in the same month. Mileage amount = miles × rate. Totals by category.
 - Private App Drive owner OAuth (separate from the per-user Google Drive/Calendar grant), folder layout, receipt upload/download/proxy.
-- Draft → Submit → Reimbursed workflow, with Unsubmit and Undo-reimbursed for Manager:Expenses+.
-- PDF export: modern QuestPDF packet plus a legacy Form 87-43 layout (Excel-templated, printed via Excel COM automation when available on the host; otherwise the filled `.xlsx` workbook is returned for the user to print themselves).
-- Signatures (employee + manager) captured under Settings → Expenses and stamped onto the legacy PDF.
+- Draft → Submit → Paid. The stored status remains Reimbursed. Screens say Paid, Mark paid, and Undo payment. Manager:Expenses can unsubmit and undo a payment.
+- PDF export: one QuestPDF statement. It has one form per currency, then that currency's receipts. Charge to is on the report. The lower left is the form version (`ExpenseFormVersionRules.Current`). Raise that constant only when the form changes. Each filed PDF stores the version that produced it. Submit and the PDF menu use this statement. The Excel Form 87-43 template and filler remain in the repo and are not used on that path.
+- Signatures (employee + manager) captured under Settings → Expenses and stamped onto the statement.
 - Expenses Data page (`ExpenseData.razor`) — org-wide report/line browsing and filtering for Manager:Expenses+, separate from the Tyme Data page.
 
 ## Still to build (v1)
@@ -57,3 +57,12 @@ Replace the monthly Excel Form 87-43 + Drive PDF working folder (`Expenses/Worki
 | 2026-09-17 | Submit files the statement PDF under Expenses/Filed | Packet is built on demand today, so user-delete of the receipt folder would destroy the only copy. Filed PDFs sit outside the person folder and survive account delete. Unsubmit drops the file so the next submit files a new one. |
 | 2026-10-07 | Filing month is the submit month; cover range is free | Receipts arrive late and a packet can cross a month. One report per calendar month blocked September receipts on an October filing. Drafts have no month until submit. More than one report may be submitted in the same month. |
 | 2026-10-08 | List year follows the cover period | My and Team year choices are the years a report covers, plus the submit year once it is filed. A cover that crosses a year shows under each year it touches. Drafts stay on Team. Status is a preset list, and search includes line items. |
+| 2026-10-15 | Charge to is per line, from Organizations | One report stays one cover period. Each distinct Charge to prints its own statement plus that group's receipts. The label is Charge to. A later extra list can sit beside organizations; this slice stores the organization id and a name snapshot. |
+| 2026-10-15 | A meal is a type plus a head count | The line stores Meal type (Breakfast, Lunch, or Dinner) and Head count (how many people). The price stays in Amount. The PDF prints that number in the B, L, or D column. The editor stays one row per expense. |
+| 2026-10-15 | Missing receipts warn and still submit | A line with no receipt is marked. Submit names the gaps and offers Submit anyway. A missing Charge to blocks submit. |
+| 2026-10-15 | Only miscellaneous codes are editable | Codes are A–Z or A.00–A.99. Transportation codes are seeded and locked. Z stays active because software prints as Z. |
+| 2026-10-15 | Submit emails the filing, not reimbursement | Expense settings lists who is mailed. The message attaches one PDF per Charge to, links to the report, and copies the person who filled it out. A send failure leaves the report submitted. Reimburse still does not send mail. |
+| 2026-10-15 | One generated form, with a version | Submit and the PDF menu use the generated statement. The lower left prints Version N. N is `ExpenseFormVersionRules.Current`. Increment it only when the generated form changes. Each filed PDF stores the version that produced it. The Excel Form 87-43 template and filler remain in the repo and are not used on that path. |
+| 2026-10-16 | Charge to is on the report | One expense has one Charge to. The statement uses that name. |
+| 2026-10-19 | Lines can use more than one currency | The filed PDF has one form per currency, then that currency's receipts, in one file. Default currency, who enters rates, and credit entry mode are App Settings. |
+| 2026-10-21 | Credits and Paid | A credit can come from a paid line or be entered on the expense. After payment, screens say Paid. |

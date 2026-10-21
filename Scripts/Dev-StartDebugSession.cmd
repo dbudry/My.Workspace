@@ -7,7 +7,7 @@ rem
 rem It will automatically:
 rem   - Start LocalDB
 rem   - Start Azurite in a new window (if needed)
-rem   - Start the Functions host (func start) in a clean window on port 7074
+rem   - Start the Functions host (dotnet run) in a clean window on port 7074
 rem     (Google API / OAuth redirect URIs are configured for 7074)
 rem   - Kill any previous process on the client port 7047 (avoids "address already in use")
 rem   - Start the Blazor client (dotnet watch) in a separate window on port 7047

@@ -1,0 +1,27 @@
+@namespace My.Client.Components.Expenses
+
+<MudDialog>
+    <DialogContent>
+        <MudDatePicker Date="date" DateChanged="SetDate"
+                       Label="Date" DateFormat="MM/dd/yyyy"
+                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Error="@missingDate" ErrorText="Choose a date." />
+        <MudTextField @bind-Value="description" Label="Description" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      MaxLength="200" Lines="2"
+                      Error="@missingDescription" ErrorText="Enter a description." />
+        <MudNumericField T="decimal" Value="amount" ValueChanged="SetAmount" Label="Amount"
+                         Variant="Variant.Outlined" Margin="Margin.Dense" Min="0m" HideSpinButtons="true" Format="N2"
+                         Error="@(!string.IsNullOrEmpty(amountError))" ErrorText="@amountError" />
+        <MudSelect T="string" Value="currencyCode" ValueChanged="SetCurrency" Label="Currency"
+                   Variant="Variant.Outlined" Margin="Margin.Dense">
+            @foreach (var currency in CurrencyChoices)
+            {
+                <MudSelectItem T="string" Value="@currency.Code">@currency.Code</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">Save</MudButton>
+    </DialogActions>
+</MudDialog>

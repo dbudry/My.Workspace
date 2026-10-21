@@ -13,10 +13,11 @@ using My.Functions.Services;
 using My.Shared.Constants;
 using My.Shared.Dtos.Expenses;
 using My.Shared.Rules;
+using My.Shared.Validation;
 
 namespace My.Functions
 {
-    public class ExpenseFunction
+    public partial class ExpenseFunction
     {
         private readonly ApplicationDbContext _dbContext;
         private readonly IValidator<CreateExpenseReportDto> _createValidator;
@@ -24,7 +25,7 @@ namespace My.Functions
         private readonly IValidator<UpdateExpenseSettingsDto> _settingsValidator;
         private readonly GoogleDriveService _drive;
         private readonly ExpenseStatementPdfService _pdf;
-        private readonly ExcelWorkbookPdfConverter _excelPdf;
+        private readonly ExpenseSubmitMailer _mailer;
         private readonly ILogger<ExpenseFunction> _logger;
 
         public ExpenseFunction(
@@ -34,7 +35,7 @@ namespace My.Functions
             IValidator<UpdateExpenseSettingsDto> settingsValidator,
             GoogleDriveService drive,
             ExpenseStatementPdfService pdf,
-            ExcelWorkbookPdfConverter excelPdf,
+            ExpenseSubmitMailer mailer,
             ILogger<ExpenseFunction> logger)
         {
             _dbContext = dbContext;
@@ -43,7 +44,7 @@ namespace My.Functions
             _settingsValidator = settingsValidator;
             _drive = drive;
             _pdf = pdf;
-            _excelPdf = excelPdf;
+            _mailer = mailer;
             _logger = logger;
         }
 
@@ -52,7 +53,7 @@ namespace My.Functions
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "expenses/context")] HttpRequestData req)
         {
             var principal = new ClaimsPrincipal(req.Identities);
-            if (AuthGates.RequireScopedExpenses(principal, out _) is IActionResult unauth) return unauth;
+            if (AuthGates.RequireScopedExpenses(principal, out var userId) is IActionResult unauth) return unauth;
 
             var settings = await LoadExpenseSettingsAsync();
             string? homeName = null;
@@ -63,6 +64,26 @@ namespace My.Functions
                 homeName = org?.Name;
             }
 
+            var codes = await LoadCodesAsync();
+            var transportRows = codes.Where(row => row.Kind == ExpenseCodeKindRules.Transportation).ToList();
+            var miscRows = codes.Where(row => row.Kind == ExpenseCodeKindRules.Miscellaneous).ToList();
+            var currencies = await _dbContext.ExpenseCurrencies.AsNoTracking()
+                .Where(row => row.IsActive && !row.IsRemoved)
+                .OrderBy(row => row.SortOrder)
+                .ThenBy(row => row.Code)
+                .ToListAsync();
+            var prefs = await _dbContext.UserSettings.AsNoTracking()
+                .FirstOrDefaultAsync(row => row.UserId == userId);
+            var policy = await LoadExpensePolicyAsync();
+            var defaultCurrency = ExpenseCurrencyRules.OptionalCode(prefs?.ExpenseDefaultCurrencyCode) ?? "";
+            if (currencies.All(row => !string.Equals(row.Code, defaultCurrency, StringComparison.Ordinal)))
+            {
+                defaultCurrency = currencies.Any(row =>
+                    string.Equals(row.Code, policy.CompanyCurrencyCode, StringComparison.Ordinal))
+                    ? policy.CompanyCurrencyCode
+                    : ExpenseCurrencyRules.UsdCode;
+            }
+
             return new OkObjectResult(new ExpenseContextDto
             {
                 HomeOrganizationId = settings.HomeOrganizationId,
@@ -71,12 +92,20 @@ namespace My.Functions
                 Categories = ExpenseCategoryRules.CategoryChoices
                     .Select(c => new ExpenseChoiceDto { Value = c.Value, Label = c.Label })
                     .ToList(),
-                TransportationCodes = ExpenseCategoryRules.TransportationCodes
-                    .Select(c => new ExpenseChoiceDto { Value = c.Value, Label = c.Label })
-                    .ToList(),
-                MiscellaneousCodes = ExpenseCategoryRules.MiscellaneousCodes
-                    .Select(c => new ExpenseChoiceDto { Value = c.Value, Label = c.Label })
-                    .ToList()
+                TransportationCodes = transportRows.Count == 0
+                    ? FallbackChoices(ExpenseCategoryRules.TransportationCodes)
+                    : ToChoices(transportRows),
+                MiscellaneousCodes = miscRows.Count == 0
+                    ? FallbackChoices(ExpenseCategoryRules.MiscellaneousCodes)
+                    : ToChoices(miscRows),
+                Currencies = currencies.Select(ToCurrencyDto).ToList(),
+                CreditBucketEnabled = policy.CreditBucketEnabled,
+                CreditEntryMode = policy.CreditEntryMode,
+                UserEntersRates = policy.UserEntersRates,
+                CompanyCurrencyCode = policy.CompanyCurrencyCode,
+                DefaultCurrencyCode = defaultCurrency,
+                EditorView = ExpenseCurrencyRules.NormalizeView(prefs?.ExpenseEditorView),
+                CurrencyLayout = ExpenseCurrencyRules.NormalizeLayout(prefs?.ExpenseCurrencyLayout)
             });
         }
 
@@ -107,6 +136,10 @@ namespace My.Functions
                 Constants.SettingKeys.ExpensesMileageRatePerMile,
                 ExpenseMileageRateRules.ToStorage(dto!.MileageRatePerMile),
                 "Personal-car mileage reimbursement rate in USD per mile.");
+            await UpsertSettingAsync(
+                Constants.SettingKeys.ExpensesCreditBucketEnabled,
+                dto.CreditBucketEnabled ? "true" : "false",
+                "When true, a returned paid expense line becomes a credit against later expenses.");
             await _dbContext.SaveChangesAsync();
 
             return new OkObjectResult(await LoadExpenseSettingsDtoAsync());
@@ -141,7 +174,7 @@ namespace My.Functions
             await UpsertSettingAsync(
                 Constants.SettingKeys.ExpensesApprovalSignature,
                 Convert.ToBase64String(parsed.Bytes!),
-                "Manager approval signature image for Form 87-43 PDF.");
+                "Manager approval signature image for the expense form.");
             await UpsertSettingAsync(
                 Constants.SettingKeys.ExpensesApprovalSignatureMime,
                 parsed.Mime!,
@@ -182,16 +215,21 @@ namespace My.Functions
             var report = await _dbContext.ExpenseReports
                 .Include(r => r.Lines).ThenInclude(l => l.Receipts)
                 .Include(r => r.Department)
+                .Include(r => r.FiledPdfs)
                 .FirstOrDefaultAsync(r => r.ExpenseReportId == id);
             if (report == null || !ExpenseReportRules.CanView(report.UserId, userId, IsExpensesManager(principal)))
                 return new NotFoundObjectResult("Expense report not found.");
 
-            var legacy = string.Equals(req.Query["layout"], "legacy", StringComparison.OrdinalIgnoreCase);
+            var (chargeSpecified, chargeKey) = ExpenseChargeToRules.ReadQuery(req.Query["chargeTo"]);
             try
             {
-                if (!legacy && !string.IsNullOrEmpty(report.DriveFiledPdfFileId))
+                if (report.FiledPdfs.Count > 1 && !chargeSpecified)
+                    return new BadRequestObjectResult(
+                        "This report has more than one Charge to. Open each form from the PDF menu.");
+
+                if (report.FiledPdfs.Count > 0)
                 {
-                    var filed = await TryDownloadFiledPacketAsync(report);
+                    var filed = await TryDownloadFiledPacketAsync(report, chargeSpecified, chargeKey);
                     if (filed == null)
                         return new ObjectResult("Couldn't load the filed expense PDF.") { StatusCode = 502 };
                     return new FileContentResult(filed.Value.Bytes, filed.Value.ContentType)
@@ -200,7 +238,7 @@ namespace My.Functions
                     };
                 }
 
-                var pdf = await BuildReportPdfAsync(report, legacy);
+                var pdf = await BuildReportPdfAsync(report, chargeSpecified, chargeKey);
                 return new FileContentResult(pdf.Bytes, pdf.ContentType)
                 {
                     FileDownloadName = pdf.FileName
@@ -209,9 +247,7 @@ namespace My.Functions
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Expense PDF failed for {ReportId}.", id);
-                var message = legacy && ex is InvalidOperationException
-                    ? ex.Message
-                    : "Couldn't build the expense PDF.";
+                var message = "Couldn't build the expense PDF.";
                 return new ObjectResult(message) { StatusCode = 502 };
             }
         }
@@ -341,7 +377,10 @@ namespace My.Functions
             if (report == null)
                 return new NotFoundObjectResult("Expense report not found.");
 
-            var blocked = ExpenseReportRules.SubmitBlockedReason(report.Status, report.Lines.Count);
+            var blocked = ExpenseReportRules.SubmitBlockedReason(
+                report.Status,
+                report.Lines.Count,
+                report.ChargeToOrganizationId);
             if (blocked != null)
                 return new ConflictObjectResult(blocked);
 
@@ -354,15 +393,34 @@ namespace My.Functions
             report.Year = submitYear;
             report.Month = submitMonth;
 
+            List<ExpensePacket> packets;
+            var uploadedThisAttempt = new List<string>();
             try
             {
-                var packet = await BuildReportPdfAsync(report, legacy: false);
-                report.DriveFiledPdfFileId = await UploadFiledPacketAsync(report, packet.Bytes);
+                packets = await BuildPacketsAsync(report);
+                var previousByKey = report.FiledPdfs.ToDictionary(
+                    file => ExpenseChargeToRules.Key(file.ChargeToOrganizationId),
+                    file => file.DriveFileId,
+                    StringComparer.Ordinal);
+                foreach (var packet in packets)
+                {
+                    previousByKey.TryGetValue(packet.ChargeKey, out var previousId);
+                    var driveName = ExpenseDriveNamingRules.FiledPacketFileName(
+                        report.Year, report.Month, report.EmployeeNameSnapshot, report.ExpenseReportId,
+                        packets.Count > 1 ? packet.ChargeName : null);
+                    packet.DriveFileId = await UploadFiledPacketAsync(
+                        report, packet.Bytes, driveName, previousId);
+                    if (!string.IsNullOrEmpty(packet.DriveFileId)
+                        && !string.Equals(packet.DriveFileId, previousId, StringComparison.Ordinal))
+                        uploadedThisAttempt.Add(packet.DriveFileId);
+                }
             }
             catch (Exception ex)
             {
                 report.Year = previousYear;
                 report.Month = previousMonth;
+                foreach (var uploadedId in uploadedThisAttempt)
+                    await TryDeleteFiledPacketAsync(report, uploadedId);
                 _logger.LogError(ex, "Could not file expense PDF for {ReportId}.", id);
                 var message = ex is InvalidOperationException
                     ? ex.Message
@@ -370,15 +428,58 @@ namespace My.Functions
                 return new ObjectResult(message) { StatusCode = 502 };
             }
 
+            var replacedIds = packets.Select(packet => packet.DriveFileId).ToHashSet(StringComparer.Ordinal);
+            var staleIds = report.FiledPdfs
+                .Select(file => file.DriveFileId)
+                .Where(id => !string.IsNullOrEmpty(id) && !replacedIds.Contains(id))
+                .ToList();
+            foreach (var existing in report.FiledPdfs.ToList())
+                report.FiledPdfs.Remove(existing);
+            var sort = 0;
+            foreach (var packet in packets)
+            {
+                report.FiledPdfs.Add(new ExpenseFiledPdf
+                {
+                    ExpenseFiledPdfId = Guid.NewGuid().ToString("N"),
+                    ExpenseReportId = report.ExpenseReportId,
+                    ChargeToOrganizationId = string.IsNullOrEmpty(packet.ChargeKey) ? null : packet.ChargeKey,
+                    ChargeToName = packet.ChargeName,
+                    DriveFileId = packet.DriveFileId!,
+                    FormVersion = ExpenseFormVersionRules.Current,
+                    SortOrder = sort++
+                });
+            }
+
             report.Status = ExpenseStatusRules.Submitted;
             report.SubmittedAt = submittedAt;
             report.SubmittedByUserId = userId;
             report.UpdatedAt = submittedAt;
-            await RelocateExpenseReceiptsAsync(report);
-            await _dbContext.SaveChangesAsync();
+            try
+            {
+                await RelocateExpenseReceiptsAsync(report);
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                foreach (var uploadedId in uploadedThisAttempt)
+                    await TryDeleteFiledPacketAsync(report, uploadedId);
+                _logger.LogError(ex, "Could not save submitted expense {ReportId}. The new PDF was removed.", id);
+                return new ObjectResult("Couldn't file the expense PDF. The report was not submitted.")
+                {
+                    StatusCode = 502
+                };
+            }
 
+            foreach (var staleId in staleIds)
+                await TryDeleteFiledPacketAsync(report, staleId);
+
+            var emailWarning = await TrySendSubmitEmailAsync(report, packets);
             var reloaded = await LoadOwnedReportAsync(report.ExpenseReportId, userId, tracking: false);
-            return new OkObjectResult(await ToDtoAsync(reloaded!));
+            return new OkObjectResult(new SubmitExpenseReportResultDto
+            {
+                Report = await ToDtoAsync(reloaded!),
+                EmailWarning = emailWarning
+            });
         }
 
         [Function("UnsubmitExpenseReport")]
@@ -393,6 +494,7 @@ namespace My.Functions
             var report = await _dbContext.ExpenseReports
                 .Include(r => r.Lines)
                 .Include(r => r.Department)
+                .Include(r => r.FiledPdfs)
                 .FirstOrDefaultAsync(r => r.ExpenseReportId == id);
             if (report == null)
                 return new NotFoundObjectResult("Expense report not found.");
@@ -401,16 +503,19 @@ namespace My.Functions
             if (blocked != null)
                 return new ConflictObjectResult(blocked);
 
-            var filedId = report.DriveFiledPdfFileId;
-            report.DriveFiledPdfFileId = null;
+            var filedIds = report.FiledPdfs.Select(file => file.DriveFileId).ToList();
+            report.FiledPdfs.Clear();
             report.Status = ExpenseStatusRules.Draft;
             report.SubmittedAt = null;
             report.SubmittedByUserId = null;
             report.ReimbursedAt = null;
             report.ReimbursedByUserId = null;
+            foreach (var line in report.Lines)
+                ClearLineCredit(line);
             report.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
-            await TryDeleteFiledPacketAsync(report, filedId);
+            foreach (var filedId in filedIds)
+                await TryDeleteFiledPacketAsync(report, filedId);
 
             var reloaded = await LoadReportAsync(report.ExpenseReportId, userId, isManager: true, tracking: false);
             return new OkObjectResult(await ToDtoAsync(reloaded!));
@@ -436,8 +541,14 @@ namespace My.Functions
             if (blocked != null)
                 return new ConflictObjectResult(blocked);
 
+            var (pay, payError) = await RequestValidator.ReadJsonAndValidateAsync(
+                req, new ReimburseExpenseReportDtoValidator());
+            if (payError != null)
+                return payError;
+
+            var payZone = await OwnerTimeZoneAsync(report.UserId);
             report.Status = ExpenseStatusRules.Reimbursed;
-            report.ReimbursedAt = DateTime.UtcNow;
+            report.ReimbursedAt = ExpensePaymentDateRules.ToStoredUtc(pay!.PaymentDate, payZone);
             report.ReimbursedByUserId = userId;
             report.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
@@ -469,6 +580,8 @@ namespace My.Functions
             report.Status = ExpenseStatusRules.Submitted;
             report.ReimbursedAt = null;
             report.ReimbursedByUserId = null;
+            foreach (var line in report.Lines)
+                ClearLineCredit(line);
             report.UpdatedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync();
 
@@ -519,6 +632,10 @@ namespace My.Functions
                 UpdatedAt = now
             };
 
+            var chargeError = await ApplyChargeToAsync(report, dto.ChargeToOrganizationId, required: true);
+            if (chargeError != null)
+                return chargeError;
+
             _dbContext.ExpenseReports.Add(report);
             await _dbContext.SaveChangesAsync();
 
@@ -561,7 +678,37 @@ namespace My.Functions
             report.AddressSnapshot = userPrefs?.ExpenseHomeAddress;
             report.Purpose = dto.Purpose;
 
+            var codeError = await RejectUnknownCodesAsync(dto.Lines);
+            if (codeError != null)
+                return new BadRequestObjectResult(codeError);
+
+            var currencies = await _dbContext.ExpenseCurrencies.AsNoTracking().ToListAsync();
+            var policy = await LoadExpensePolicyAsync();
+            if (policy.UserEntersRates)
+            {
+                foreach (var lineDto in dto.Lines)
+                {
+                    var (rateCategory, rateTransport) = ExpenseCategoryRules.ForStorage(
+                        lineDto.Category, lineDto.TransportationCode);
+                    if (ExpenseCategoryRules.IsPersonalCar(rateCategory, rateTransport))
+                        continue;
+                    var rateCode = ExpenseCurrencyRules.NormalizeCode(lineDto.CurrencyCode);
+                    if (ExpenseCurrencyRules.IsHome(rateCode, policy.CompanyCurrencyCode))
+                        continue;
+                    if (lineDto.ExchangeRateToUsd <= 0m)
+                        return new BadRequestObjectResult($"Enter the exchange rate for {rateCode}.");
+                }
+            }
+
+            var chargeError = await ApplyChargeToAsync(report, dto.ChargeToOrganizationId, required: false);
+            if (chargeError != null)
+                return chargeError;
+
             var existing = report.Lines.ToDictionary(l => l.ExpenseLineId, StringComparer.Ordinal);
+            var currencyError = RejectUnknownCurrency(dto.Lines, existing, currencies);
+            if (currencyError != null)
+                return new BadRequestObjectResult(currencyError);
+
             var keep = new HashSet<string>(StringComparer.Ordinal);
             var sort = 0;
             var receiptNamingChanged = false;
@@ -575,12 +722,14 @@ namespace My.Functions
                 var isMisc = string.Equals(category, ExpenseCategoryRules.Miscellaneous, StringComparison.Ordinal);
 
                 ExpenseLine line;
+                ExpenseLine? previous = null;
                 var nextDate = ExpenseLineRules.CalendarDate(lineDto.Date);
                 var nextDescription = lineDto.Description.Trim();
                 if (!string.IsNullOrWhiteSpace(lineDto.ExpenseLineId)
                     && existing.TryGetValue(lineDto.ExpenseLineId, out var found))
                 {
                     line = found;
+                    previous = found;
                     if (line.Date != nextDate || !string.Equals(line.Description, nextDescription, StringComparison.Ordinal))
                         receiptNamingChanged = true;
                 }
@@ -602,25 +751,52 @@ namespace My.Functions
                 line.Description = nextDescription;
                 line.Category = category;
                 line.Miles = isPersonalCar ? lineDto.Miles : null;
-                line.Amount = ExpenseLineRules.ComputeAmount(
-                    category, lineDto.Miles, lineDto.Amount, report.MileageRateSnapshot, transportCode);
+                var spent = lineDto.SpentAmount;
+                if (spent == 0m && lineDto.Amount > 0m && ExpenseCurrencyRules.IsUsd(lineDto.CurrencyCode))
+                    spent = lineDto.Amount;
+                var catalog = currencies.FirstOrDefault(row =>
+                    string.Equals(row.Code, ExpenseCurrencyRules.NormalizeCode(lineDto.CurrencyCode), StringComparison.Ordinal));
+                var money = ExpenseMoneyRules.Apply(
+                    category,
+                    transportCode,
+                    lineDto.Miles,
+                    report.MileageRateSnapshot,
+                    spent,
+                    lineDto.CurrencyCode,
+                    catalog?.RateToUsd ?? 1m,
+                    policy.UserEntersRates ? lineDto.ExchangeRateToUsd : previous?.ExchangeRateToUsd,
+                    policy.UserEntersRates ? lineDto.CurrencyCode : previous?.CurrencyCode,
+                    policy.CompanyCurrencyCode,
+                    policy.UserEntersRates,
+                    policy.UserEntersRates ? lineDto.ExchangeRateToUsd : null);
+                line.CurrencyCode = money.CurrencyCode;
+                line.ExchangeRateToUsd = money.ExchangeRateToUsd;
+                line.SpentAmount = money.SpentAmount;
+                line.Amount = money.AmountUsd;
                 line.TransportationCode = isTransport ? transportCode : null;
                 line.MiscellaneousCode = isMisc ? ExpenseCategoryRules.NormalizeCode(lineDto.MiscellaneousCode) : null;
-                line.MealBreakfast = isMeals && lineDto.MealBreakfast;
-                line.MealLunch = isMeals && lineDto.MealLunch;
-                line.MealDinner = isMeals && lineDto.MealDinner;
+                if (isMeals)
+                {
+                    var meal = ExpenseMealRules.Normalize(lineDto.MealType, lineDto.HeadCount);
+                    line.MealType = meal.MealType;
+                    line.HeadCount = meal.HeadCount;
+                }
+                else
+                {
+                    line.MealType = null;
+                    line.HeadCount = null;
+                }
+
                 line.SortOrder = sort++;
                 keep.Add(line.ExpenseLineId);
             }
 
-            var removedDriveIds = report.Lines
-                .Where(l => !keep.Contains(l.ExpenseLineId))
-                .SelectMany(l => (l.Receipts ?? []).Select(r => r.DriveFileId))
-                .Where(id => !string.IsNullOrEmpty(id))
-                .Select(id => id!)
-                .ToList();
-            foreach (var line in report.Lines.Where(l => !keep.Contains(l.ExpenseLineId)).ToList())
-                report.Lines.Remove(line);
+            var creditError = SyncFormCredits(report, dto.FormCredits, currencies, policy);
+            if (creditError != null)
+                return new BadRequestObjectResult(creditError);
+
+            var removed = report.Lines.Where(l => !keep.Contains(l.ExpenseLineId)).ToList();
+            var removedDriveIds = DeleteLinesAndReceipts(removed);
 
             if (receiptNamingChanged)
                 await RelocateExpenseReceiptsAsync(report);
@@ -650,6 +826,7 @@ namespace My.Functions
 
             var driveIds = report.Lines
                 .SelectMany(l => (l.Receipts ?? []).Select(r => r.DriveFileId))
+                .Concat(report.FiledPdfs.Select(file => file.DriveFileId))
                 .Where(id => !string.IsNullOrEmpty(id))
                 .Select(id => id!)
                 .ToList();
@@ -817,6 +994,34 @@ namespace My.Functions
             };
         }
 
+        [Function("DeleteExpenseLine")]
+        public async Task<IActionResult> DeleteLineAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "expenses/reports/{reportId}/lines/{lineId}")] HttpRequestData req,
+            string reportId,
+            string lineId)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedExpenses(principal, out var userId) is IActionResult unauth) return unauth;
+
+            var report = await LoadOwnedReportAsync(reportId, userId, tracking: true);
+            if (report == null)
+                return new NotFoundObjectResult("Expense report not found.");
+
+            var blocked = ExpenseReportRules.MutateBlockedReason(report.Status);
+            if (blocked != null)
+                return new ConflictObjectResult(blocked);
+
+            var line = report.Lines.FirstOrDefault(l => l.ExpenseLineId == lineId);
+            if (line == null)
+                return new NotFoundObjectResult("Line not found.");
+
+            var driveIds = DeleteLinesAndReceipts([line]);
+            report.UpdatedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+            await TryDeleteDriveFilesAsync(driveIds);
+            return new OkResult();
+        }
+
         [Function("DeleteExpenseReceipt")]
         public async Task<IActionResult> DeleteReceiptAsync(
             [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "expenses/receipts/{receiptId}")] HttpRequestData req,
@@ -849,11 +1054,15 @@ namespace My.Functions
             var query = tracking
                 ? _dbContext.ExpenseReports
                     .Include(r => r.Lines).ThenInclude(l => l.Receipts)
+                    .Include(r => r.FormCredits)
                     .Include(r => r.Department)
+                    .Include(r => r.FiledPdfs)
                     .AsQueryable()
                 : _dbContext.ExpenseReports.AsNoTracking()
                     .Include(r => r.Lines).ThenInclude(l => l.Receipts)
-                    .Include(r => r.Department);
+                    .Include(r => r.FormCredits)
+                    .Include(r => r.Department)
+                    .Include(r => r.FiledPdfs);
 
             return await query
                 .FirstOrDefaultAsync(r => r.ExpenseReportId == id && r.UserId == userId);
@@ -862,8 +1071,10 @@ namespace My.Functions
         private async Task<ExpenseReport?> LoadReportAsync(string id, string userId, bool isManager, bool tracking)
         {
             var query = tracking
-                ? _dbContext.ExpenseReports.Include(r => r.Lines).Include(r => r.Department).AsQueryable()
-                : _dbContext.ExpenseReports.AsNoTracking().Include(r => r.Lines).Include(r => r.Department);
+                ? _dbContext.ExpenseReports
+                    .Include(r => r.Lines).Include(r => r.Department).Include(r => r.FiledPdfs).AsQueryable()
+                : _dbContext.ExpenseReports.AsNoTracking()
+                    .Include(r => r.Lines).Include(r => r.Department).Include(r => r.FiledPdfs);
 
             var report = await query.FirstOrDefaultAsync(r => r.ExpenseReportId == id);
             if (report == null || !ExpenseReportRules.CanView(report.UserId, userId, isManager))
@@ -900,16 +1111,68 @@ namespace My.Functions
             return query;
         }
 
-        private static async Task<List<ExpenseReportListDto>> LoadListAsync(IQueryable<ExpenseReport> source)
+        private async Task<List<ExpenseReportListDto>> LoadListAsync(IQueryable<ExpenseReport> source)
         {
             var reports = await source
                 .Include(r => r.Lines)
                 .ThenInclude(l => l.Receipts)
                 .ToListAsync();
-            return reports.Select(ToListDto).ToList();
+            var zones = await OwnerTimeZonesAsync(reports.Select(report => report.UserId));
+            var rows = reports.Select(report => ToListDto(report, ZoneFor(zones, report.UserId))).ToList();
+            foreach (var row in rows)
+                row.GrossAmount = row.TotalAmount;
+            var policy = await LoadExpensePolicyAsync();
+            if (!policy.CreditBucketEnabled || rows.Count == 0)
+                return rows;
+
+            var lineCredits = !ExpenseCreditEntryRules.IsOnForm(policy.CreditEntryMode);
+            var reportIds = rows.Select(row => row.ExpenseReportId).ToList();
+            var formRows = await _dbContext.ExpenseCredits.AsNoTracking()
+                .Where(credit => reportIds.Contains(credit.ExpenseReportId))
+                .Select(credit => new
+                {
+                    credit.ExpenseReportId,
+                    credit.Amount,
+                    credit.CurrencyCode,
+                    credit.ExchangeRateToUsd
+                })
+                .ToListAsync();
+            var pools = lineCredits
+                ? await LoadCreditPoolsAsync(reports.Select(report => report.UserId).ToList())
+                : [];
+            foreach (var row in rows)
+            {
+                var net = row.TotalAmount;
+                if (lineCredits && pools.TryGetValue(row.UserId, out var pool))
+                {
+                    net = ExpenseReportMoneyRules.NetForReport(
+                        row.ExpenseReportId,
+                        pool.Sources,
+                        pool.Lines,
+                        creditsEnabled: true,
+                        homeCode: policy.CompanyCurrencyCode);
+                }
+
+                var extra = formRows
+                    .Where(credit => credit.ExpenseReportId == row.ExpenseReportId)
+                    .Sum(credit => ExpenseCreditEntryRules.HomeAmount(
+                        credit.Amount, credit.CurrencyCode, credit.ExchangeRateToUsd, policy.CompanyCurrencyCode));
+                if (extra > 0m)
+                    net -= extra;
+                row.TotalAmount = net < 0m ? 0m : net;
+            }
+
+            return rows;
         }
 
-        private static ExpenseReportListDto ToListDto(ExpenseReport report)
+        private static string? ZoneFor(IReadOnlyDictionary<string, string?> zones, string? userId)
+        {
+            if (string.IsNullOrEmpty(userId))
+                return null;
+            return zones.TryGetValue(userId, out var zone) ? zone : null;
+        }
+
+        private static ExpenseReportListDto ToListDto(ExpenseReport report, string? timeZoneId)
         {
             var lines = report.Lines.OrderBy(l => l.SortOrder).ToList();
             return new ExpenseReportListDto
@@ -927,10 +1190,16 @@ namespace My.Functions
                 TotalAmount = lines.Sum(l => l.Amount),
                 SubmittedAt = report.SubmittedAt,
                 ReimbursedAt = report.ReimbursedAt,
+                HasPaymentDate = report.ReimbursedAt != null,
+                PaymentDate = report.ReimbursedAt == null
+                    ? default
+                    : ExpensePaymentDateRules.ToCalendarDate(report.ReimbursedAt.Value, timeZoneId),
                 UpdatedAt = report.UpdatedAt,
                 Purpose = report.Purpose,
                 PlantOrLocation = report.PlantOrLocation,
                 ChargeToNote = report.ChargeToNote,
+                ChargeToOrganizationId = report.ChargeToOrganizationId,
+                ChargeToName = report.ChargeToName,
                 Lines = lines.Select(l => new ExpenseLineSearchDto
                 {
                     Date = l.Date,
@@ -940,9 +1209,8 @@ namespace My.Functions
                     Miles = l.Miles,
                     TransportationCode = l.TransportationCode,
                     MiscellaneousCode = l.MiscellaneousCode,
-                    MealBreakfast = l.MealBreakfast,
-                    MealLunch = l.MealLunch,
-                    MealDinner = l.MealDinner,
+                    MealType = l.MealType,
+                    HeadCount = l.HeadCount,
                     ReceiptFileNames = l.Receipts.Select(r => r.OriginalFileName).ToList()
                 }).ToList()
             };
@@ -975,7 +1243,9 @@ namespace My.Functions
                         ReimbursedAt = report.ReimbursedAt,
                         LineCount = lines.Count,
                         TotalAmount = lines.Sum(l => l.Amount),
-                        MileageRateSnapshot = report.MileageRateSnapshot
+                        MileageRateSnapshot = report.MileageRateSnapshot,
+                        ChargeToOrganizationId = report.ChargeToOrganizationId,
+                        ChargeToName = report.ChargeToName
                     });
                 }
 
@@ -996,12 +1266,20 @@ namespace My.Functions
                             Description = line.Description,
                             Category = category,
                             Amount = line.Amount,
+                            SpentAmount = line.SpentAmount,
+                            CurrencyCode = string.IsNullOrWhiteSpace(line.CurrencyCode)
+                                ? ExpenseCurrencyRules.UsdCode
+                                : line.CurrencyCode,
+                            ExchangeRateToUsd = line.ExchangeRateToUsd <= 0m ? 1m : line.ExchangeRateToUsd,
+                            IsReturned = line.ReturnedAt != null,
+                            ReturnedOn = line.ReturnedAt == null
+                                ? default
+                                : ExpensePaymentDateRules.ToCalendarDate(line.ReturnedAt.Value, null),
                             Miles = line.Miles,
                             TransportationCode = transport,
                             MiscellaneousCode = line.MiscellaneousCode,
-                            MealBreakfast = line.MealBreakfast,
-                            MealLunch = line.MealLunch,
-                            MealDinner = line.MealDinner,
+                            MealType = line.MealType,
+                            HeadCount = line.HeadCount,
                             ReceiptCount = line.Receipts?.Count ?? 0
                         });
                     }
@@ -1031,16 +1309,81 @@ namespace My.Functions
 
         private async Task<ExpenseSettingsDto> LoadExpenseSettingsDtoAsync()
         {
+            var policy = await LoadExpensePolicyAsync();
             var settings = await LoadExpenseSettingsAsync();
             var (sig, _) = await LoadApprovalSignatureAsync();
+            var codes = await LoadCodesAsync();
+            var notifyIds = await LoadNotifyUserIdsAsync();
+            var notifyUsers = notifyIds.Count == 0
+                ? []
+                : await _dbContext.ApplicationUsers.AsNoTracking()
+                    .Where(user => notifyIds.Contains(user.Id) && user.IsActive && !user.IsArchived)
+                    .Select(user => new ExpenseNotifyUserDto
+                    {
+                        UserId = user.Id,
+                        Name = (user.FirstName + " " + user.LastName).Trim(),
+                        Email = user.Email ?? ""
+                    })
+                    .ToListAsync();
+            notifyUsers = notifyIds
+                .Select(id => notifyUsers.FirstOrDefault(user => user.UserId == id))
+                .Where(user => user != null)
+                .Cast<ExpenseNotifyUserDto>()
+                .ToList();
+
             return new ExpenseSettingsDto
             {
                 MileageRatePerMile = settings.MileageRate,
-                HasApprovalSignature = sig is { Length: > 0 }
+                HasApprovalSignature = sig is { Length: > 0 },
+                MiscellaneousCodes = codes
+                    .Where(row => row.Kind == ExpenseCodeKindRules.Miscellaneous && !row.IsRemoved)
+                    .Select(ToCodeDto)
+                    .ToList(),
+                TransportationCodes = codes
+                    .Where(row => row.Kind == ExpenseCodeKindRules.Transportation)
+                    .Select(ToCodeDto)
+                    .ToList(),
+                NotifyUsers = notifyUsers,
+                Currencies = (await _dbContext.ExpenseCurrencies.AsNoTracking()
+                        .Where(row => !row.IsRemoved)
+                        .OrderBy(row => row.SortOrder)
+                        .ThenBy(row => row.Code)
+                        .ToListAsync())
+                    .Select(ToCurrencyDto)
+                    .ToList(),
+                CreditBucketEnabled = policy.CreditBucketEnabled,
+                CreditEntryMode = policy.CreditEntryMode,
+                UserEntersRates = policy.UserEntersRates,
+                CompanyCurrencyCode = policy.CompanyCurrencyCode
             };
         }
 
-        private async Task<(byte[] Bytes, string FileName, string ContentType)> BuildReportPdfAsync(ExpenseReport report, bool legacy = false)
+        private static ExpenseCodeDto ToCodeDto(ExpenseCode row) => new()
+        {
+            ExpenseCodeId = row.ExpenseCodeId,
+            Kind = row.Kind,
+            Code = row.Code,
+            Label = row.Label,
+            IsActive = row.IsActive,
+            IsLocked = row.IsLocked,
+            SortOrder = row.SortOrder
+        };
+
+        private async Task<(byte[] Bytes, string FileName, string ContentType)> BuildReportPdfAsync(
+            ExpenseReport report, bool chargeSpecified, string chargeKey)
+        {
+            var packets = await BuildPacketsAsync(report);
+            var packet = !chargeSpecified
+                ? packets.Count == 1
+                    ? packets[0]
+                    : throw new InvalidOperationException(
+                        "This report has more than one Charge to. Open each form from the PDF menu.")
+                : packets.FirstOrDefault(item => string.Equals(item.ChargeKey, chargeKey, StringComparison.Ordinal))
+                    ?? throw new InvalidOperationException("That Charge to is not on this expense.");
+            return (packet.Bytes, packet.FileName, "application/pdf");
+        }
+
+        private async Task<List<ExpensePacket>> BuildPacketsAsync(ExpenseReport report)
         {
             var settings = await LoadExpenseSettingsAsync();
             string? homeName = null;
@@ -1051,84 +1394,217 @@ namespace My.Functions
                 homeName = org?.Name;
             }
 
+            var fallback = !string.IsNullOrWhiteSpace(report.ChargeToNote)
+                ? report.ChargeToNote.Trim()
+                : homeName ?? "Home Company";
+            var chargeName = !string.IsNullOrWhiteSpace(report.ChargeToName)
+                ? report.ChargeToName.Trim()
+                : fallback;
+            var lines = report.Lines.OrderBy(line => line.SortOrder).ToList();
+
             var ownerSettings = await _dbContext.UserSettings.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.UserId == report.UserId);
             var (managerSig, _) = await LoadApprovalSignatureAsync();
-
-            var mapped = report.Lines.OrderBy(l => l.SortOrder).Select(l =>
-            {
-                var (category, transport) = ExpenseCategoryRules.ForStorage(l.Category, l.TransportationCode);
-                return ExpenseForm8743Rules.MapLine(
-                    l.Date, l.Description, category, l.Amount, l.Miles, transport,
-                    l.MiscellaneousCode, l.MealBreakfast, l.MealLunch, l.MealDinner);
-            }).ToList();
-
             var coverStart = ExpenseLineRules.CalendarDate(report.CoverStart);
             var coverEnd = ExpenseLineRules.CalendarDate(report.CoverEnd);
             var reportDate = ExpenseLineRules.CalendarDate(report.ReportDate);
+            var policy = await LoadExpensePolicyAsync();
+            var lineCredits = policy.CreditBucketEnabled
+                && !ExpenseCreditEntryRules.IsOnForm(policy.CreditEntryMode);
+            IReadOnlyDictionary<string, decimal>? applied = null;
+            if (lineCredits)
+            {
+                var pools = await LoadCreditPoolsAsync([report.UserId]);
+                if (pools.TryGetValue(report.UserId, out var pool))
+                    applied = ExpenseCreditRules.AppliedByLine(pool.Sources, pool.Lines, policy.CompanyCurrencyCode);
+            }
+
+            var formCreditRows = policy.CreditBucketEnabled
+                ? await _dbContext.ExpenseCredits.AsNoTracking()
+                    .Where(credit => credit.ExpenseReportId == report.ExpenseReportId)
+                    .ToListAsync()
+                : [];
+            var formCreditUsd = formCreditRows.Sum(credit => ExpenseCreditEntryRules.HomeAmount(
+                credit.Amount, credit.CurrencyCode, credit.ExchangeRateToUsd, policy.CompanyCurrencyCode));
 
             var fileName = ExpenseDriveNamingRules.StatementFileName(
                 coverStart, coverEnd, report.EmployeeNameSnapshot);
-
-            var model = new ExpenseForm8743Model
+            var home = policy.CompanyCurrencyCode;
+            var homeLabel = "US dollars";
+            if (!ExpenseCurrencyRules.IsUsd(home))
             {
-                CompanyName = string.IsNullOrWhiteSpace(homeName) ? "Home Company" : homeName,
-                EmployeeName = report.EmployeeNameSnapshot ?? "",
-                PlantOrLocation = string.IsNullOrWhiteSpace(report.PlantOrLocation)
-                    ? ExpenseForm8743Rules.DefaultPlant
-                    : report.PlantOrLocation,
-                ChargeTo = homeName ?? "Home Company",
-                Address = string.IsNullOrWhiteSpace(report.AddressSnapshot)
-                    ? ownerSettings?.ExpenseHomeAddress
-                    : report.AddressSnapshot,
-                CoverStart = coverStart,
-                CoverEnd = coverEnd,
-                ReportDate = reportDate,
-                MileageRate = report.MileageRateSnapshot,
-                Purpose = report.Purpose,
-                Lines = mapped,
-                EmployeeSignature = ownerSettings?.ExpenseSignature,
-                ManagerSignature = managerSig,
-                FileName = fileName
-            };
+                var currencyName = await _dbContext.ExpenseCurrencies.AsNoTracking()
+                    .Where(row => row.Code == home)
+                    .Select(row => row.Name)
+                    .FirstOrDefaultAsync();
+                homeLabel = string.IsNullOrWhiteSpace(currencyName) ? home : currencyName;
+            }
+            var groups = lines
+                .GroupBy(line => ExpenseCurrencyRules.NormalizeCode(line.CurrencyCode))
+                .OrderBy(group => ExpenseCurrencyRules.IsHome(group.Key, home) ? 0 : 1)
+                .ThenBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => group.OrderBy(line => line.SortOrder).ToList())
+                .ToList();
+            if (groups.Count == 0)
+                groups.Add([]);
+            var homeIndex = groups.FindIndex(group =>
+                group.Count > 0 && ExpenseCurrencyRules.IsHome(group[0].CurrencyCode, home));
+            if (homeIndex < 0)
+                homeIndex = 0;
 
-            var receiptPages = new List<ExpenseReceiptPdfPage>();
-            foreach (var line in report.Lines.OrderBy(l => l.SortOrder))
+            var parts = new List<byte[]>();
+            for (var index = 0; index < groups.Count; index++)
             {
-                foreach (var receipt in (line.Receipts ?? []).OrderBy(r => r.UploadedAt))
+                var groupLines = groups[index];
+                var mapped = groupLines.Select(line =>
                 {
-                    var bytes = await ReadReceiptBytesAsync(receipt);
-                    if (bytes == null || bytes.Length == 0)
-                        continue;
-                    receiptPages.Add(new ExpenseReceiptPdfPage
+                    var (category, transport) = ExpenseCategoryRules.ForStorage(line.Category, line.TransportationCode);
+                    var entered = ExpenseMoneyRules.EnteredAmount(line.SpentAmount, line.Amount, line.CurrencyCode);
+                    return ExpenseForm8743Rules.MapLine(
+                        line.Date, line.Description, category, entered, line.Miles, transport,
+                        line.MiscellaneousCode, line.MealType, line.HeadCount);
+                }).ToList();
+                var usd = groupLines.Sum(line => line.Amount);
+                decimal credit = 0m;
+                if (applied != null)
+                {
+                    foreach (var line in groupLines)
                     {
-                        FileName = receipt.OriginalFileName,
-                        MimeType = receipt.MimeType,
-                        Bytes = bytes
-                    });
+                        if (applied.TryGetValue(line.ExpenseLineId, out var part))
+                            credit += part;
+                    }
                 }
+
+                if (policy.CreditBucketEnabled && index == homeIndex)
+                    credit += formCreditUsd;
+                if (credit > usd)
+                    credit = usd;
+                var code = groupLines.Count == 0
+                    ? home
+                    : ExpenseCurrencyRules.NormalizeCode(groupLines[0].CurrencyCode);
+                var model = new ExpenseForm8743Model
+                {
+                    CompanyName = string.IsNullOrWhiteSpace(homeName) ? "Home Company" : homeName,
+                    EmployeeName = report.EmployeeNameSnapshot ?? "",
+                    PlantOrLocation = string.IsNullOrWhiteSpace(report.PlantOrLocation)
+                        ? ExpenseForm8743Rules.DefaultPlant
+                        : report.PlantOrLocation,
+                    ChargeTo = chargeName,
+                    Address = string.IsNullOrWhiteSpace(report.AddressSnapshot)
+                        ? ownerSettings?.ExpenseHomeAddress
+                        : report.AddressSnapshot,
+                    CoverStart = coverStart,
+                    CoverEnd = coverEnd,
+                    ReportDate = reportDate,
+                    MileageRate = report.MileageRateSnapshot,
+                    Purpose = report.Purpose,
+                    Lines = mapped,
+                    CurrencyRows =
+                    [
+                        new ExpenseFormCurrencyRow
+                        {
+                            Code = code,
+                            Spent = groupLines.Sum(line => ExpenseMoneyRules.EnteredAmount(
+                                line.SpentAmount, line.Amount, line.CurrencyCode)),
+                            Usd = usd
+                        }
+                    ],
+                    CreditUsd = credit,
+                    NetReimbursement = usd - credit,
+                    HasCurrencyFooter = true,
+                    EmployeeSignature = ownerSettings?.ExpenseSignature,
+                    ManagerSignature = managerSig,
+                    FileName = fileName,
+                    HomeCurrencyLabel = homeLabel
+                };
+
+                var receiptPages = new List<ExpenseReceiptPdfPage>();
+                foreach (var line in groupLines)
+                {
+                    foreach (var receipt in (line.Receipts ?? []).OrderBy(r => r.UploadedAt))
+                    {
+                        var bytes = await ReadReceiptBytesAsync(receipt);
+                        if (bytes == null || bytes.Length == 0)
+                            continue;
+                        receiptPages.Add(new ExpenseReceiptPdfPage
+                        {
+                            FileName = receipt.OriginalFileName,
+                            MimeType = receipt.MimeType,
+                            Bytes = bytes
+                        });
+                    }
+                }
+
+                parts.Add(_pdf.BuildPacket(model, receiptPages));
             }
 
-            if (!legacy)
-                return (_pdf.BuildPacket(model, receiptPages), fileName, "application/pdf");
+            return
+            [
+                new ExpensePacket
+                {
+                    Bytes = _pdf.Combine(parts),
+                    FileName = fileName,
+                    ChargeKey = ExpenseChargeToRules.Key(report.ChargeToOrganizationId),
+                    ChargeName = chargeName
+                }
+            ];
+        }
 
-            var templatePath = Path.Combine(AppContext.BaseDirectory, "Templates",
-                ExpenseForm8743ExcelLayout.TemplateFileName);
-            if (!File.Exists(templatePath))
-                throw new InvalidOperationException("Legacy Form 87-43 template is missing.");
-            var xlsx = ExpenseForm8743ExcelFiller.Fill(File.ReadAllBytes(templatePath), model);
+        private async Task<string?> TrySendSubmitEmailAsync(ExpenseReport report, IReadOnlyList<ExpensePacket> packets)
+        {
             try
             {
-                var formPdf = _excelPdf.ConvertToPdf(xlsx);
-                return (_pdf.BuildPacket(formPdf, receiptPages), fileName, "application/pdf");
+                var notifyIds = await LoadNotifyUserIdsAsync();
+                var recipients = notifyIds.Count == 0
+                    ? []
+                    : await _dbContext.ApplicationUsers.AsNoTracking()
+                        .Where(user => notifyIds.Contains(user.Id) && user.IsActive && !user.IsArchived)
+                        .Select(user => new { user.Id, user.Email })
+                        .ToListAsync();
+                var to = notifyIds
+                    .Select(id => recipients.FirstOrDefault(user => user.Id == id)?.Email)
+                    .Where(email => !string.IsNullOrWhiteSpace(email))
+                    .Select(email => email!)
+                    .ToList();
+
+                var owner = await _dbContext.ApplicationUsers.AsNoTracking()
+                    .Where(user => user.Id == report.UserId)
+                    .Select(user => user.Email)
+                    .FirstOrDefaultAsync();
+                if (to.Count == 0 && !string.IsNullOrWhiteSpace(owner))
+                    to.Add(owner);
+
+                var cover = ExpenseReportRules.CoverRangeLabel(report.CoverStart, report.CoverEnd);
+                var who = string.IsNullOrWhiteSpace(report.EmployeeNameSnapshot)
+                    ? "An employee"
+                    : report.EmployeeNameSnapshot.Trim();
+                var link = ExpensePublicLinkRules.ReportUrl(
+                    Environment.GetEnvironmentVariable("PublicBaseUrl"),
+                    report.ExpenseReportId);
+                var body =
+                    $"{who} submitted an expense report covering {cover}.\n\n" +
+                    $"Open it online: {link}\n";
+                return await _mailer.SendAsync(
+                    to,
+                    owner,
+                    $"Expense report — {who} — {cover}",
+                    body,
+                    packets.Select(packet => (packet.FileName, packet.Bytes)).ToList());
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Excel could not print legacy Form 87-43 for {ReportId}; returning workbook.",
-                    report.ExpenseReportId);
-                var xlsxName = Path.ChangeExtension(fileName, ".xlsx");
-                return (xlsx, xlsxName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                _logger.LogWarning(ex, "Expense submission email failed for {ReportId}.", report.ExpenseReportId);
+                return "The report was submitted, but the email did not send.";
             }
+        }
+
+        private sealed class ExpensePacket
+        {
+            public byte[] Bytes { get; init; } = [];
+            public string FileName { get; init; } = "";
+            public string ChargeKey { get; init; } = "";
+            public string ChargeName { get; init; } = "";
+            public string? DriveFileId { get; set; }
         }
 
         private async Task<byte[]?> ReadReceiptBytesAsync(ExpenseReceipt receipt)
@@ -1267,6 +1743,28 @@ namespace My.Functions
                     }).ToList(),
                     StringComparer.Ordinal);
 
+            var zone = await OwnerTimeZoneAsync(report.UserId);
+            var policy = await LoadExpensePolicyAsync();
+            var lineCredits = policy.CreditBucketEnabled
+                && !ExpenseCreditEntryRules.IsOnForm(policy.CreditEntryMode);
+            ExpenseCreditPool? pool = null;
+            IReadOnlyDictionary<string, decimal> applied = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            if (lineCredits)
+            {
+                var pools = await LoadCreditPoolsAsync([report.UserId]);
+                if (pools.TryGetValue(report.UserId, out var loaded))
+                {
+                    pool = loaded;
+                    applied = ExpenseCreditRules.AppliedByLine(
+                        loaded.Sources, loaded.Lines, policy.CompanyCurrencyCode);
+                }
+            }
+
+            var formCreditRows = await _dbContext.ExpenseCredits.AsNoTracking()
+                .Where(credit => credit.ExpenseReportId == report.ExpenseReportId)
+                .OrderBy(credit => credit.SortOrder)
+                .ToListAsync();
+
             var lines = report.Lines
                 .OrderBy(l => l.SortOrder)
                 .Select(l =>
@@ -1279,17 +1777,47 @@ namespace My.Functions
                         Description = l.Description,
                         Category = category,
                         Amount = l.Amount,
+                        SpentAmount = l.SpentAmount,
+                        CurrencyCode = ExpenseCurrencyRules.NormalizeCode(l.CurrencyCode),
+                        ExchangeRateToUsd = l.ExchangeRateToUsd <= 0m ? 1m : l.ExchangeRateToUsd,
+                        IsReturned = l.ReturnedAt != null,
+                        ReturnedOn = l.ReturnedAt == null
+                            ? default
+                            : ExpensePaymentDateRules.ToCalendarDate(l.ReturnedAt.Value, zone),
+                        CreditAmount = l.CreditAmount,
+                        CreditCurrencyCode = l.CreditCurrencyCode,
+                        CreditDescription = l.CreditDescription,
                         Miles = l.Miles,
                         TransportationCode = transport,
                         MiscellaneousCode = l.MiscellaneousCode,
-                        MealBreakfast = l.MealBreakfast,
-                        MealLunch = l.MealLunch,
-                        MealDinner = l.MealDinner,
+                        MealType = l.MealType,
+                        HeadCount = l.HeadCount,
                         SortOrder = l.SortOrder,
                         Receipts = grouped.TryGetValue(l.ExpenseLineId, out var list) ? list : []
                     };
                 })
                 .ToList();
+
+            var gross = lines.Sum(l => l.Amount);
+            decimal credit = 0m;
+            if (lineCredits)
+            {
+                foreach (var line in lines)
+                {
+                    if (!string.IsNullOrEmpty(line.ExpenseLineId)
+                        && applied.TryGetValue(line.ExpenseLineId, out var part))
+                        credit += part;
+                }
+            }
+
+            if (policy.CreditBucketEnabled)
+            {
+                credit += formCreditRows.Sum(row => ExpenseCreditEntryRules.HomeAmount(
+                    row.Amount, row.CurrencyCode, row.ExchangeRateToUsd, policy.CompanyCurrencyCode));
+            }
+
+            if (credit > gross)
+                credit = gross;
 
             return new ExpenseReportDto
             {
@@ -1308,13 +1836,66 @@ namespace My.Functions
                 DepartmentId = report.DepartmentId,
                 DepartmentName = report.Department?.Name,
                 ChargeToNote = report.ChargeToNote,
+                ChargeToOrganizationId = report.ChargeToOrganizationId,
+                ChargeToName = report.ChargeToName,
                 EmployeeNameSnapshot = report.EmployeeNameSnapshot,
                 AddressSnapshot = report.AddressSnapshot,
                 MileageRateSnapshot = report.MileageRateSnapshot,
                 CreatedAt = report.CreatedAt,
                 UpdatedAt = report.UpdatedAt,
                 Lines = lines,
-                TotalAmount = lines.Sum(l => l.Amount)
+                FormCredits = formCreditRows.Select(row => new ExpenseFormCreditDto
+                {
+                    ExpenseCreditId = row.ExpenseCreditId,
+                    Date = ExpenseLineRules.CalendarDate(row.CreditDate),
+                    Description = row.Description,
+                    Amount = row.Amount,
+                    CurrencyCode = row.CurrencyCode,
+                    ExchangeRateToUsd = row.ExchangeRateToUsd
+                }).ToList(),
+                TotalAmount = gross - credit,
+                GrossAmount = gross,
+                CreditAmount = credit,
+                CreditBucketEnabled = policy.CreditBucketEnabled,
+                CreditEntryMode = policy.CreditEntryMode,
+                UserEntersRates = policy.UserEntersRates,
+                CompanyCurrencyCode = policy.CompanyCurrencyCode,
+                HasPaymentDate = report.ReimbursedAt != null,
+                PaymentDate = report.ReimbursedAt == null
+                    ? default
+                    : ExpensePaymentDateRules.ToCalendarDate(report.ReimbursedAt.Value, zone),
+                CreditSources = pool == null
+                    ? []
+                    : pool.Sources.Select(source => new ExpenseCreditSourceDto
+                    {
+                        LineId = source.LineId,
+                        ReportId = source.ReportId,
+                        ChargeToOrganizationId = source.ChargeToOrganizationId,
+                        ReturnDate = source.ReturnDate,
+                        CurrencyCode = source.CurrencyCode,
+                        SpentAmount = source.SpentAmount,
+                        ExchangeRateToUsd = source.ExchangeRateToUsd,
+                        AmountUsd = source.AmountUsd
+                    }).ToList(),
+                OtherCreditLines = pool == null
+                    ? []
+                    : pool.Lines
+                        .Where(line => !string.Equals(line.ReportId, report.ExpenseReportId, StringComparison.Ordinal))
+                        .Select(line => new ExpenseCreditLineDto
+                        {
+                            LineId = line.LineId,
+                            ReportId = line.ReportId,
+                            ChargeToOrganizationId = line.ChargeToOrganizationId,
+                            ReportStatus = line.ReportStatus,
+                            Date = line.Date,
+                            CurrencyCode = line.CurrencyCode,
+                            SpentAmount = line.SpentAmount,
+                            ExchangeRateToUsd = line.ExchangeRateToUsd,
+                            AmountUsd = line.AmountUsd,
+                            SortOrder = line.SortOrder,
+                            IsReturned = line.IsReturned
+                        })
+                        .ToList()
             };
         }
 
@@ -1335,7 +1916,7 @@ namespace My.Functions
             return (cred.EncryptedRefreshToken, folderId, null);
         }
 
-        private async Task<string> UploadFiledPacketAsync(ExpenseReport report, byte[] bytes)
+        private async Task<string> UploadFiledPacketAsync(ExpenseReport report, byte[] bytes, string fileName, string? previousFileId)
         {
             var access = await TryGetAppDriveAsync();
             if (access.Token == null || access.ExpensesFolderId == null)
@@ -1354,26 +1935,12 @@ namespace My.Functions
             if (string.IsNullOrEmpty(periodFolder.Id))
                 throw new InvalidOperationException("Couldn't create the Filed month folder.");
 
-            var fileName = ExpenseDriveNamingRules.FiledPacketFileName(
-                report.Year, report.Month, report.EmployeeNameSnapshot, report.ExpenseReportId);
-
             var existing = await _drive.FindChildByNameAsync(access.Token, periodFolder.Id, fileName);
-            if (existing != null)
+            // Leave the previously filed file until SaveChanges succeeds. A same-named
+            // file that is not that previous file is an orphan and can go now.
+            if (existing != null
+                && !string.Equals(existing.Id, previousFileId, StringComparison.Ordinal))
                 await _drive.DeleteFileAsync(access.Token, existing.Id);
-
-            if (!string.IsNullOrEmpty(report.DriveFiledPdfFileId)
-                && report.DriveFiledPdfFileId != existing?.Id)
-            {
-                try
-                {
-                    await _drive.DeleteFileAsync(access.Token, report.DriveFiledPdfFileId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Could not replace previous filed expense PDF {FileId}.",
-                        report.DriveFiledPdfFileId);
-                }
-            }
 
             using var stream = new MemoryStream(bytes);
             var uploaded = await _drive.UploadFileAsync(
@@ -1384,9 +1951,26 @@ namespace My.Functions
         }
 
         private async Task<(byte[] Bytes, string FileName, string ContentType)?> TryDownloadFiledPacketAsync(
-            ExpenseReport report)
+            ExpenseReport report, bool chargeSpecified, string chargeKey)
         {
-            if (string.IsNullOrEmpty(report.DriveFiledPdfFileId))
+            var files = report.FiledPdfs.OrderBy(file => file.SortOrder).ToList();
+            if (files.Count == 0)
+                return null;
+
+            ExpenseFiledPdf? match;
+            if (!chargeSpecified)
+            {
+                if (files.Count != 1)
+                    return null;
+                match = files[0];
+            }
+            else
+            {
+                match = files.FirstOrDefault(file =>
+                    string.Equals(ExpenseChargeToRules.Key(file.ChargeToOrganizationId), chargeKey, StringComparison.Ordinal));
+            }
+
+            if (match == null || string.IsNullOrEmpty(match.DriveFileId))
                 return null;
 
             var access = await TryGetAppDriveAsync();
@@ -1395,23 +1979,22 @@ namespace My.Functions
 
             try
             {
-                var (bytes, mime) = await _drive.DownloadFileContentAsync(
-                    access.Token, report.DriveFiledPdfFileId);
-                var fileName = ExpenseDriveNamingRules.FiledPacketFileName(
-                    report.Year, report.Month, report.EmployeeNameSnapshot, report.ExpenseReportId);
+                var (bytes, mime) = await _drive.DownloadFileContentAsync(access.Token, match.DriveFileId);
+                var fileName = ExpenseDriveNamingRules.StatementFileName(
+                    report.CoverStart, report.CoverEnd, report.EmployeeNameSnapshot,
+                    files.Count > 1 ? match.ChargeToName : null);
                 return (bytes, fileName, string.IsNullOrWhiteSpace(mime) ? "application/pdf" : mime);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Could not download filed expense PDF {FileId} for {ReportId}.",
-                    report.DriveFiledPdfFileId, report.ExpenseReportId);
+                    match.DriveFileId, report.ExpenseReportId);
                 return null;
             }
         }
 
-        private async Task TryDeleteFiledPacketAsync(ExpenseReport report, string? fileId = null)
+        private async Task TryDeleteFiledPacketAsync(ExpenseReport report, string? fileId)
         {
-            fileId ??= report.DriveFiledPdfFileId;
             if (string.IsNullOrEmpty(fileId))
                 return;
 
@@ -1505,6 +2088,45 @@ namespace My.Functions
                 _logger.LogWarning(ex, "Could not relocate expense receipts for report {ReportId}.",
                     report.ExpenseReportId);
             }
+        }
+
+        private async Task<IActionResult?> ApplyChargeToAsync(ExpenseReport report, string? organizationId, bool required)
+        {
+            if (string.IsNullOrWhiteSpace(organizationId))
+            {
+                if (required)
+                    return new BadRequestObjectResult("Charge to is required.");
+                report.ChargeToOrganizationId = null;
+                report.ChargeToName = null;
+                return null;
+            }
+
+            var org = await _dbContext.Organizations.AsNoTracking()
+                .FirstOrDefaultAsync(row => row.OrganizationId == organizationId.Trim());
+            if (org == null)
+                return new BadRequestObjectResult("Charge to was not found.");
+
+            report.ChargeToOrganizationId = org.OrganizationId;
+            report.ChargeToName = org.Name.Length <= 100 ? org.Name : org.Name[..100];
+            return null;
+        }
+
+        private List<string> DeleteLinesAndReceipts(IReadOnlyList<ExpenseLine> lines)
+        {
+            var driveIds = new List<string>();
+            foreach (var line in lines)
+            {
+                foreach (var receipt in (line.Receipts ?? []).ToList())
+                {
+                    if (!string.IsNullOrEmpty(receipt.DriveFileId))
+                        driveIds.Add(receipt.DriveFileId);
+                    _dbContext.ExpenseReceipts.Remove(receipt);
+                }
+
+                _dbContext.ExpenseLines.Remove(line);
+            }
+
+            return driveIds;
         }
 
         private async Task TryDeleteDriveFilesAsync(IReadOnlyList<string> fileIds)

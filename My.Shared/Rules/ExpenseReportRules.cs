@@ -8,27 +8,39 @@ public static class ExpenseReportRules
     public const int ChargeToNoteMaxLength = 200;
     public const int AddressSnapshotMaxLength = 255;
 
-    public static string? CombineHomeAddress(string? street, string? cityLine)
+    public static string? CombineHomeAddress(string? street, string? cityLine, string? country = null)
     {
-        street = street?.Trim();
-        cityLine = cityLine?.Trim();
-        if (string.IsNullOrEmpty(street) && string.IsNullOrEmpty(cityLine))
+        street = street?.Trim() ?? "";
+        cityLine = cityLine?.Trim() ?? "";
+        country = country?.Trim() ?? "";
+        if (street.Length == 0 && cityLine.Length == 0 && country.Length == 0)
             return null;
-        if (string.IsNullOrEmpty(cityLine))
-            return TruncateAddress(street!);
-        if (string.IsNullOrEmpty(street))
-            return TruncateAddress(cityLine!);
-        return TruncateAddress(street + "\n" + cityLine);
+        if (country.Length == 0)
+        {
+            if (cityLine.Length == 0)
+                return TruncateAddress(street);
+            if (street.Length == 0)
+                return TruncateAddress(cityLine);
+            return TruncateAddress(street + "\n" + cityLine);
+        }
+
+        return TruncateAddress(street + "\n" + cityLine + "\n" + country);
     }
 
-    public static (string Street, string CityLine) SplitHomeAddress(string? address)
+    /// <summary>
+    /// Street, city line, then country. Older addresses have no country line.
+    /// </summary>
+    public static (string Street, string CityLine, string Country) SplitHomeAddress(string? address)
     {
         if (string.IsNullOrWhiteSpace(address))
-            return ("", "");
-        var parts = address.Replace("\r\n", "\n").Split('\n', 2, StringSplitOptions.None);
+            return ("", "", "");
+        var parts = address.Replace("\r\n", "\n").Split('\n');
+        var street = parts[0].Trim();
         if (parts.Length == 1)
-            return (parts[0].Trim(), "");
-        return (parts[0].Trim(), parts[1].Trim());
+            return (street, "", "");
+        if (parts.Length == 2)
+            return (street, parts[1].Trim(), "");
+        return (street, parts[1].Trim(), string.Join(" ", parts.Skip(2)).Trim());
     }
 
     private static string TruncateAddress(string value) =>
@@ -65,7 +77,7 @@ public static class ExpenseReportRules
     }
 
     public static string CoverRangeLabel(DateTime coverStart, DateTime coverEnd) =>
-        $"{coverStart:MM/dd/yyyy} – {coverEnd:MM/dd/yyyy}";
+        $"{coverStart:MM/dd/yy} – {coverEnd:MM/dd/yy}";
 
     /// <summary>
     /// Filing month is the submit month. Drafts have none yet, even when Year/Month
@@ -78,10 +90,21 @@ public static class ExpenseReportRules
         return new DateTime(year, month, 1).ToString("MMMM yyyy");
     }
 
-    public static string SubmitConfirmMessage(DateTime coverStart, DateTime coverEnd, DateTime today)
+    public readonly record struct SubmitConfirmCopy(string Question, string FiledAs, string Effect);
+
+    public static SubmitConfirmCopy SubmitConfirm(DateTime coverStart, DateTime coverEnd, DateTime today)
     {
         var filedAs = new DateTime(today.Year, today.Month, 1).ToString("MMMM yyyy");
-        return $"Submit the report covering {CoverRangeLabel(coverStart, coverEnd)}? It will be filed as {filedAs}. This locks the report and files the statement PDF on Drive.";
+        return new SubmitConfirmCopy(
+            $"Submit the report covering {CoverRangeLabel(coverStart, coverEnd)}?",
+            $"It will be filed as {filedAs}.",
+            "This locks the report and files the statement PDF on Drive.");
+    }
+
+    public static string SubmitConfirmMessage(DateTime coverStart, DateTime coverEnd, DateTime today)
+    {
+        var copy = SubmitConfirm(coverStart, coverEnd, today);
+        return $"{copy.Question} {copy.FiledAs} {copy.Effect}";
     }
 
     /// <summary>
@@ -111,18 +134,23 @@ public static class ExpenseReportRules
     public static string? MutateBlockedReason(string? status)
     {
         if (ExpenseStatusRules.IsReimbursed(status))
-            return "This report is reimbursed and cannot be edited.";
+            return "This report is paid and cannot be edited.";
         if (ExpenseStatusRules.IsSubmitted(status))
             return "This report is submitted and cannot be edited. A manager can unsubmit it.";
         return null;
     }
 
-    public static string? SubmitBlockedReason(string? status, int lineCount)
+    public static string? SubmitBlockedReason(
+        string? status,
+        int lineCount,
+        string? chargeToOrganizationId = null)
     {
         if (!ExpenseStatusRules.IsDraft(status))
             return "Only a draft can be submitted.";
         if (lineCount <= 0)
             return "Add at least one line before submitting.";
+        if (string.IsNullOrWhiteSpace(chargeToOrganizationId))
+            return "This expense needs a Charge to.";
         return null;
     }
 
@@ -134,12 +162,12 @@ public static class ExpenseReportRules
     public static string? ReimburseBlockedReason(string? status) =>
         ExpenseStatusRules.IsSubmitted(status)
             ? null
-            : "Only a submitted report can be marked reimbursed.";
+            : "Only a submitted report can be marked paid.";
 
     public static string? UndoReimburseBlockedReason(string? status) =>
         ExpenseStatusRules.IsReimbursed(status)
             ? null
-            : "Only a reimbursed report can be undone.";
+            : "Only a paid report can be undone.";
 
     public static bool CanView(string reportUserId, string callerUserId, bool isManager) =>
         isManager

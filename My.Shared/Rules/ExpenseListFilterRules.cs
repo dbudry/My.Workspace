@@ -104,6 +104,36 @@ public static class ExpenseListFilterRules
     }
 
     /// <summary>
+    /// No selected Charge to means every report. Otherwise the report must use that organization.
+    /// </summary>
+    public static bool MatchesChargeTo(string? organizationId, string? selectedOrganizationId)
+    {
+        if (string.IsNullOrWhiteSpace(selectedOrganizationId))
+            return true;
+        return string.Equals(
+            organizationId?.Trim(),
+            selectedOrganizationId.Trim(),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Distinct Charge to values on these reports, by name. Blank ids are left out.
+    /// </summary>
+    public static List<ExpenseChargeToChoice> ChargeToChoices(IEnumerable<ExpenseReportListDto> rows) =>
+        rows
+            .Select(row => (
+                Id: row.ChargeToOrganizationId?.Trim() ?? "",
+                Name: row.ChargeToName?.Trim() ?? ""))
+            .Where(row => row.Id.Length > 0)
+            .GroupBy(row => row.Id, StringComparer.Ordinal)
+            .Select(group => new ExpenseChargeToChoice(
+                group.Key,
+                group.Select(row => row.Name).FirstOrDefault(name => name.Length > 0) ?? group.Key))
+            .OrderBy(choice => choice.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(choice => choice.OrganizationId, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
     /// No selected statuses means every status. Otherwise the report status must be one of them.
     /// </summary>
     public static bool MatchesStatuses(string? status, IReadOnlyCollection<string>? selected)
@@ -137,6 +167,7 @@ public static class ExpenseListFilterRules
         Append(text, row.Purpose);
         Append(text, row.PlantOrLocation);
         Append(text, row.ChargeToNote);
+        Append(text, row.ChargeToName);
         Append(text, ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd));
         AppendDate(text, row.CoverStart);
         AppendDate(text, row.CoverEnd);
@@ -156,9 +187,8 @@ public static class ExpenseListFilterRules
             Append(text, ChoiceLabel(ExpenseCategoryRules.TransportationCodes, line.TransportationCode));
             Append(text, line.MiscellaneousCode);
             Append(text, ChoiceLabel(ExpenseCategoryRules.MiscellaneousCodes, line.MiscellaneousCode));
-            if (line.MealBreakfast) Append(text, "Breakfast");
-            if (line.MealLunch) Append(text, "Lunch");
-            if (line.MealDinner) Append(text, "Dinner");
+            Append(text, line.MealType);
+            if (line.HeadCount is > 0) Append(text, line.HeadCount.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
             foreach (var name in line.ReceiptFileNames)
                 Append(text, name);
         }
@@ -226,3 +256,6 @@ public static class ExpenseListFilterRules
         return result.Distinct().ToList();
     }
 }
+
+/// <summary>One Charge to that appears on at least one expense in the list.</summary>
+public sealed record ExpenseChargeToChoice(string OrganizationId, string Name);

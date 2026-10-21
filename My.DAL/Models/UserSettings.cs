@@ -117,6 +117,18 @@ namespace My.DAL.Models
         [MaxLength(255)]
         public string? ExpenseHomeAddress { get; set; }
 
+        /// <summary>Currency new expense lines start in. Blank until the person or their home country sets it.</summary>
+        [MaxLength(8)]
+        public string? ExpenseDefaultCurrencyCode { get; set; }
+
+        /// <summary>Detail or Form. Detail is the field editor. Form is the statement row.</summary>
+        [MaxLength(16)]
+        public string ExpenseEditorView { get; set; } = "Detail";
+
+        /// <summary>Mixed puts the currency on each line. Grouped uses one tab per currency.</summary>
+        [MaxLength(16)]
+        public string ExpenseCurrencyLayout { get; set; } = "Mixed";
+
         /// <summary>PNG/JPEG of the employee's Form 87-43 signature. Reused on every packet.</summary>
         public byte[]? ExpenseSignature { get; set; }
 

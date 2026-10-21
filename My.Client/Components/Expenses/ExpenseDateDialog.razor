@@ -1,0 +1,14 @@
+@namespace My.Client.Components.Expenses
+
+<MudDialog>
+    <DialogContent>
+        <MudDatePicker Date="date" DateChanged="SetDate"
+                       Label="@Label" DateFormat="MM/dd/yyyy"
+                       Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Error="@missing" ErrorText="Choose a date." />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">Save</MudButton>
+    </DialogActions>
+</MudDialog>

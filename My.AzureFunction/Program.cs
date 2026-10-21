@@ -84,6 +84,7 @@ var host = new HostBuilder()
         // Google Calendar integration
         services.AddSingleton<GoogleTokenEncryptor>();
         services.AddSingleton<GoogleCalendarService>();
+        services.AddSingleton<ExpenseSubmitMailer>();
         // Scoped because it depends on the DbContext (per-request).
         services.AddScoped<TeamAvailabilityPublisher>();
         services.AddSingleton(sp =>
@@ -112,7 +113,6 @@ var host = new HostBuilder()
         // Google Drive integration for intranet (create/upload docs from page builder)
         services.AddSingleton<GoogleDriveService>();
         services.AddSingleton<ExpenseStatementPdfService>();
-        services.AddSingleton<ExcelWorkbookPdfConverter>();
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
         // Token credential for the admin Logs page. DefaultAzureCredential picks up the

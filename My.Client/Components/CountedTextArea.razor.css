@@ -62,3 +62,26 @@
     content: attr(data-placeholder);
     color: var(--mud-palette-text-disabled);
 }
+
+.counted-textarea__label {
+    position: absolute;
+    top: 0;
+    left: 10px;
+    transform: translateY(-50%);
+    padding: 0 4px;
+    font-size: 0.75rem;
+    line-height: 1;
+    font-weight: 400;
+    color: var(--mud-palette-text-secondary);
+    background: var(--mud-palette-surface);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.counted-textarea:focus-within .counted-textarea__label {
+    color: var(--mud-palette-primary);
+}
+
+.counted-textarea--error .counted-textarea__label {
+    color: var(--mud-palette-error);
+}

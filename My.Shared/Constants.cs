@@ -472,6 +472,21 @@ namespace My.Shared.Constants
             public const string ExpensesDriveParentFolderId = "ExpensesDriveParentFolderId";
             public const string ExpensesApprovalSignature = "ExpensesApprovalSignature";
             public const string ExpensesApprovalSignatureMime = "ExpensesApprovalSignatureMime";
+
+            /// <summary>JSON array of user ids mailed when an expense report is submitted.</summary>
+            public const string ExpensesSubmitNotifyUserIds = "ExpensesSubmitNotifyUserIds";
+
+            /// <summary>When true, a returned paid line becomes a credit against later expenses.</summary>
+            public const string ExpensesCreditBucketEnabled = "ExpensesCreditBucketEnabled";
+
+            /// <summary>Company default currency. Its exchange rate is always 1. Seeded as USD when the key is missing.</summary>
+            public const string ExpensesCompanyCurrencyCode = "ExpensesCompanyCurrencyCode";
+
+            /// <summary>When true, each expense stores the exchange rate. When false, the currency list does.</summary>
+            public const string ExpensesUserEntersRates = "ExpensesUserEntersRates";
+
+            /// <summary>Line or Form. Line credits a paid line. Form lets the person type the credit on the draft.</summary>
+            public const string ExpensesCreditEntryMode = "ExpensesCreditEntryMode";
         }
 
         public static class Scopes
@@ -738,6 +753,8 @@ namespace My.Shared.Constants
 
                 public const string ContactTypeUsage = $"{Api}/contact-types/usage";
 
+                public const string ExpenseCurrencies = $"{Api}/expense-currencies";
+
                 /// <summary>GET — name and email of active Admins. Any signed-in user.</summary>
                 public const string ContactTypeAdmins = $"{Api}/contact-type-admins";
             }
@@ -834,6 +851,12 @@ namespace My.Shared.Constants
                 public const string Team = $"{Api}/team";
                 public const string Data = $"{Api}/data";
 
+                public static string LineById(string reportId, string lineId) =>
+                    $"{Api}/reports/{reportId}/lines/{lineId}";
+
+                public static string ReturnLine(string reportId, string lineId) =>
+                    $"{Api}/reports/{reportId}/lines/{lineId}/return";
+
                 public static string LineReceipts(string reportId, string lineId) =>
                     $"{Api}/reports/{reportId}/lines/{lineId}/receipts";
 
@@ -855,10 +878,20 @@ namespace My.Shared.Constants
                 public static string UndoReimburse(string reportId) =>
                     $"{Api}/reports/{reportId}/undo-reimburse";
 
-                public static string Pdf(string reportId, bool legacy = false) =>
-                    legacy
-                        ? $"{Api}/reports/{reportId}/pdf?layout=legacy"
-                        : $"{Api}/reports/{reportId}/pdf";
+                public static string Pdf(string reportId, string? chargeToOrganizationId = null)
+                {
+                    var path = $"{Api}/reports/{reportId}/pdf";
+                    if (string.IsNullOrWhiteSpace(chargeToOrganizationId))
+                        return path;
+                    return path + "?chargeTo=" + Uri.EscapeDataString(chargeToOrganizationId.Trim());
+                }
+
+                public static string CodeById(string codeId) => $"{Api}/settings/codes/{codeId}";
+                public const string Codes = $"{Api}/settings/codes";
+                public const string Currencies = $"{Api}/settings/currencies";
+                public static string CurrencyById(string currencyId) => $"{Api}/settings/currencies/{currencyId}";
+                public const string NotifyUsers = $"{Api}/settings/notify-users";
+                public const string Directory = $"{Api}/settings/directory";
 
                 public const string Signature = $"{Api}/settings/signature";
                 public const string SignatureMedia = $"{Api}/settings/signature/media";

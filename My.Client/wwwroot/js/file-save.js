@@ -64,6 +64,15 @@
 
         open: function (base64, mime) {
             return window.fileSave.completeOpen('', base64, mime);
+        },
+
+        objectUrl: function (base64, mime) {
+            return blobUrl(base64, mime);
+        },
+
+        revokeObjectUrl: function (url) {
+            if (url)
+                URL.revokeObjectURL(url);
         }
     };
 })();

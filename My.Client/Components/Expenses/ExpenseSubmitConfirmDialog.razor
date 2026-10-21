@@ -1,0 +1,31 @@
+@namespace My.Client.Components.Expenses
+@using My.Shared.Rules
+
+<MudDialog>
+    <DialogContent>
+        <div class="expense-submit-copy">
+            <p class="expense-submit-question">@Question</p>
+            <p class="expense-submit-note">@FiledAs</p>
+            <p class="expense-submit-note">@Effect</p>
+            @if (Issues.Count > 0)
+            {
+                <div class="expense-submit-issues">
+                    @foreach (var issue in Issues)
+                    {
+                        <div class="expense-submit-issue-group">
+                            <p class="expense-submit-issue">@issue.Text</p>
+                            @foreach (var line in issue.Lines)
+                            {
+                                <p class="expense-submit-issue-line">@line</p>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@(HasIssues ? "Go back" : "Cancel")</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Confirm">@(HasIssues ? "Submit anyway" : "Submit")</MudButton>
+    </DialogActions>
+</MudDialog>

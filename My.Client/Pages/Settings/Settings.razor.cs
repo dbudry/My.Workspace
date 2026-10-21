@@ -7,6 +7,7 @@ using My.Client.Extensions;
 using My.Client.Services;
 using My.Client.Theme;
 using My.Shared.Constants;
+using My.Shared.Dtos.Expenses;
 using My.Shared.Dtos.GoogleCalendar;
 using My.Shared.Dtos.UserSettings;
 using My.Shared.Rules;
@@ -50,10 +51,11 @@ namespace My.Client.Pages.Settings
         private bool hasExpenseSignature;
         private string expenseHomeStreet = "";
         private string expenseHomeCityLine = "";
-
-        private string settingsDescription => hasExpensesAccess
-            ? "General applies everywhere. Tyme is time tracking and Google Calendar. Expenses is your home address and reimbursement signature."
-            : "General applies everywhere. Tyme is time tracking and Google Calendar.";
+        private string expenseHomeCountry = "";
+        private string expenseDefaultCurrency = "";
+        private string expenseEditorView = ExpenseCurrencyRules.EditorDetail;
+        private string expenseCurrencyLayout = ExpenseCurrencyRules.LayoutMixed;
+        private List<ExpenseCurrencyDto> profileCurrencies = [];
 
         // "Pull missed events from Google" state — date range defaults to last 30 days.
         private DateTime? pullFromDate = DateTime.Today.AddDays(-30);
@@ -133,6 +135,9 @@ namespace My.Client.Pages.Settings
                 SettingsService.InvalidateCache();
                 var settings = await SettingsService.GetSettingsAsync();
                 ApplySettingsToUi(settings);
+                await LoadExpenseCurrenciesAsync();
+                if (TryInferCurrency())
+                    await PersistNow();
                 preferencesReady = true;
             }
             catch (Exception ex)
@@ -162,7 +167,82 @@ namespace My.Client.Pages.Settings
             unmatchedColorId = settings.TymeUnmatchedEventColorId;
             projectColorSource = settings.ProjectColorSource;
             hasExpenseSignature = settings.HasExpenseSignature;
-            (expenseHomeStreet, expenseHomeCityLine) = ExpenseReportRules.SplitHomeAddress(settings.ExpenseHomeAddress);
+            (expenseHomeStreet, expenseHomeCityLine, expenseHomeCountry) = ExpenseReportRules.SplitHomeAddress(settings.ExpenseHomeAddress);
+            expenseDefaultCurrency = ExpenseCurrencyRules.OptionalCode(settings.ExpenseDefaultCurrencyCode) ?? "";
+            expenseEditorView = ExpenseCurrencyRules.NormalizeView(settings.ExpenseEditorView);
+            expenseCurrencyLayout = ExpenseCurrencyRules.NormalizeLayout(settings.ExpenseCurrencyLayout);
+        }
+
+        private async Task LoadExpenseCurrenciesAsync()
+        {
+            if (!hasExpensesAccess)
+                return;
+            try
+            {
+                var client = ClientFactory.CreateClient(Constants.API.ClientName);
+                var context = await client.GetFromJsonAsync<ExpenseContextDto>(Constants.API.Expenses.Context);
+                profileCurrencies = context?.Currencies?.ToList() ?? [];
+            }
+            catch (Exception ex)
+            {
+                Snackbar.AddApiError(ex, "Couldn't load currencies.");
+            }
+        }
+
+        private IEnumerable<ExpenseCurrencyDto> ProfileCurrencyOptions
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(expenseDefaultCurrency) || profileCurrencies.Any(row =>
+                        string.Equals(row.Code, expenseDefaultCurrency, StringComparison.Ordinal)))
+                    return profileCurrencies;
+                return profileCurrencies.Append(new ExpenseCurrencyDto
+                {
+                    Code = expenseDefaultCurrency,
+                    Name = expenseDefaultCurrency
+                });
+            }
+        }
+
+        private Task SetExpenseDefaultCurrency(string? value)
+        {
+            expenseDefaultCurrency = ExpenseCurrencyRules.OptionalCode(value) ?? "";
+            if (expenseDefaultCurrency.Length == 0)
+                TryInferCurrency();
+            return PersistNow();
+        }
+
+        private Task SetHomeCountryAsync(string? value)
+        {
+            expenseHomeCountry = value?.Trim() ?? "";
+            TryInferCurrency();
+            return PersistDebounced();
+        }
+
+        private Task<IEnumerable<string>> SearchCountries(string? value, CancellationToken token)
+        {
+            var names = ExpenseAddressCurrencyRules.CountryNames;
+            if (string.IsNullOrWhiteSpace(value))
+                return Task.FromResult<IEnumerable<string>>(names);
+            var matches = names.Where(name => name.Contains(value.Trim(), StringComparison.OrdinalIgnoreCase));
+            return Task.FromResult<IEnumerable<string>>(matches);
+        }
+
+        /// <summary>
+        /// Fills a blank default currency from the home country when that currency is in the catalog.
+        /// A currency the person already chose is left alone. An unknown country stays blank.
+        /// </summary>
+        private bool TryInferCurrency()
+        {
+            if (!string.IsNullOrEmpty(expenseDefaultCurrency))
+                return false;
+            var code = ExpenseAddressCurrencyRules.CurrencyForCountry(expenseHomeCountry);
+            if (code == null || !profileCurrencies.Any(row =>
+                    row.IsActive
+                    && string.Equals(row.Code, code, StringComparison.Ordinal)))
+                return false;
+            expenseDefaultCurrency = code;
+            return true;
         }
 
         private Task PersistNow()
@@ -265,7 +345,10 @@ namespace My.Client.Pages.Settings
                 TymeUnmatchedEventColorId = unmatchedColorId,
                 ProjectColorSource = projectColorSource,
                 FavoriteIntranetPageIds = SettingsService.FavoriteIntranetPageIds,
-                ExpenseHomeAddress = ExpenseReportRules.CombineHomeAddress(expenseHomeStreet, expenseHomeCityLine)
+                ExpenseHomeAddress = ExpenseReportRules.CombineHomeAddress(expenseHomeStreet, expenseHomeCityLine, expenseHomeCountry),
+                ExpenseDefaultCurrencyCode = ExpenseCurrencyRules.OptionalCode(expenseDefaultCurrency),
+                ExpenseEditorView = expenseEditorView,
+                ExpenseCurrencyLayout = expenseCurrencyLayout
             };
         }
 

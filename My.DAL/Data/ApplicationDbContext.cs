@@ -29,7 +29,11 @@ namespace My.DAL.Data
         public DbSet<IntranetNavigationItem> IntranetNavigationItems { get; set; } = null!;
         public DbSet<ExpenseReport> ExpenseReports { get; set; } = null!;
         public DbSet<ExpenseLine> ExpenseLines { get; set; } = null!;
+        public DbSet<ExpenseCredit> ExpenseCredits { get; set; } = null!;
         public DbSet<ExpenseReceipt> ExpenseReceipts { get; set; } = null!;
+        public DbSet<ExpenseCode> ExpenseCodes { get; set; } = null!;
+        public DbSet<ExpenseCurrency> ExpenseCurrencies { get; set; } = null!;
+        public DbSet<ExpenseFiledPdf> ExpenseFiledPdfs { get; set; } = null!;
         public DbSet<AppDriveCredential> AppDriveCredentials { get; set; } = null!;
         public DbSet<Opportunity> Opportunities { get; set; } = null!;
         public DbSet<CrmActivity> CrmActivities { get; set; } = null!;
@@ -255,6 +259,20 @@ namespace My.DAL.Data
                 .Property(s => s.TimeZone)
                 .HasMaxLength(100);
 
+            builder.Entity<UserSettings>()
+                .Property(s => s.ExpenseDefaultCurrencyCode)
+                .HasMaxLength(8);
+
+            builder.Entity<UserSettings>()
+                .Property(s => s.ExpenseEditorView)
+                .HasMaxLength(16)
+                .HasDefaultValue("Detail");
+
+            builder.Entity<UserSettings>()
+                .Property(s => s.ExpenseCurrencyLayout)
+                .HasMaxLength(16)
+                .HasDefaultValue("Mixed");
+
             builder.Entity<AppSetting>().HasKey(s => s.Key);
 
             // TimeSubmission — one row per (User, Year, Month) marks that user
@@ -464,8 +482,128 @@ namespace My.DAL.Data
                 .HasPrecision(18, 2);
 
             builder.Entity<ExpenseLine>()
+                .Property(l => l.SpentAmount)
+                .HasPrecision(18, 2)
+                .HasDefaultValue(0m);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.CurrencyCode)
+                .HasMaxLength(8)
+                .HasDefaultValue("USD")
+                .IsRequired();
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.ExchangeRateToUsd)
+                .HasPrecision(18, 6)
+                .HasDefaultValue(1m);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.CreditAmount)
+                .HasPrecision(18, 2);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.CreditCurrencyCode)
+                .HasMaxLength(8);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.CreditDescription)
+                .HasMaxLength(200);
+
+            builder.Entity<ExpenseLine>()
+                .Property(l => l.CreditExchangeRate)
+                .HasPrecision(18, 6);
+
+            builder.Entity<ExpenseLine>()
                 .Property(l => l.Miles)
                 .HasPrecision(18, 3);
+
+            builder.Entity<ExpenseCredit>()
+                .HasKey(c => c.ExpenseCreditId);
+
+            builder.Entity<ExpenseCredit>()
+                .HasOne(c => c.ExpenseReport)
+                .WithMany(r => r.FormCredits)
+                .HasForeignKey(c => c.ExpenseReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<ExpenseCredit>()
+                .Property(c => c.Amount)
+                .HasPrecision(18, 2);
+
+            builder.Entity<ExpenseCredit>()
+                .Property(c => c.ExchangeRateToUsd)
+                .HasPrecision(18, 6);
+
+            builder.Entity<ExpenseCredit>()
+                .Property(c => c.CurrencyCode)
+                .HasMaxLength(8)
+                .IsRequired();
+
+            builder.Entity<ExpenseCredit>()
+                .Property(c => c.Description)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            builder.Entity<ExpenseCredit>()
+                .Property(c => c.ChargeToOrganizationId)
+                .HasMaxLength(450);
+
+            builder.Entity<ExpenseReport>()
+                .HasOne(r => r.ChargeToOrganization)
+                .WithMany()
+                .HasForeignKey(r => r.ChargeToOrganizationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.Entity<ExpenseCode>()
+                .HasKey(c => c.ExpenseCodeId);
+
+            builder.Entity<ExpenseCode>()
+                .HasIndex(c => new { c.Kind, c.Code })
+                .IsUnique();
+
+            builder.Entity<ExpenseCurrency>()
+                .HasKey(c => c.ExpenseCurrencyId);
+
+            builder.Entity<ExpenseCurrency>()
+                .HasIndex(c => c.Code)
+                .IsUnique();
+
+            builder.Entity<ExpenseCurrency>()
+                .Property(c => c.RateToUsd)
+                .HasPrecision(18, 6);
+
+            builder.Entity<ExpenseCurrency>().HasData(
+                new ExpenseCurrency
+                {
+                    ExpenseCurrencyId = "e5c00000000000000000000000000001",
+                    Code = "USD",
+                    Name = "US Dollar",
+                    Color = "#1565C0",
+                    RateToUsd = 1m,
+                    IsActive = true,
+                    IsLocked = true,
+                    SortOrder = 0
+                },
+                new ExpenseCurrency
+                {
+                    ExpenseCurrencyId = "e5c00000000000000000000000000002",
+                    Code = "EUR",
+                    Name = "Euro",
+                    Color = "#F9A825",
+                    RateToUsd = 1m,
+                    IsActive = true,
+                    IsLocked = false,
+                    SortOrder = 1
+                });
+
+            builder.Entity<ExpenseFiledPdf>()
+                .HasKey(f => f.ExpenseFiledPdfId);
+
+            builder.Entity<ExpenseFiledPdf>()
+                .HasOne(f => f.ExpenseReport)
+                .WithMany(r => r.FiledPdfs)
+                .HasForeignKey(f => f.ExpenseReportId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             builder.Entity<ExpenseReceipt>()
                 .HasKey(r => r.ExpenseReceiptId);
@@ -678,6 +816,12 @@ namespace My.DAL.Data
                     Key = "ExpensesDriveParentFolderId",
                     Value = "",
                     Description = "Google Drive folder ID for the private Expenses root. Not shared company-wide."
+                },
+                new AppSetting
+                {
+                    Key = "ExpensesCreditBucketEnabled",
+                    Value = "false",
+                    Description = "When true, a returned paid expense line becomes a credit against later expenses."
                 });
 
             builder.Entity<ApplicationRole>().HasData(

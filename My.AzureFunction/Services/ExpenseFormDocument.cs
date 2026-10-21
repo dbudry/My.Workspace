@@ -23,7 +23,7 @@ public static class ExpenseFormDocument
                 page.Content().Element(c => DrawBody(c, model, totals));
                 page.Footer().DefaultTextStyle(x => x.FontSize(7).FontColor(Colors.Grey.Darken1)).Row(row =>
                 {
-                    row.RelativeItem().Text(ExpenseForm8743Rules.FormNumber);
+                    row.RelativeItem().Text(ExpenseFormVersionRules.Label);
                     row.ConstantItem(80).AlignRight().Text(text =>
                     {
                         text.CurrentPageNumber();
@@ -117,9 +117,9 @@ public static class ExpenseFormDocument
                     Cell(table, line.TransportCode ?? "");
                     Cell(table, Money(line.TransportAmount));
                     Cell(table, Money(line.HotelAmount));
-                    Cell(table, Flag(line.MealBreakfast));
-                    Cell(table, Flag(line.MealLunch));
-                    Cell(table, Flag(line.MealDinner));
+                    Cell(table, ExpenseMealRules.Cell(line.MealBreakfastCount));
+                    Cell(table, ExpenseMealRules.Cell(line.MealLunchCount));
+                    Cell(table, ExpenseMealRules.Cell(line.MealDinnerCount));
                     Cell(table, Money(line.MealsAmount));
                     Cell(table, Money(line.EntertainmentAmount));
                     Cell(table, Money(line.TelephoneAmount));
@@ -144,9 +144,9 @@ public static class ExpenseFormDocument
 
             col.Item().PaddingTop(8).Row(row =>
             {
-                row.RelativeItem().Text($"Personal-car mileage @ {model.MileageRate:0.###} / mile  =  {totals.MileageAmount:C}")
+                row.RelativeItem().AlignTop().Text($"Personal-car mileage @ {model.MileageRate:0.###} / mile  =  {totals.MileageAmount:C}")
                     .FontSize(8);
-                row.RelativeItem().AlignRight().Text($"Reimbursement  {totals.GrandTotal:C}").SemiBold().FontSize(11);
+                row.RelativeItem().AlignTop().Element(cell => CurrencyFooter(cell, model, totals));
             });
 
             col.Item().PaddingTop(6).Text(
@@ -209,11 +209,51 @@ public static class ExpenseFormDocument
             .Padding(3).AlignCenter().Text(text).SemiBold().FontSize(8);
     }
 
+    private static void CurrencyFooter(IContainer container, ExpenseForm8743Model model, ExpenseForm8743Totals totals)
+    {
+        var net = model.HasCurrencyFooter ? model.NetReimbursement : totals.GrandTotal;
+        container.Background("#FFF59D").Padding(6).Column(col =>
+        {
+            if (model.HasCurrencyFooter && model.CurrencyRows.Count > 0)
+            {
+                col.Item().Table(table =>
+                {
+                    table.ColumnsDefinition(columns =>
+                    {
+                        columns.RelativeColumn();
+                        columns.ConstantColumn(72);
+                        columns.ConstantColumn(88);
+                    });
+                    table.Header(header =>
+                    {
+                        header.Cell().Text("Currency").FontSize(8).SemiBold();
+                        header.Cell().AlignRight().Text("Spent").FontSize(8).SemiBold();
+                        header.Cell().AlignRight().Text(model.HomeCurrencyLabel).FontSize(8).SemiBold();
+                    });
+                    foreach (var item in model.CurrencyRows)
+                    {
+                        table.Cell().Text(item.Code).FontSize(9);
+                        table.Cell().AlignRight().Text(item.Spent.ToString("0.00")).FontSize(9);
+                        table.Cell().AlignRight().Text(item.Usd.ToString("C")).FontSize(9);
+                    }
+
+                    if (model.CreditUsd > 0m)
+                    {
+                        table.Cell().Text("Credit").FontSize(9);
+                        table.Cell().Text("");
+                        table.Cell().AlignRight().Text(("-" + model.CreditUsd.ToString("C"))).FontSize(9);
+                    }
+                });
+            }
+
+            col.Item().PaddingTop(4).AlignRight().Text($"Payment  {net:C}").SemiBold().FontSize(11);
+        });
+    }
+
     private static string Money(decimal? value) =>
         value is null ? "" : value.Value.ToString("0.00");
 
     private static string MoneyOrNumber(decimal? value) =>
         value is null ? "" : value.Value.ToString("0.###");
 
-    private static string Flag(bool value) => value ? "X" : "";
 }

@@ -113,6 +113,33 @@ public class ExpenseListFilterRulesTests
     }
 
     [Fact]
+    public void MatchesChargeTo_blank_is_all_and_selected_is_the_organization()
+    {
+        Assert.True(ExpenseListFilterRules.MatchesChargeTo("org-1", null));
+        Assert.True(ExpenseListFilterRules.MatchesChargeTo("org-1", "  "));
+        Assert.True(ExpenseListFilterRules.MatchesChargeTo("org-1", "org-1"));
+        Assert.False(ExpenseListFilterRules.MatchesChargeTo("org-1", "org-2"));
+        Assert.False(ExpenseListFilterRules.MatchesChargeTo(null, "org-1"));
+    }
+
+    [Fact]
+    public void ChargeToChoices_lists_each_organization_on_the_reports_once_by_name()
+    {
+        var choices = ExpenseListFilterRules.ChargeToChoices(
+        [
+            new ExpenseReportListDto { ChargeToOrganizationId = "b", ChargeToName = "Organization Beta" },
+            new ExpenseReportListDto { ChargeToOrganizationId = "a", ChargeToName = "Organization Alpha" },
+            new ExpenseReportListDto { ChargeToOrganizationId = " b ", ChargeToName = "Organization Beta" },
+            new ExpenseReportListDto { ChargeToOrganizationId = "  ", ChargeToName = "Skip" },
+            new ExpenseReportListDto()
+        ]);
+
+        Assert.Equal(["Organization Alpha", "Organization Beta"], choices.Select(choice => choice.Name).ToArray());
+        Assert.Equal("a", choices[0].OrganizationId);
+        Assert.Equal("b", choices[1].OrganizationId);
+    }
+
+    [Fact]
     public void MatchesStatuses_blank_is_all_and_selected_is_exact()
     {
         Assert.True(ExpenseListFilterRules.MatchesStatuses(ExpenseStatusRules.Draft, []));
@@ -141,7 +168,8 @@ public class ExpenseListFilterRulesTests
                     Description = "Dinner with the account team",
                     Category = ExpenseCategoryRules.Meals,
                     Amount = 86.40m,
-                    MealDinner = true,
+                    MealType = ExpenseMealRules.Dinner,
+                    HeadCount = 1,
                     ReceiptFileNames = ["hotel-folio.pdf"]
                 }
             ]

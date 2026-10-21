@@ -8,7 +8,6 @@ public class OrganizationNameRulesTests
     [Theory]
     [InlineData("SampleOrg", "SampleOrg")]
     [InlineData("  SampleOrg  ", "SampleOrg")]
-    [InlineData("SampleOrg", "SampleOrg")]
     public void NamesMatch_ignores_case_and_outer_whitespace(string a, string b)
     {
         Assert.True(OrganizationNameRules.NamesMatch(a, b));

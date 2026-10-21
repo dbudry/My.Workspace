@@ -1,0 +1,10 @@
+.expense-create-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.expense-create-fields ::deep .mud-input-control,
+.expense-create-fields ::deep .mud-picker {
+    margin-top: 0;
+}
