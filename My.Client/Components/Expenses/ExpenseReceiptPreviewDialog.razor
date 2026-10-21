@@ -1,0 +1,127 @@
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (!ready)
+        {
+            <div class="expense-receipt-preview-status">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" aria-label="Loading preview" />
+            </div>
+        }
+        else if (showPdf && !string.IsNullOrEmpty(objectUrl))
+        {
+            <iframe class="expense-receipt-frame" src="@objectUrl" title="@FileName"></iframe>
+        }
+        else if (showImage && !string.IsNullOrEmpty(objectUrl))
+        {
+            <img class="expense-receipt-image" src="@objectUrl" alt="@FileName" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body2">This file can't be shown here. Download it instead.</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadAsync">Download</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string FileName { get; set; } = "";
+    [Parameter] public string Mime { get; set; } = "application/octet-stream";
+    [Parameter] public string Base64 { get; set; } = "";
+
+    private string? objectUrl;
+    private bool ready;
+    private bool started;
+    private bool showPdf;
+    private bool showImage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || started)
+            return;
+        started = true;
+        showPdf = IsPdf;
+        showImage = IsImage;
+        if ((showPdf || showImage) && !string.IsNullOrEmpty(Base64))
+        {
+            try
+            {
+                var mime = showPdf ? "application/pdf" : ImageMime;
+                objectUrl = await Js.InvokeAsync<string>("fileSave.objectUrl", Base64, mime);
+            }
+            catch (Exception)
+            {
+                objectUrl = null;
+            }
+        }
+
+        ready = true;
+        StateHasChanged();
+    }
+
+    private bool IsPdf =>
+        Mime.Contains("pdf", StringComparison.OrdinalIgnoreCase)
+        || FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsImage
+    {
+        get
+        {
+            if (IsHeic)
+                return false;
+            if (Mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                || FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                || FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+                || FileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
+                || FileName.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsHeic =>
+        Mime.Contains("heic", StringComparison.OrdinalIgnoreCase)
+        || Mime.Contains("heif", StringComparison.OrdinalIgnoreCase)
+        || FileName.EndsWith(".heic", StringComparison.OrdinalIgnoreCase)
+        || FileName.EndsWith(".heif", StringComparison.OrdinalIgnoreCase);
+
+    private string ImageMime =>
+        Mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase) ? Mime : "image/jpeg";
+
+    private async Task DownloadAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("fileSave.download", Base64, string.IsNullOrWhiteSpace(Mime) ? "application/octet-stream" : Mime, FileName);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("Couldn't download the receipt.", Severity.Error);
+        }
+    }
+
+    private void Close() => MudDialog.Close();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (string.IsNullOrEmpty(objectUrl))
+            return;
+        try
+        {
+            await Js.InvokeVoidAsync("fileSave.revokeObjectUrl", objectUrl);
+        }
+        catch (Exception)
+        {
+            // The circuit is already gone when the dialog closes during navigation.
+        }
+
+        objectUrl = null;
+    }
+}

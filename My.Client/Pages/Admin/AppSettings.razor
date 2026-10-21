@@ -6,7 +6,7 @@
 
 <PageTitle>App Settings</PageTitle>
 
-<PageHeader Title="App Settings" Description="Workspace-wide configuration. General controls apply everywhere; per-category sections apply to that area only." />
+<PageHeader Title="App Settings" />
 
 <PageLoader IsLoading="@isLoading">
     <div style="max-width: 60rem;">
@@ -486,6 +486,45 @@
                         can Make changes to events on this calendar, via domain-wide delegation).
                         Without those, this id does nothing.
                     </MudText>
+                </SectionCard>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Expenses" Icon="@Icons.Material.Filled.ReceiptLong">
+                <SectionCard Title="Currency">
+                    <div class="app-expense-policy">
+                        <MudSelect T="string" @bind-Value="expenseCompanyCurrencyCode"
+                                   Label="Default currency" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                   Class="app-expense-currency">
+                            @foreach (var currency in ExpenseCurrencyChoices)
+                            {
+                                <MudSelectItem T="string" Value="@currency.Code">@currency.Code</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <div class="app-expense-rate">
+                            <MudSwitch T="bool" @bind-Value="expenseUserEntersRates" Color="Color.Primary"
+                                       Label="Users enter exchange rates" />
+                            <span class="app-expense-credit-note">When on, the person enters one rate per currency other than the default, next to the cover period. When off, the Expense Management Team's rate on the currency list is copied onto the line, and the form does not ask.</span>
+                        </div>
+                    </div>
+                </SectionCard>
+
+                <SectionCard Title="Credits">
+                    <div class="app-expense-credits">
+                        <MudRadioGroup T="string" @bind-Value="expenseCreditEntryMode">
+                            <MudRadio T="string" Value="@ExpenseCreditEntryRules.FromLine" Color="Color.Primary">
+                                <span class="app-expense-credit-choice">
+                                    <span>From a paid line</span>
+                                    <span class="app-expense-credit-note">Credit Back on a paid line. The amount can be part of the line. It reduces the next unpaid expense with the same Charge to.</span>
+                                </span>
+                            </MudRadio>
+                            <MudRadio T="string" Value="@ExpenseCreditEntryRules.OnForm" Color="Color.Primary">
+                                <span class="app-expense-credit-choice">
+                                    <span>On the expense form</span>
+                                    <span class="app-expense-credit-note">The person adds the credit on the expense, with a date, description, amount, and currency. It reduces that expense only.</span>
+                                </span>
+                            </MudRadio>
+                        </MudRadioGroup>
+                    </div>
                 </SectionCard>
             </MudTabPanel>
         </MudTabs>

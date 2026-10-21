@@ -283,6 +283,12 @@ namespace My.DAL.Data.Migrations
                             Key = "ExpensesDriveParentFolderId",
                             Description = "Google Drive folder ID for the private Expenses root. Not shared company-wide.",
                             Value = ""
+                        },
+                        new
+                        {
+                            Key = "ExpensesCreditBucketEnabled",
+                            Description = "When true, a returned paid expense line becomes a credit against later expenses.",
+                            Value = "false"
                         });
                 });
 
@@ -691,6 +697,196 @@ namespace My.DAL.Data.Migrations
                     b.ToTable("Departments");
                 });
 
+            modelBuilder.Entity("My.DAL.Models.ExpenseCode", b =>
+                {
+                    b.Property<string>("ExpenseCodeId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRemoved")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("ExpenseCodeId");
+
+                    b.HasIndex("Kind", "Code")
+                        .IsUnique();
+
+                    b.ToTable("ExpenseCodes");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseCredit", b =>
+                {
+                    b.Property<string>("ExpenseCreditId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ChargeToOrganizationId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("ExchangeRateToUsd")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<string>("ExpenseReportId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("ExpenseCreditId");
+
+                    b.HasIndex("ExpenseReportId");
+
+                    b.ToTable("ExpenseCredits");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseCurrency", b =>
+                {
+                    b.Property<string>("ExpenseCurrencyId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRemoved")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<decimal>("RateToUsd")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("ExpenseCurrencyId");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("ExpenseCurrencies");
+
+                    b.HasData(
+                        new
+                        {
+                            ExpenseCurrencyId = "e5c00000000000000000000000000001",
+                            Code = "USD",
+                            Color = "#1565C0",
+                            IsActive = true,
+                            IsLocked = true,
+                            IsRemoved = false,
+                            Name = "US Dollar",
+                            RateToUsd = 1m,
+                            SortOrder = 0
+                        },
+                        new
+                        {
+                            ExpenseCurrencyId = "e5c00000000000000000000000000002",
+                            Code = "EUR",
+                            Color = "#F9A825",
+                            IsActive = true,
+                            IsLocked = false,
+                            IsRemoved = false,
+                            Name = "Euro",
+                            RateToUsd = 1m,
+                            SortOrder = 1
+                        });
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseFiledPdf", b =>
+                {
+                    b.Property<string>("ExpenseFiledPdfId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ChargeToName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ChargeToOrganizationId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("DriveFileId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("ExpenseReportId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int?>("FormVersion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("ExpenseFiledPdfId");
+
+                    b.HasIndex("ExpenseReportId");
+
+                    b.ToTable("ExpenseFiledPdfs");
+                });
+
             modelBuilder.Entity("My.DAL.Models.ExpenseLine", b =>
                 {
                     b.Property<string>("ExpenseLineId")
@@ -705,6 +901,29 @@ namespace My.DAL.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<decimal?>("CreditAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CreditCurrencyCode")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("CreditDescription")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("CreditExchangeRate")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)")
+                        .HasDefaultValue("USD");
+
                     b.Property<DateTime>("Date")
                         .HasColumnType("datetime2");
 
@@ -713,18 +932,22 @@ namespace My.DAL.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<decimal>("ExchangeRateToUsd")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)")
+                        .HasDefaultValue(1m);
+
                     b.Property<string>("ExpenseReportId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<bool>("MealBreakfast")
-                        .HasColumnType("bit");
+                    b.Property<int?>("HeadCount")
+                        .HasColumnType("int");
 
-                    b.Property<bool>("MealDinner")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("MealLunch")
-                        .HasColumnType("bit");
+                    b.Property<string>("MealType")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<decimal?>("Miles")
                         .HasPrecision(18, 3)
@@ -734,8 +957,17 @@ namespace My.DAL.Data.Migrations
                         .HasMaxLength(5)
                         .HasColumnType("nvarchar(5)");
 
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
+
+                    b.Property<decimal>("SpentAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m);
 
                     b.Property<string>("TransportationCode")
                         .HasMaxLength(5)
@@ -801,9 +1033,17 @@ namespace My.DAL.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
 
+                    b.Property<string>("ChargeToName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("ChargeToNote")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ChargeToOrganizationId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CoverEnd")
                         .HasColumnType("datetime2");
@@ -816,10 +1056,6 @@ namespace My.DAL.Data.Migrations
 
                     b.Property<string>("DepartmentId")
                         .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("DriveFiledPdfFileId")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("DrivePeriodFolderId")
                         .HasMaxLength(128)
@@ -879,6 +1115,8 @@ namespace My.DAL.Data.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("ExpenseReportId");
+
+                    b.HasIndex("ChargeToOrganizationId");
 
                     b.HasIndex("DepartmentId");
 
@@ -1516,6 +1754,24 @@ namespace My.DAL.Data.Migrations
                     b.Property<int>("DefaultStartTimeMinutes")
                         .HasColumnType("int");
 
+                    b.Property<string>("ExpenseCurrencyLayout")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("Mixed");
+
+                    b.Property<string>("ExpenseDefaultCurrencyCode")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("ExpenseEditorView")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("Detail");
+
                     b.Property<string>("ExpenseHomeAddress")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
@@ -1692,6 +1948,28 @@ namespace My.DAL.Data.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("My.DAL.Models.ExpenseCredit", b =>
+                {
+                    b.HasOne("My.DAL.Models.ExpenseReport", "ExpenseReport")
+                        .WithMany("FormCredits")
+                        .HasForeignKey("ExpenseReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ExpenseReport");
+                });
+
+            modelBuilder.Entity("My.DAL.Models.ExpenseFiledPdf", b =>
+                {
+                    b.HasOne("My.DAL.Models.ExpenseReport", "ExpenseReport")
+                        .WithMany("FiledPdfs")
+                        .HasForeignKey("ExpenseReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ExpenseReport");
+                });
+
             modelBuilder.Entity("My.DAL.Models.ExpenseLine", b =>
                 {
                     b.HasOne("My.DAL.Models.ExpenseReport", "ExpenseReport")
@@ -1716,6 +1994,11 @@ namespace My.DAL.Data.Migrations
 
             modelBuilder.Entity("My.DAL.Models.ExpenseReport", b =>
                 {
+                    b.HasOne("My.DAL.Models.Organization", "ChargeToOrganization")
+                        .WithMany()
+                        .HasForeignKey("ChargeToOrganizationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("My.DAL.Models.Department", "Department")
                         .WithMany()
                         .HasForeignKey("DepartmentId")
@@ -1726,6 +2009,8 @@ namespace My.DAL.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ChargeToOrganization");
 
                     b.Navigation("Department");
 
@@ -1931,6 +2216,10 @@ namespace My.DAL.Data.Migrations
 
             modelBuilder.Entity("My.DAL.Models.ExpenseReport", b =>
                 {
+                    b.Navigation("FiledPdfs");
+
+                    b.Navigation("FormCredits");
+
                     b.Navigation("Lines");
                 });
 

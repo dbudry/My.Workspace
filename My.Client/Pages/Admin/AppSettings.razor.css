@@ -1,0 +1,56 @@
+.app-expense-policy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+}
+
+.app-expense-policy ::deep .mud-input-control.app-expense-currency {
+    width: 14rem;
+    flex: 0 0 auto;
+    max-width: 100%;
+}
+
+.app-expense-policy ::deep .mud-input-control.mud-input-control-boolean-input {
+    flex: 0 0 auto;
+    width: auto;
+    margin-left: 0;
+}
+
+.app-expense-rate {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+}
+
+.app-expense-rate ::deep .mud-input-control.mud-input-control-boolean-input {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.app-expense-credits ::deep .mud-radio-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+}
+
+.app-expense-credits ::deep .mud-radio {
+    align-items: flex-start;
+}
+
+.app-expense-credit-choice {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+}
+
+.app-expense-credit-note {
+    color: var(--mud-palette-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.35;
+    max-width: 40rem;
+}

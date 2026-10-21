@@ -1,26 +1,84 @@
 .expense-filter-row {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: flex-start;
+    align-items: flex-end;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
+    padding-top: 8px;
 }
 
-.expense-filter-fields {
+/* Basis is the readable width of the closed selects (label plus the dropdown
+   icon). Search grows into leftover space. Shrink is 0, so when the two groups
+   do not fit, Search and the buttons wrap onto their own full line. */
+.expense-filter-selects {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: flex-end;
     gap: 0.75rem;
-    flex: 0 1 auto;
-    min-width: 0;
+    flex: 1 0 38rem;
+    min-width: min(100%, 38rem);
+    max-width: 100%;
 }
 
-.expense-filter-row ::deep .mud-input-control,
-.expense-filter-row ::deep .mud-select {
-    margin-bottom: 0;
-    flex: 0 0 auto !important;
+.expense-filter-row-team .expense-filter-selects {
+    flex-basis: 52rem;
+    min-width: min(100%, 52rem);
+}
+
+.expense-filter-searchline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    flex: 100 0 36rem;
+    min-width: min(100%, 36rem);
     max-width: 100%;
+}
+
+.expense-filter-row ::deep .mud-input-control.mud-input-control-margin-dense,
+.expense-filter-row ::deep .mud-input-control.mud-input-control-margin-dense.mud-input-outlined-with-label,
+.expense-filter-row ::deep .mud-select {
+    margin: 0;
+    max-width: 100%;
+}
+
+.expense-filter-selects ::deep .mud-input-control.expense-filter-year {
+    flex: 0.7 1 10rem;
+    width: auto;
+    min-width: 10rem;
+    max-width: 12rem;
+}
+
+.expense-filter-selects ::deep .mud-input-control.expense-filter-status {
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: 12rem;
+}
+
+.expense-filter-selects ::deep .mud-input-control.expense-filter-employee {
+    flex: 1.15 1 13.5rem;
+    width: auto;
+    min-width: 13.5rem;
+}
+
+.expense-filter-selects ::deep .mud-input-control.expense-filter-charge {
+    flex: 1.15 1 14rem;
+    width: auto;
+    min-width: 14rem;
+}
+
+.expense-filter-searchline ::deep .mud-input-control.expense-filter-search {
+    flex: 1 1 18rem;
+    width: auto;
+    min-width: min(18rem, 100%);
+    max-width: 100%;
+}
+
+.expense-filter-searchline ::deep .expense-filter-search .mud-input-slot {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .expense-filter-row ::deep .mud-input-control-helper-container,
@@ -38,16 +96,129 @@
     cursor: pointer;
 }
 
+.expense-grid ::deep th.expense-num .column-header,
+.expense-grid ::deep th.expense-money .column-header,
+.expense-grid ::deep th.expense-actions .column-header {
+    justify-content: flex-end;
+}
+
+.expense-grid ::deep th.expense-num .sortable-column-header {
+    width: auto;
+    text-align: right;
+}
+
+.expense-grid ::deep td.expense-num,
+.expense-grid ::deep td.expense-money,
+.expense-grid ::deep td.expense-actions {
+    text-align: right;
+}
+
+.expense-row-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.expense-row-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: 0 0 2.25rem;
+}
+
+.expense-row-action-hit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .expense-filter-actions {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    margin-left: auto;
-    /* Match .mud-input-outlined-with-label so the button sits on the field, not under it. */
-    margin-top: 8px;
+    flex: 0 0 auto;
     min-height: 40px;
 }
 
 .expense-filter-actions ::deep .mud-button-root {
     height: 40px;
+}
+
+.expense-grid {
+    max-width: 100%;
+    min-width: 0;
+}
+
+.expense-grid ::deep .mud-table-container {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.expense-grid ::deep table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+/* Dense Mud cells pad 16px + 24px. That padding, plus nowrap dates and four
+   action slots, is what pushed the last icons past the pane. */
+.expense-grid ::deep th.mud-table-cell,
+.expense-grid ::deep td.mud-table-cell {
+    padding: 6px 8px;
+}
+
+.expense-grid ::deep th.expense-period,
+.expense-grid ::deep td.expense-period {
+    width: 12rem;
+    white-space: nowrap;
+}
+
+.expense-grid ::deep th.expense-status,
+.expense-grid ::deep td.expense-status {
+    width: 8rem;
+}
+
+.expense-grid ::deep .mud-chip {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+.expense-grid ::deep th.expense-num,
+.expense-grid ::deep td.expense-num {
+    width: 5rem;
+}
+
+.expense-grid ::deep th.expense-money,
+.expense-grid ::deep td.expense-money {
+    width: 6.5rem;
+}
+
+.expense-grid ::deep th.expense-actions,
+.expense-grid ::deep td.expense-actions {
+    width: 10.25rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+}
+
+.expense-grid ::deep th.expense-shrink,
+.expense-grid ::deep td.expense-shrink {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+@media (max-width: 720px) {
+    .expense-filter-selects ::deep .mud-input-control.expense-filter-year,
+    .expense-filter-selects ::deep .mud-input-control.expense-filter-status,
+    .expense-filter-selects ::deep .mud-input-control.expense-filter-employee,
+    .expense-filter-selects ::deep .mud-input-control.expense-filter-charge,
+    .expense-filter-searchline ::deep .mud-input-control.expense-filter-search {
+        flex: 1 1 12rem;
+        width: auto;
+        min-width: min(12rem, 100%);
+        max-width: 100%;
+    }
 }

@@ -5,6 +5,10 @@
      class="@ClassName"
      data-max-length="@MaxLength"
      data-placeholder="@Placeholder">
+    @if (!string.IsNullOrWhiteSpace(Label))
+    {
+        <span class="counted-textarea__label">@Label</span>
+    }
     <div @ref="_editor"
          class="counted-textarea__surface"
          role="textbox"
@@ -29,6 +33,7 @@
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Label { get; set; }
 
     private string ClassName
     {
@@ -37,6 +42,7 @@
             var cls = "counted-textarea";
             if (Disabled) cls += " counted-textarea--disabled";
             if (Error) cls += " counted-textarea--error";
+            if (!string.IsNullOrWhiteSpace(Label)) cls += " counted-textarea--labeled";
             if (!string.IsNullOrEmpty(Class)) cls += " " + Class;
             return cls;
         }

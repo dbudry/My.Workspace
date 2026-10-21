@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.JSInterop;
 using MudBlazor;
+using My.Client.Components.Expenses;
 using My.Client.Extensions;
 using My.Shared.Constants;
 using My.Shared.Dtos.Expenses;
@@ -16,6 +17,8 @@ public partial class MyExpenses
 
     private bool isLoading = true;
     private bool isCreating;
+    private bool isCopying;
+    private string? copyingId;
     private bool canManage;
     private string? busyId;
     private string _managerView = "my";
@@ -34,6 +37,8 @@ public partial class MyExpenses
     private HashSet<string> _teamStatuses = [];
     private string _mySearch = "";
     private string _teamSearch = "";
+    private string? _myChargeTo;
+    private string? _teamChargeTo;
 
     private int? myYear
     {
@@ -108,8 +113,22 @@ public partial class MyExpenses
         }
     }
 
+    private List<ExpenseChargeToChoice> myChargeToOptions =>
+        ExpenseListFilterRules.ChargeToChoices(rows);
+
+    private string? myChargeTo
+    {
+        get => _myChargeTo;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (_myChargeTo == next) return;
+            _myChargeTo = next;
+        }
+    }
+
     private List<ExpenseReportListDto> visibleMyRows =>
-        rows.Where(r => MatchesVisibleRow(r, _myYear, _myStatuses, _mySearch)).ToList();
+        rows.Where(r => MatchesVisibleRow(r, _myYear, _myStatuses, _mySearch, _myChargeTo)).ToList();
 
     private List<int> teamYearOptions =>
         ExpenseListFilterRules.YearChoices(
@@ -129,21 +148,38 @@ public partial class MyExpenses
             .OrderBy(u => u.Name)
             .ToList();
 
+    private List<ExpenseChargeToChoice> teamChargeToOptions =>
+        ExpenseListFilterRules.ChargeToChoices(teamRows);
+
+    private string? teamChargeTo
+    {
+        get => _teamChargeTo;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (_teamChargeTo == next) return;
+            _teamChargeTo = next;
+        }
+    }
+
     private List<ExpenseReportListDto> visibleTeamRows =>
         teamRowsForYear
             .Where(r => string.IsNullOrEmpty(_userFilter) || r.UserId == _userFilter)
             .Where(r => ExpenseListFilterRules.MatchesStatuses(r.Status, _teamStatuses)
-                && ExpenseListFilterRules.MatchesSearch(r, _teamSearch))
+                && ExpenseListFilterRules.MatchesSearch(r, _teamSearch)
+                && ExpenseListFilterRules.MatchesChargeTo(r.ChargeToOrganizationId, _teamChargeTo))
             .ToList();
 
     private static bool MatchesVisibleRow(
         ExpenseReportListDto row,
         int? year,
         IReadOnlyCollection<string> statuses,
-        string? search) =>
+        string? search,
+        string? chargeToOrganizationId) =>
         ExpenseListFilterRules.MatchesListYear(row.Status, row.Year, row.CoverStart, row.CoverEnd, year)
         && ExpenseListFilterRules.MatchesStatuses(row.Status, statuses)
-        && ExpenseListFilterRules.MatchesSearch(row, search);
+        && ExpenseListFilterRules.MatchesSearch(row, search)
+        && ExpenseListFilterRules.MatchesChargeTo(row.ChargeToOrganizationId, chargeToOrganizationId);
 
     private bool ShowMyReports => !canManage || _managerView == "my";
     private bool ShowTeamReports => canManage && _managerView == "team";
@@ -200,6 +236,8 @@ public partial class MyExpenses
             rows = list ?? [];
             if (_myYear is int selected && !myYearOptions.Contains(selected))
                 _myYear = myYearOptions.Count == 0 ? null : myYearOptions[0];
+            if (_myChargeTo != null && myChargeToOptions.All(choice => choice.OrganizationId != _myChargeTo))
+                _myChargeTo = null;
         }
         catch (Exception ex)
         {
@@ -253,6 +291,8 @@ public partial class MyExpenses
             teamRows = list ?? [];
             if (_teamYear is int selected && !teamYearOptions.Contains(selected))
                 _teamYear = teamYearOptions.Count == 0 ? null : teamYearOptions[0];
+            if (_teamChargeTo != null && teamChargeToOptions.All(choice => choice.OrganizationId != _teamChargeTo))
+                _teamChargeTo = null;
         }
         catch (Exception ex)
         {
@@ -273,23 +313,28 @@ public partial class MyExpenses
     {
         if (!string.IsNullOrEmpty(busyId)) return;
 
-        var blocked = ExpenseReportRules.SubmitBlockedReason(row.Status, row.LineCount);
+        var blocked = ExpenseReportRules.SubmitBlockedReason(
+            row.Status,
+            row.LineCount,
+            row.ChargeToOrganizationId);
         if (blocked != null)
         {
-            Snackbar.Add(blocked, Severity.Warning);
+            await DialogService.ShowMessageBoxAsync("Can't submit", blocked, yesText: "OK");
             return;
         }
+
+        var issues = ExpenseSubmitWarningRules.Issues(row.Lines.Select(line =>
+            new ExpenseSubmitWarningRules.Line(
+                line.Date, line.Description, line.Amount, line.Category,
+                line.MealType, line.HeadCount, line.ReceiptFileNames.Count)));
+        var confirmed = await ExpenseSubmitConfirmDialog.AskAsync(
+            DialogService, row.CoverStart, row.CoverEnd, issues);
+        if (!confirmed) return;
 
         busyId = row.ExpenseReportId;
         await InvokeAsync(StateHasChanged);
         try
         {
-            var confirmed = await DialogService.ShowMessageBoxAsync(
-                "Submit report?",
-                ExpenseReportRules.SubmitConfirmMessage(row.CoverStart, row.CoverEnd, DateTime.Today),
-                yesText: "Submit", cancelText: "Cancel");
-            if (confirmed != true) return;
-
             var response = await client.PostAsync(Constants.API.Expenses.Submit(row.ExpenseReportId), null);
             if (!response.IsSuccessStatusCode)
             {
@@ -297,12 +342,15 @@ public partial class MyExpenses
                 return;
             }
 
-            var filed = await response.Content.ReadFromJsonAsync<ExpenseReportDto>();
-            Snackbar.Add(
-                filed == null
-                    ? "Submitted."
-                    : $"Filed as {ExpenseReportRules.FilingMonthLabel(filed.Status, filed.Year, filed.Month)}.",
-                Severity.Success);
+            var submitted = await response.Content.ReadFromJsonAsync<SubmitExpenseReportResultDto>();
+            var filed = submitted?.Report;
+            var filedLabel = filed == null
+                ? "Submitted."
+                : $"Filed as {ExpenseReportRules.FilingMonthLabel(filed.Status, filed.Year, filed.Month)}.";
+            if (!string.IsNullOrWhiteSpace(submitted?.EmailWarning))
+                Snackbar.Add(filedLabel + " " + submitted.EmailWarning, Severity.Warning);
+            else
+                Snackbar.Add(filedLabel, Severity.Success);
             await LoadAsync();
         }
         catch (Exception ex)
@@ -355,28 +403,27 @@ public partial class MyExpenses
             return;
         }
 
-        var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Mark reimbursed?",
-            $"Mark {row.EmployeeName}'s report covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)} as reimbursed?",
-            yesText: "Reimburse", cancelText: "Cancel");
-        if (confirmed != true) return;
+        var date = await AskPayDateAsync();
+        if (date == null) return;
 
         busyId = row.ExpenseReportId;
         try
         {
-            var response = await client.PostAsync(Constants.API.Expenses.Reimburse(row.ExpenseReportId), null);
+            var response = await client.PostAsJsonAsync(
+                Constants.API.Expenses.Reimburse(row.ExpenseReportId),
+                new ReimburseExpenseReportDto { PaymentDate = date.Value });
             if (!response.IsSuccessStatusCode)
             {
-                Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't mark the report reimbursed."), Severity.Error);
+                Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't mark the report paid."), Severity.Error);
                 return;
             }
 
-            Snackbar.Add("Reimbursed.", Severity.Success);
+            Snackbar.Add(ExpensePayLabelRules.Done, Severity.Success);
             await ReloadTeamAsync();
         }
         catch (Exception ex)
         {
-            Snackbar.AddApiError(ex, "Couldn't mark the report reimbursed.");
+            Snackbar.AddApiError(ex, "Couldn't mark the report paid.");
         }
         finally
         {
@@ -387,8 +434,8 @@ public partial class MyExpenses
     private async Task UndoReimburseAsync(ExpenseReportListDto row)
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
-            "Undo reimbursed?",
-            $"Return {row.EmployeeName}'s report covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)} to submitted?",
+            ExpensePayLabelRules.AskUndo,
+            $"Return {row.EmployeeName}'s report covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)} to submitted? Returned lines on it are cleared.",
             yesText: "Undo", cancelText: "Cancel");
         if (confirmed != true) return;
 
@@ -398,7 +445,7 @@ public partial class MyExpenses
             var response = await client.PostAsync(Constants.API.Expenses.UndoReimburse(row.ExpenseReportId), null);
             if (!response.IsSuccessStatusCode)
             {
-                Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't undo reimbursed."), Severity.Error);
+                Snackbar.Add(await ReadApiMessageAsync(response, "Couldn't undo payment."), Severity.Error);
                 return;
             }
 
@@ -407,7 +454,7 @@ public partial class MyExpenses
         }
         catch (Exception ex)
         {
-            Snackbar.AddApiError(ex, "Couldn't undo reimbursed.");
+            Snackbar.AddApiError(ex, "Couldn't undo payment.");
         }
         finally
         {
@@ -415,17 +462,140 @@ public partial class MyExpenses
         }
     }
 
+    private async Task CopyExpenseAsync(string sourceId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId) || isCopying)
+            return;
+
+        var row = rows.FirstOrDefault(existing => existing.ExpenseReportId == sourceId);
+        var period = row == null
+            ? "this expense"
+            : $"the expense covering {ExpenseReportRules.CoverRangeLabel(row.CoverStart, row.CoverEnd)}";
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            "Copy expense?",
+            $"Copy {period} into a new draft? Receipts are not copied.",
+            yesText: "Copy",
+            cancelText: "Cancel");
+        if (confirmed != true)
+            return;
+
+        isCopying = true;
+        copyingId = sourceId;
+        string? createdId = null;
+        try
+        {
+            var source = await client.GetFromJsonAsync<ExpenseReportDto>(
+                Constants.API.Expenses.ReportById + sourceId);
+            if (source == null)
+            {
+                Snackbar.Add("Couldn't load that expense.", Severity.Error);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(source.ChargeToOrganizationId))
+            {
+                Snackbar.Add("This expense has no Charge to, so it can't be copied.", Severity.Warning);
+                return;
+            }
+
+            var create = await client.PostAsJsonAsync(Constants.API.Expenses.Reports, new CreateExpenseReportDto
+            {
+                CoverStart = source.CoverStart,
+                CoverEnd = source.CoverEnd,
+                ChargeToOrganizationId = source.ChargeToOrganizationId
+            });
+            if (!create.IsSuccessStatusCode)
+            {
+                Snackbar.Add(await ReadApiMessageAsync(create, "Couldn't copy the expense."), Severity.Error);
+                return;
+            }
+
+            var created = await create.Content.ReadFromJsonAsync<ExpenseReportDto>();
+            if (created == null || string.IsNullOrWhiteSpace(created.ExpenseReportId))
+            {
+                Snackbar.Add("Copied, but the response was empty. Refresh and open the new draft.", Severity.Warning);
+                await LoadAsync();
+                return;
+            }
+
+            createdId = created.ExpenseReportId;
+            var sort = 0;
+            var update = new UpdateExpenseReportDto
+            {
+                CoverStart = source.CoverStart,
+                CoverEnd = source.CoverEnd,
+                Purpose = source.Purpose,
+                ChargeToOrganizationId = source.ChargeToOrganizationId,
+                Lines = source.Lines.Select(line =>
+                {
+                    line.ExpenseLineId = Guid.NewGuid().ToString("N");
+                    line.Receipts = [];
+                    line.IsReturned = false;
+                    line.ReturnedOn = default;
+                    line.CreditAmount = null;
+                    line.CreditCurrencyCode = null;
+                    line.CreditDescription = null;
+                    line.SortOrder = sort++;
+                    return line;
+                }).ToList(),
+                FormCredits = source.FormCredits.Select(credit => new ExpenseFormCreditDto
+                {
+                    ExpenseCreditId = Guid.NewGuid().ToString("N"),
+                    Date = credit.Date,
+                    Description = credit.Description,
+                    Amount = credit.Amount,
+                    CurrencyCode = credit.CurrencyCode,
+                    ExchangeRateToUsd = credit.ExchangeRateToUsd
+                }).ToList()
+            };
+            var saved = await client.PutAsJsonAsync(Constants.API.Expenses.ReportById + createdId, update);
+            if (!saved.IsSuccessStatusCode)
+            {
+                await client.DeleteAsync(Constants.API.Expenses.ReportById + createdId);
+                createdId = null;
+                Snackbar.Add(await ReadApiMessageAsync(saved, "Couldn't copy the expense."), Severity.Error);
+                return;
+            }
+
+            Snackbar.Add("Copied the expense. Receipts were not copied.", Severity.Success);
+            Navigation.NavigateTo($"expenses/{created.ExpenseReportId}");
+        }
+        catch (Exception ex)
+        {
+            if (!string.IsNullOrWhiteSpace(createdId))
+                await client.DeleteAsync(Constants.API.Expenses.ReportById + createdId);
+            Snackbar.AddApiError(ex, "Couldn't copy the expense.");
+        }
+        finally
+        {
+            isCopying = false;
+            copyingId = null;
+        }
+    }
+
     private async Task CreateAsync()
     {
+        var prior = DateTime.Today.AddMonths(-1);
+        var (coverStart, coverEnd) = ExpenseReportRules.DefaultCoverPeriod(prior.Year, prior.Month);
+        var parameters = new DialogParameters<ExpenseCreateDialog>
+        {
+            { dialog => dialog.CoverStart, coverStart },
+            { dialog => dialog.CoverEnd, coverEnd }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<ExpenseCreateDialog>("New expense", parameters, options);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: ExpenseCreateRequest request })
+            return;
+
         isCreating = true;
         try
         {
-            var prior = DateTime.Today.AddMonths(-1);
-            var (coverStart, coverEnd) = ExpenseReportRules.DefaultCoverPeriod(prior.Year, prior.Month);
             var dto = new CreateExpenseReportDto
             {
-                CoverStart = coverStart,
-                CoverEnd = coverEnd
+                CoverStart = request.CoverStart,
+                CoverEnd = request.CoverEnd,
+                ChargeToOrganizationId = request.ChargeToOrganizationId
             };
             var response = await client.PostAsJsonAsync(Constants.API.Expenses.Reports, dto);
             if (!response.IsSuccessStatusCode)
@@ -465,6 +635,15 @@ public partial class MyExpenses
     private static string PdfFileName(ExpenseReportListDto row) =>
         ExpenseDriveNamingRules.StatementFileName(row.CoverStart, row.CoverEnd, row.EmployeeName);
 
+    private static IReadOnlyList<ExpensePdfTarget> PdfTargets(ExpenseReportListDto row) =>
+    [
+        new ExpensePdfTarget
+        {
+            ChargeToOrganizationId = row.ChargeToOrganizationId,
+            Name = row.ChargeToName ?? ""
+        }
+    ];
+
     private async Task DeleteAsync(ExpenseReportListDto row)
     {
         var confirmed = await DialogService.ShowMessageBoxAsync(
@@ -497,6 +676,25 @@ public partial class MyExpenses
 
     private static string StatusChipText(IReadOnlyList<string> selected) =>
         selected.Count == 0 ? "All statuses" : string.Join(", ", selected);
+
+    private static string TeamStatusChipText(IReadOnlyList<string> selected) =>
+        selected.Count == 0
+            ? "All statuses"
+            : string.Join(", ", selected.Select(ExpensePayLabelRules.StatusWord));
+
+    private async Task<DateTime?> AskPayDateAsync()
+    {
+        var parameters = new DialogParameters<ExpenseDateDialog>
+        {
+            { dialog => dialog.Label, ExpensePayLabelRules.DateLabel },
+            { dialog => dialog.Value, DateTime.Today }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<ExpenseDateDialog>(
+            ExpensePayLabelRules.AskMark, parameters, options);
+        var result = await dialog.Result;
+        return result is { Canceled: false, Data: DateTime date } ? date : null;
+    }
 
     private static HashSet<string> ToStatusSet(IEnumerable<string>? value) =>
         value?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);

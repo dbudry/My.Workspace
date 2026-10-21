@@ -25,8 +25,8 @@ public static class DashboardLayoutRules
         new(TopProjects, col: 7, row: 1, columns: 6, rows: 3, minColumns: 4, minRows: 1,
             compactMinColumns: 2, compactMinRows: 2),
         new(Favorites, col: 1, row: 4, columns: 4, rows: 1, minColumns: 3, minRows: 1),
-        new(UnsubmittedTime, col: 5, row: 4, columns: 8, rows: 2, minColumns: 6, minRows: 2),
-        new(LastMonthExpenses, col: 1, row: 6, columns: 12, rows: 2, minColumns: 6, minRows: 2)
+        new(UnsubmittedTime, col: 5, row: 4, columns: 8, rows: 2, minColumns: 6, minRows: 1),
+        new(LastMonthExpenses, col: 1, row: 6, columns: 12, rows: 2, minColumns: 6, minRows: 1)
     ];
 
     public static DashboardWidgetSpec Spec(string id) =>

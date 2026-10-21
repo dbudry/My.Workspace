@@ -1,0 +1,260 @@
+.expense-settings {
+    max-width: 52rem;
+}
+
+.expense-policy-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.expense-policy-row ::deep .mud-input-control.expense-policy-currency,
+.expense-policy-row ::deep .mud-input-control.expense-policy-mode {
+    width: 14rem;
+    flex: 0 0 14rem;
+    max-width: 100%;
+}
+
+.expense-code-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.75rem;
+    width: fit-content;
+    max-width: 100%;
+    margin-bottom: 1rem;
+}
+
+.expense-code-add ::deep .mud-input-control.mud-input-control-margin-dense,
+.expense-code-add ::deep .mud-input-control.mud-input-control-margin-dense.mud-input-outlined-with-label {
+    margin: 0;
+}
+
+.expense-code-field-code {
+    width: 7rem;
+    flex: 0 0 7rem;
+}
+
+.expense-currency-intro.has-action {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 1.25rem;
+    align-items: start;
+    margin-bottom: 0.75rem;
+}
+
+.expense-currency-intro.has-action > :first-child {
+    min-width: 0;
+}
+
+.expense-currency-intro.has-action > :last-child {
+    justify-self: end;
+    white-space: nowrap;
+}
+
+.expense-currency-intro:not(.has-action) {
+    margin-bottom: 0.75rem;
+}
+
+.expense-currency-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.expense-currency-add ::deep .mud-input-control.mud-input-control-margin-dense,
+.expense-currency-add ::deep .mud-input-control.mud-input-control-margin-dense.mud-input-outlined-with-label {
+    margin: 0;
+}
+
+.expense-currency-add ::deep .mud-input-control-helper-container,
+.expense-currency-add ::deep .mud-input-helper-text {
+    display: none !important;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.expense-currency-add ::deep .expense-code-add-button.mud-button-root {
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    box-shadow: none;
+}
+
+.expense-currency-code {
+    width: 6.5rem;
+    flex: 0 0 6.5rem;
+}
+
+.expense-currency-name {
+    width: 12rem;
+    flex: 1 1 12rem;
+    min-width: 8rem;
+    max-width: 16rem;
+}
+
+.expense-currency-rate {
+    width: 8.5rem;
+    flex: 0 0 8.5rem;
+}
+
+.expense-currency-color {
+    width: 2.75rem;
+    flex: 0 0 2.75rem;
+    max-width: 100%;
+}
+
+.expense-currency-color-cell {
+    width: 3.5rem;
+    min-width: 3.5rem;
+}
+
+td.expense-currency-actions {
+    width: 6.5rem;
+}
+
+.expense-code-field-label {
+    width: 20rem;
+    flex: 0 0 20rem;
+    max-width: 100%;
+}
+
+.expense-code-add ::deep .mud-input-control-helper-container,
+.expense-code-add ::deep .mud-input-helper-text {
+    display: none !important;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.expense-code-add ::deep .expense-code-add-button.mud-button-root {
+    height: 40px;
+    min-height: 40px;
+    margin: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    box-shadow: none;
+}
+
+.expense-code-sub-code {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.expense-code-sub-code span {
+    font-weight: 600;
+}
+
+.expense-code-sub-digits {
+    width: 4.5rem;
+    flex: 1 1 4.5rem;
+    min-width: 0;
+}
+
+.expense-code-table ::deep td {
+    vertical-align: middle;
+}
+
+.expense-code-table ::deep tr.expense-code-letter td {
+    background-color: var(--mud-palette-background-gray);
+}
+
+.expense-code-table ::deep tbody tr.expense-code-letter:not(:first-child) td {
+    border-top: 2px solid var(--mud-palette-table-lines);
+}
+
+.expense-code-table ::deep tr.expense-code-sub-prompt td {
+    padding-top: 0;
+    padding-bottom: 0.15rem;
+    border-top: none;
+    background: transparent;
+}
+
+.expense-code-table ::deep tr.expense-code-sub-prompt td + td {
+    border-left: none;
+}
+
+.expense-code-table ::deep .mud-input-control.mud-input-control-margin-dense {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.expense-code-table ::deep .mud-input-control-helper-container,
+.expense-code-table ::deep .mud-input-helper-text {
+    display: none !important;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+}
+
+.expense-code-col {
+    width: 10.5rem;
+}
+
+.expense-code-sub-prompt .expense-code-col ::deep .expense-code-sub-open.mud-button-root {
+    display: inline-flex;
+    margin: 0;
+    padding: 0 0.125rem;
+    min-width: 0;
+    height: auto;
+    min-height: 1.5rem;
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    justify-content: flex-start;
+}
+
+.expense-code-active {
+    width: 5.5rem;
+}
+
+.expense-code-actions {
+    width: 14.5rem;
+    white-space: nowrap;
+}
+
+.expense-code-action-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 40px;
+}
+
+.expense-code-action-row.expense-code-action-icons {
+    display: grid;
+    grid-template-columns: 2.5rem 2.5rem;
+    justify-content: end;
+    align-items: center;
+    gap: 0 0.25rem;
+}
+
+.expense-code-action-row.expense-code-action-icons > * {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.expense-code-action-row ::deep .mud-button-root {
+    margin: 0;
+}
+
+.expense-code-child .expense-code-col,
+.expense-code-sub-prompt .expense-code-col {
+    padding-left: 1.75rem;
+}

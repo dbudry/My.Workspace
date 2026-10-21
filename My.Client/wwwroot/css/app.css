@@ -2465,3 +2465,9 @@ tbody .week-entry-col-day {
     height: 40px;
     min-height: 40px;
 }
+
+/* The swatch picker is the only color picker with a toolbar. Put its close control on the right. */
+.mud-picker-color-toolbar .mud-close-picker-button {
+    order: 1;
+    margin-inline-start: auto;
+}

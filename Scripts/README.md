@@ -32,7 +32,7 @@ Docs: [SETUP-FROM-SCRATCH.md](../docs/SETUP-FROM-SCRATCH.md), [SETUP-AZURE.md](.
 | Script | Purpose |
 |--------|---------|
 | `Dev-StartDebugSession.ps1` / `.cmd` | **Preferred.** Docker SQL, Azurite, Functions (7074), Blazor client (7047 via shared boot helper), VS debugger attach. `-ClientFullReset` for stubborn WASM boot errors. |
-| `Dev-StartFunctionHost.ps1` / `.cmd` | Functions API only — calls `Dev-SetupDockerSql.ps1`, then `func start` on 7074. |
+| `Dev-StartFunctionHost.ps1` / `.cmd` | Functions API only — calls `Dev-SetupDockerSql.ps1`, then `dotnet run` on 7074. |
 | `Dev-StartClient.ps1` / `.cmd` | **Client only** — restart `dotnet watch` on 7047 (kills stale port, cleans output by default). Use when the full session is already up. |
 | `Dev-SetupDockerSql.ps1` | SQL Server Docker container + updates `local.settings.json`. Called by the Dev-Start* scripts. |
 | `Dev-TestCalendarWebhook.ps1` | POST a fake Google Calendar push to local Functions (enqueue / queue trigger smoke test). |

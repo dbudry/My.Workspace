@@ -16,7 +16,7 @@
       //    or .\Scripts\Dev-StartDebugSession.ps1
       // 2. Ctrl+F5 (Start Without Debugging) here, then use Debug > Attach to Process
       //    once you see "Worker process started and initialized." in the console.
-      // 3. Run plain `func start --port 7074 --useHttps` from a terminal (with Azurite), then attach.
+      // 3. Run `dotnet run --no-launch-profile -- --port 7074 --useHttps` from My.AzureFunction (with Azurite), then attach.
       // 4. After the host is healthy, attach to the correct dotnet worker process.
       //
       // Breakpoints in IntranetFunction, Google*Service, etc. work normally after attach.

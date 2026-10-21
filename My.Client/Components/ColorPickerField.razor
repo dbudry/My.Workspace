@@ -1,6 +1,8 @@
 @using MudBlazor.Utilities
 
-<div class="color-picker-field @Class">
+<div class="color-picker-field @(Swatch ? "color-picker-swatch" : null) @Class"
+     style="@(Swatch ? $"--color-swatch: {SwatchHex};" : null)"
+     title="@(Swatch ? SwatchHex : null)">
     @if (!string.IsNullOrWhiteSpace(Label))
     {
         <MudText Typo="Typo.subtitle2" Class="mb-1">@Label</MudText>
@@ -12,18 +14,39 @@
         </MudText>
     }
 
+    @* Swatch paints the closed control with the color. The hex stays inside the picker. *@
     <MudColorPicker Value="pickerColor"
                     ValueChanged="OnColorChanged"
                     ShowAlpha="false"
                     ShowModeSwitch="false"
                     ColorPickerMode="ColorPickerMode.HEX"
-                    PickerVariant="PickerVariant.Static" />
+                    PickerVariant="@(Swatch ? PickerVariant.Inline : Variant)"
+                    ShowToolbar="@Swatch"
+                    Editable="@(!Swatch)"
+                    Adornment="@(Swatch ? Adornment.None : Adornment.End)"
+                    Margin="@(Swatch ? Margin.Dense : Margin.None)"
+                    Variant="@(Swatch ? global::MudBlazor.Variant.Outlined : global::MudBlazor.Variant.Text)"
+                    Disabled="@Disabled"
+                    aria-label="@(Swatch ? "Color" : null)" />
 </div>
 
 @code {
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? HelperText { get; set; }
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Static keeps the palette open, which is what the organization and project dialogs use.
+    /// Inline shows the hex and opens that same palette. Ignored when <see cref="Swatch"/> is set.
+    /// </summary>
+    [Parameter] public PickerVariant Variant { get; set; } = PickerVariant.Static;
+
+    /// <summary>
+    /// Closed control is the color itself. Clicking it opens the same picker, where the hex can still be typed.
+    /// </summary>
+    [Parameter] public bool Swatch { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
 
     [Parameter]
     public string? ColorHex { get; set; }
@@ -32,6 +55,8 @@
     public EventCallback<string?> ColorHexChanged { get; set; }
 
     private MudColor pickerColor = new("#1976d2");
+
+    private string SwatchHex => pickerColor.ToString(MudColorOutputFormats.Hex);
 
     protected override void OnParametersSet()
     {

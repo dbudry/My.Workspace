@@ -5,7 +5,7 @@
 .DESCRIPTION
     - Ensures SQL Server is running in Docker (pulls image / creates / starts container as needed)
     - Starts Azurite (storage emulator) in a separate window if it's not already running
-    - Changes to the function app folder and runs `func start --port 7074 --useHttps` (HTTPS by default)
+    - Changes to the function app folder and runs `dotnet run` so Core Tools starts from the build output (HTTPS on port 7074 by default)
 
     This version is designed to work reliably when launched from Visual Studio
     (Solution Explorer "Open Command Line", "Execute File", or integrated terminal),
@@ -231,10 +231,10 @@ try {
         }
     }
 
-    Write-Host "Running: func start $($funcArgs -join ' ')" -ForegroundColor DarkGray
+    Write-Host "Running: dotnet run --no-launch-profile -- $($funcArgs -join ' ')" -ForegroundColor DarkGray
     Write-Host "Press Ctrl+C in this window to stop the host.`n" -ForegroundColor DarkGray
 
-    func start @funcArgs
+    dotnet run --no-launch-profile --configuration Debug -- @funcArgs
 
     # After starting, the endpoints will be available at https://localhost:$Port
     # (e.g. https://localhost:7074/api/intranet/pages etc.)

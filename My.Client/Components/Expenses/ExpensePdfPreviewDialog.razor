@@ -1,0 +1,26 @@
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (!ready)
+        {
+            <div class="expense-receipt-preview-status">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" aria-label="Loading preview" />
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(objectUrl))
+        {
+            <iframe class="expense-receipt-frame" src="@objectUrl" title="@FileName"></iframe>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2">This PDF can't be shown here. Download it instead.</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadAsync">Download</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>

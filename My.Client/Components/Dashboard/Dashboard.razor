@@ -295,7 +295,8 @@
                                             <RowTemplate>
                                                 <MudTd DataLabel="Employee">@context.EmployeeName</MudTd>
                                                 <MudTd DataLabel="Status">
-                                                    <ExpenseStatusChip Status="@context.Status" />
+                                                    <ExpenseStatusChip Status="@context.Status"
+                                                                       PaymentDate="@ExpensePaymentDateRules.ShownDay(context.HasPaymentDate, context.PaymentDate, context.ReimbursedAt)" />
                                                 </MudTd>
                                                 <MudTd DataLabel="Total" Style="text-align:right;">@context.TotalAmount.ToString("C")</MudTd>
                                                 <MudTd DataLabel="Actions" Style="text-align:right;">

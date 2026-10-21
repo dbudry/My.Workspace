@@ -75,11 +75,11 @@ public static class ExpenseForm8743ExcelFiller
                 sheet.Cell(row, 5).Value = line.TransportAmount.Value;
             if (line.HotelAmount is > 0)
                 sheet.Cell(row, 6).Value = line.HotelAmount.Value;
-            if (line.MealBreakfast)
+            if (line.MealBreakfastCount is > 0)
                 sheet.Cell(row, 7).Value = "X";
-            if (line.MealLunch)
+            if (line.MealLunchCount is > 0)
                 sheet.Cell(row, 8).Value = "X";
-            if (line.MealDinner)
+            if (line.MealDinnerCount is > 0)
                 sheet.Cell(row, 9).Value = "X";
             if (line.MealsAmount is > 0)
                 sheet.Cell(row, 10).Value = line.MealsAmount.Value;

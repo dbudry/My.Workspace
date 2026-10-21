@@ -7,10 +7,14 @@
 
 <PageTitle>Expense settings</PageTitle>
 
-<PageHeader Title="Expense settings" />
+<PageHeader Title="Expense settings"
+            Description="Money is mileage, currencies, and returned expenses. Codes are the statement letters. Filing is the approval signature and the submission email." />
 
 <PageLoader IsLoading="@isLoading">
-    <div style="max-width: 40rem;">
+    <div class="expense-settings">
+        <MudTabs Outlined="true" Rounded="true" Border="true" ApplyEffectsToContainer="true"
+                 KeepPanelsAlive="true" Class="mb-4">
+            <MudTabPanel Text="Money" Icon="@Icons.Material.Filled.Payments">
         <SectionCard Title="Mileage">
             <MudNumericField T="decimal" Value="mileageRatePerMile"
                              ValueChanged="OnMileageChangedAsync"
@@ -25,6 +29,314 @@
                 Copied onto each report when it is created; later rate changes do not rewrite existing drafts.
             </MudText>
         </SectionCard>
+        <SectionCard Title="Currencies">
+            <div class="expense-currency-intro @(addingCurrency ? null : "has-action")">
+                <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                    @if (userEntersRates)
+                    {
+                        <span>A currency already used on a line can be retired, not deleted.</span>
+                    }
+                    else
+                    {
+                        <span>Each rate is how many @CompanyCurrencyLabel one unit of that currency is worth when a line is saved. Later edits here do not change lines already saved. @CompanyCurrencyLabel stays at 1. A currency already used on a line can be retired, not deleted.</span>
+                    }
+                </MudText>
+                @if (!addingCurrency)
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               Disabled="@codesBusy" OnClick="BeginAddCurrency">Add currency</MudButton>
+                }
+            </div>
+            @if (addingCurrency)
+            {
+                <div class="expense-currency-add">
+                    <MudTextField @bind-Value="newCurrencyCode" Label="Code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  MaxLength="8" Disabled="@codesBusy" Class="expense-currency-code" />
+                    <MudTextField @bind-Value="newCurrencyName" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  MaxLength="40" Disabled="@codesBusy" Class="expense-currency-name" />
+                    <div class="expense-currency-color">
+                        <ColorPickerField @bind-ColorHex="newCurrencyColor"
+                                          Swatch="true" Disabled="@codesBusy" />
+                    </div>
+                    @if (!userEntersRates)
+                    {
+                        <MudNumericField T="decimal" @bind-Value="newCurrencyRate" Label="Rate" Class="expense-currency-rate"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" Min="0.000001m" HideSpinButtons="true" Format="0.000000"
+                                         Disabled="@codesBusy" />
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="expense-code-add-button"
+                               Disabled="@codesBusy" OnClick="AddCurrencyAsync">Add</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default" Class="expense-code-add-button"
+                               Disabled="@codesBusy" OnClick="CancelAddCurrency">Cancel</MudButton>
+                </div>
+            }
+            <MudSimpleTable Dense="true" Hover="true" Bordered="true" Class="expense-code-table mt-3">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Name</th>
+                        <th>Color</th>
+                        @if (!userEntersRates)
+                        {
+                            <th>Rate</th>
+                        }
+                        <th>Active</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var currency in settings.Currencies)
+                {
+                    var structureLocked = StructureLocked(currency);
+                    <tr @key="currency.ExpenseCurrencyId">
+                        <td>
+                            <MudTextField @bind-Value="currency.Code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          MaxLength="8" Disabled="@(codesBusy || structureLocked)" />
+                        </td>
+                        <td>
+                            <MudTextField @bind-Value="currency.Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                          MaxLength="40" Disabled="@codesBusy" />
+                        </td>
+                        <td class="expense-currency-color-cell">
+                            <ColorPickerField @bind-ColorHex="currency.Color"
+                                              Swatch="true" Disabled="@codesBusy" />
+                        </td>
+                        @if (!userEntersRates)
+                        {
+                            <td>
+                                <MudNumericField T="decimal" @bind-Value="currency.RateToUsd" Variant="Variant.Outlined"
+                                                 Margin="Margin.Dense" Min="0.000001m" HideSpinButtons="true" Format="0.000000"
+                                                 Disabled="@(codesBusy || RateLocked(currency))" />
+                            </td>
+                        }
+                        <td>
+                            <MudSwitch T="bool" @bind-Value="currency.IsActive" Color="Color.Primary"
+                                       Disabled="@(codesBusy || structureLocked)" />
+                        </td>
+                        <td class="expense-code-actions expense-currency-actions">
+                            <div class="expense-code-action-row expense-code-action-icons">
+                                <MudTooltip Text="Save">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small"
+                                                   aria-label="Save" Disabled="@codesBusy"
+                                                   OnClick="@(() => SaveCurrencyAsync(currency))" />
+                                </MudTooltip>
+                                @if (!structureLocked)
+                                {
+                                    <MudTooltip Text="Remove">
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                       aria-label="Remove" Disabled="@codesBusy"
+                                                       OnClick="@(() => RemoveCurrencyAsync(currency))" />
+                                    </MudTooltip>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </MudSimpleTable>
+        </SectionCard>
+        <SectionCard Title="Credits">
+            <MudSwitch T="bool" Value="creditBucketEnabled" ValueChanged="OnCreditChangedAsync"
+                       Color="Color.Primary" Label="Use credits" Class="mb-2" />
+            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
+                When on, credits follow the credit entry in Admin settings: from a paid line onto the next unpaid expense with the same Charge to, or entered on the expense so it reduces that expense. When off, credits are not applied.
+            </MudText>
+        </SectionCard>
+            </MudTabPanel>
+            <MudTabPanel Text="Codes" Icon="@Icons.Material.Filled.Sell">
+        <SectionCard Title="Miscellaneous codes">
+            <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                Add a letter here. Add subcategory on that letter for A.00–A.99 under it.
+                Retiring a code hides it from new lines. Remove deletes a code that no line has used.
+                A code that is already on a line stays on that line and is hidden from new ones.
+                Z stays on because software prints as Z. Transportation codes are fixed.
+            </MudText>
+            <div class="expense-code-add">
+                <MudTextField @bind-Value="newCode" Label="Code" Class="expense-code-field-code"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              MaxLength="1" Disabled="@codesBusy" aria-label="Code" />
+                <MudTextField @bind-Value="newLabel" Label="Label" Class="expense-code-field-label"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              MaxLength="80" Disabled="@codesBusy" aria-label="Label" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="expense-code-add-button"
+                           Disabled="@codesBusy" OnClick="AddCodeAsync">Add</MudButton>
+            </div>
+            @if (settings.MiscellaneousCodes.Count == 0)
+            {
+                <MudText Typo="Typo.body2">No miscellaneous codes yet.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Hover="true" Bordered="true" Class="expense-code-table">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Label</th>
+                            <th>Active</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var letter in MiscLetterKeys)
+                    {
+                        var letterRow = LetterRow(letter);
+                        if (letterRow != null)
+                        {
+                            <tr @key="letterRow.ExpenseCodeId" class="expense-code-letter">
+                                <td class="expense-code-col">
+                                    <MudTextField @bind-Value="letterRow.Code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  MaxLength="1" Disabled="@(codesBusy || letterRow.IsLocked)" aria-label="Code" />
+                                </td>
+                                <td>
+                                    <MudTextField @bind-Value="letterRow.Label" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  MaxLength="80" Disabled="@(codesBusy || letterRow.IsLocked)" aria-label="Label" />
+                                </td>
+                                <td class="expense-code-active">
+                                    <MudSwitch T="bool" @bind-Value="letterRow.IsActive" Color="Color.Primary"
+                                               Disabled="@(codesBusy || letterRow.IsLocked || IsSoftwareCode(letterRow))"
+                                               aria-label="Active" />
+                                </td>
+                                <td class="expense-code-actions">
+                                    <div class="expense-code-action-row expense-code-action-icons">
+                                        @if (!letterRow.IsLocked)
+                                        {
+                                            <MudTooltip Text="Save">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small"
+                                                               aria-label="Save" Disabled="@codesBusy"
+                                                               OnClick="@(() => SaveCodeAsync(letterRow))" />
+                                            </MudTooltip>
+                                        }
+                                        @if (!letterRow.IsLocked && !IsSoftwareCode(letterRow))
+                                        {
+                                            <MudTooltip Text="Remove">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                               aria-label="Remove" Disabled="@codesBusy"
+                                                               OnClick="@(() => RemoveCodeAsync(letterRow))" />
+                                            </MudTooltip>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr @key="@($"letter-{letter}")" class="expense-code-letter">
+                                <td class="expense-code-col">@letter</td>
+                                <td colspan="2">
+                                    <MudText Typo="Typo.caption">Add letter @letter above to name it.</MudText>
+                                </td>
+                                <td class="expense-code-actions"></td>
+                            </tr>
+                        }
+                        @foreach (var child in ChildRows(letter))
+                        {
+                            <tr @key="child.ExpenseCodeId" class="expense-code-child">
+                                <td class="expense-code-col">
+                                    <MudTextField @bind-Value="child.Code" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  MaxLength="5" Disabled="@(codesBusy || child.IsLocked)" aria-label="Subcategory code" />
+                                </td>
+                                <td>
+                                    <MudTextField @bind-Value="child.Label" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  MaxLength="80" Disabled="@(codesBusy || child.IsLocked)" aria-label="Label" />
+                                </td>
+                                <td class="expense-code-active">
+                                    <MudSwitch T="bool" @bind-Value="child.IsActive" Color="Color.Primary"
+                                               Disabled="@(codesBusy || child.IsLocked)" aria-label="Active" />
+                                </td>
+                                <td class="expense-code-actions">
+                                    @if (!child.IsLocked)
+                                    {
+                                        <div class="expense-code-action-row expense-code-action-icons">
+                                            <MudTooltip Text="Save">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small"
+                                                               aria-label="Save" Disabled="@codesBusy"
+                                                               OnClick="@(() => SaveCodeAsync(child))" />
+                                            </MudTooltip>
+                                            <MudTooltip Text="Remove">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                               aria-label="Remove" Disabled="@codesBusy"
+                                                               OnClick="@(() => RemoveCodeAsync(child))" />
+                                            </MudTooltip>
+                                        </div>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                        @if (string.Equals(subcategoryFor, letter, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <tr class="expense-code-child">
+                                <td class="expense-code-col">
+                                    <div class="expense-code-sub-code">
+                                        <span>@letter.</span>
+                                        <MudTextField @bind-Value="subcategoryDigits" Class="expense-code-sub-digits"
+                                                      Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                      MaxLength="2" Placeholder="01" Disabled="@codesBusy"
+                                                      aria-label="Subcategory number" />
+                                    </div>
+                                </td>
+                                <td>
+                                    <MudTextField @bind-Value="subcategoryLabel" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  MaxLength="80" Placeholder="Label" Disabled="@codesBusy"
+                                                  aria-label="Subcategory label" />
+                                </td>
+                                <td class="expense-code-active"></td>
+                                <td class="expense-code-actions">
+                                    <div class="expense-code-action-row">
+                                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                                   Disabled="@codesBusy" OnClick="AddSubcategoryAsync">Add</MudButton>
+                                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@codesBusy"
+                                                   OnClick="CancelSubcategory">Cancel</MudButton>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            <tr class="expense-code-sub-prompt">
+                                <td class="expense-code-col">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" Class="expense-code-sub-open"
+                                               Disabled="@codesBusy" OnClick="@(() => BeginSubcategory(letter))">Add subcategory</MudButton>
+                                </td>
+                                <td colspan="3"></td>
+                            </tr>
+                        }
+                    }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </SectionCard>
+        <SectionCard Title="Transportation codes">
+            <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                These codes print on the form and cannot be edited.
+            </MudText>
+            @if (settings.TransportationCodes.Count == 0)
+            {
+                <MudText Typo="Typo.body2">No transportation codes yet.</MudText>
+            }
+            else
+            {
+                <MudSimpleTable Dense="true" Bordered="true">
+                    <thead>
+                        <tr>
+                            <th style="width: 6rem;">Code</th>
+                            <th>Label</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in settings.TransportationCodes)
+                    {
+                        <tr>
+                            <td>@row.Code</td>
+                            <td>@row.Label</td>
+                        </tr>
+                    }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </SectionCard>
+            </MudTabPanel>
+            <MudTabPanel Text="Filing" Icon="@Icons.Material.Filled.Draw">
         <SectionCard Title="Approval signature">
             <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
                 Stamped as Authorized Approval on every employee expense PDF. Reused until you replace it.
@@ -34,5 +346,29 @@
                              DeleteUrl="@Constants.API.Expenses.Signature"
                              @bind-HasSignature="hasApprovalSignature" />
         </SectionCard>
+        <SectionCard Title="Submission email">
+            <MudText Typo="Typo.caption" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
+                These people are emailed when a report is submitted. The message includes the expense PDF
+                and a link to the report. The person who filled it out is copied.
+                If nobody is listed, only that person is emailed.
+            </MudText>
+            <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap" Class="mb-3">
+                @foreach (var person in settings.NotifyUsers)
+                {
+                    <MudChip T="string" Variant="Variant.Outlined" CloseIcon="@Icons.Material.Filled.Close"
+                             OnClose="@(() => RemoveNotifyAsync(person))">
+                        @person.Name (@person.Email)
+                    </MudChip>
+                }
+            </MudStack>
+            <MudAutocomplete @key="notifyFieldKey" T="ExpenseNotifyUserDto" Value="@notifyPick" ValueChanged="AddNotifyAsync"
+                             SearchFunc="@SearchDirectory" ToStringFunc="@NotifyText"
+                             Label="Add a person" Variant="Variant.Outlined" Margin="Margin.Dense"
+                             Clearable="true" OpenOnFocus="true" CoerceText="true" ResetValueOnEmptyText="true"
+                             Disabled="@codesBusy"
+                             Placeholder="Name or email" />
+        </SectionCard>
+            </MudTabPanel>
+        </MudTabs>
     </div>
 </PageLoader>

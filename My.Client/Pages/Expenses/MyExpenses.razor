@@ -23,9 +23,9 @@
 @if (ShowMyReports)
 {
     <div class="expense-filter-row">
-        <div class="expense-filter-fields">
+        <div class="expense-filter-selects">
             <MudSelect T="int?" @bind-Value="myYear" Label="Year" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:calc(9rem + 50px);">
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-year">
                 <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
                 @foreach (var y in myYearOptions)
                 {
@@ -35,33 +35,43 @@
             <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="myStatuses"
                        MultiSelectionTextFunc="StatusChipText"
                        Label="Status" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:calc(11rem + 50px);">
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-status">
                 @foreach (var status in ExpenseStatusRules.Choices)
                 {
                     <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
                 }
             </MudSelect>
+            <MudSelect T="string" @bind-Value="myChargeTo" Label="Charge to" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-charge">
+                <MudSelectItem T="string" Value="@((string?)null)">All</MudSelectItem>
+                @foreach (var choice in myChargeToOptions)
+                {
+                    <MudSelectItem T="string" Value="@choice.OrganizationId">@choice.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div class="expense-filter-searchline">
             <MudTextField @bind-Value="mySearch" Label="Search" Placeholder="Description, amount, date"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Clearable="true"
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                          Style="width:18rem;" />
-        </div>
-        <div class="expense-filter-actions">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Add"
-                       OnClick="CreateAsync" Disabled="@isCreating">
-                New Report
-            </MudButton>
+                          Class="expense-filter-search" />
+            <div class="expense-filter-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="CreateAsync" Disabled="@isCreating">
+                    New Report
+                </MudButton>
+            </div>
         </div>
     </div>
 }
 
 @if (ShowTeamReports)
 {
-    <div class="expense-filter-row">
-        <div class="expense-filter-fields">
+    <div class="expense-filter-row expense-filter-row-team">
+        <div class="expense-filter-selects">
             <MudSelect T="string" @bind-Value="userFilter" Label="Employee" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:12.5rem;">
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-employee">
                 <MudSelectItem T="string" Value="@((string?)null)">All employees</MudSelectItem>
                 @foreach (var u in teamEmployees)
                 {
@@ -69,7 +79,7 @@
                 }
             </MudSelect>
             <MudSelect T="int?" @bind-Value="teamYear" Label="Year" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:calc(9rem + 50px);">
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-year">
                 <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
                 @foreach (var y in teamYearOptions)
                 {
@@ -77,28 +87,38 @@
                 }
             </MudSelect>
             <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="teamStatuses"
-                       MultiSelectionTextFunc="StatusChipText"
+                       MultiSelectionTextFunc="TeamStatusChipText"
                        Label="Status" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="width:calc(11rem + 50px);">
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-status">
                 @foreach (var status in ExpenseStatusRules.Choices)
                 {
-                    <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
+                    <MudSelectItem T="string" Value="@status">@ExpensePayLabelRules.StatusWord(status)</MudSelectItem>
                 }
             </MudSelect>
+            <MudSelect T="string" @bind-Value="teamChargeTo" Label="Charge to" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Dense="true" Class="expense-filter-charge">
+                <MudSelectItem T="string" Value="@((string?)null)">All</MudSelectItem>
+                @foreach (var choice in teamChargeToOptions)
+                {
+                    <MudSelectItem T="string" Value="@choice.OrganizationId">@choice.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+        <div class="expense-filter-searchline">
             <MudTextField @bind-Value="teamSearch" Label="Search" Placeholder="Description, amount, date"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Clearable="true"
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                          Style="width:18rem;" />
-        </div>
-        <div class="expense-filter-actions">
-            <MudButton Variant="Variant.Outlined" Color="Color.Default"
-                       StartIcon="@Icons.Material.Filled.Refresh"
-                       OnClick="ReloadTeamAsync">Refresh</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.TableView"
-                       OnClick="OpenData">
-                Export Excel
-            </MudButton>
+                          Class="expense-filter-search" />
+            <div class="expense-filter-actions">
+                <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="ReloadTeamAsync">Refresh</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.TableView"
+                           OnClick="OpenData">
+                    Export Excel
+                </MudButton>
+            </div>
         </div>
     </div>
 }
@@ -110,16 +130,17 @@
         {
             <EmptyState Icon="@Icons.Material.Outlined.ReceiptLong"
                         Title="No expense reports yet"
-                        Message="Click New Report. It starts as a draft covering last month. Change the cover dates to match your receipts." />
+                        Message="Click New Report. Choose the cover dates and the Charge to. Line items do not pick their own." />
         }
         else if (visibleMyRows.Count == 0)
         {
             <EmptyState Icon="@Icons.Material.Outlined.FilterList"
                         Title="No reports match"
-                        Message="Change Year or Status, or clear Search." />
+                        Message="Change Year, Charge to, or Status, or clear Search." />
         }
         else
         {
+            <div class="expense-grid">
             <MudDataGrid T="ExpenseReportListDto" Items="@visibleMyRows"
                          Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
                          Filterable="false"
@@ -129,50 +150,90 @@
                 <Columns>
                     <PropertyColumn Property="x => ExpenseReportRules.CoverRangeLabel(x.CoverStart, x.CoverEnd)" Title="Period"
                                     SortBy="x => x.CoverStart"
-                                    InitialDirection="SortDirection.Descending" />
-                    <PropertyColumn Property="x => x.Status" Title="Status">
+                                    InitialDirection="SortDirection.Descending"
+                                    HeaderClass="expense-period" CellClass="expense-period" />
+                    <PropertyColumn Property="x => x.ChargeToName" Title="Charge to"
+                                    HeaderClass="expense-shrink" CellClass="expense-shrink" />
+                    <PropertyColumn Property="x => x.Status" Title="Status"
+                                    HeaderClass="expense-status" CellClass="expense-status">
                         <CellTemplate>
-                            <ExpenseStatusChip Status="@context.Item.Status" />
+                            <ExpenseStatusChip Status="@context.Item.Status"
+                                               PaymentDate="@ExpensePaymentDateRules.ShownDay(context.Item.HasPaymentDate, context.Item.PaymentDate, context.Item.ReimbursedAt)" />
                         </CellTemplate>
                     </PropertyColumn>
                     <PropertyColumn Property="x => x.LineCount" Title="Lines"
-                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                                    HeaderClass="expense-num" CellClass="expense-num" />
                     <PropertyColumn Property="x => x.TotalAmount" Title="Total" Format="C"
-                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                                    HeaderClass="expense-num expense-money" CellClass="expense-num expense-money" />
                     <TemplateColumn Title="Actions" Sortable="false"
-                                    HeaderStyle="width:120px; text-align:right;" CellStyle="text-align:right;">
+                                    HeaderClass="expense-actions" CellClass="expense-actions">
                         <CellTemplate>
-                            <div class="d-flex justify-end align-center" @onclick:stopPropagation="true">
-                                <ExpensePdfMenu ReportId="@context.Item.ExpenseReportId"
-                                                FileName="@PdfFileName(context.Item)"
-                                                IconOnly="true"
-                                                Disabled="@(busyId == context.Item.ExpenseReportId)" />
-                                @if (ExpenseStatusRules.IsDraft(context.Item.Status))
-                                {
-                                    @if (busyId == context.Item.ExpenseReportId)
+                            @{
+                                var mine = context.Item;
+                                var mineBusy = busyId == mine.ExpenseReportId;
+                                var mineDraft = ExpenseStatusRules.IsDraft(mine.Status);
+                            }
+                            <div class="expense-row-actions" @onclick:stopPropagation="true">
+                                <div class="expense-row-action">
+                                    <ExpensePdfMenu ReportId="@mine.ExpenseReportId"
+                                                    FileName="@PdfFileName(mine)"
+                                                    Targets="@PdfTargets(mine)"
+                                                    CoverStart="@mine.CoverStart"
+                                                    CoverEnd="@mine.CoverEnd"
+                                                    EmployeeName="@mine.EmployeeName"
+                                                    IconOnly="true"
+                                                    Disabled="@mineBusy" />
+                                </div>
+                                <div class="expense-row-action">
+                                    @if (copyingId == mine.ExpenseReportId)
                                     {
-                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mx-2" aria-label="Submitting" />
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" aria-label="Copying" />
                                     }
                                     else
                                     {
-                                        <MudTooltip Text="Submit">
-                                            <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
-                                                           aria-label="Submit"
-                                                           OnClick="@(() => SubmitAsync(context.Item))" />
+                                        <MudTooltip Text="Copy">
+                                            <span class="expense-row-action-hit">
+                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                                               aria-label="Copy"
+                                                               Disabled="@(isCopying || mineBusy)"
+                                                               OnClick="@(() => CopyExpenseAsync(mine.ExpenseReportId))" />
+                                            </span>
                                         </MudTooltip>
                                     }
-                                    <MudTooltip Text="Delete draft">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                                       aria-label="Delete draft"
-                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
-                                                       OnClick="@(() => DeleteAsync(context.Item))" />
+                                </div>
+                                <div class="expense-row-action">
+                                    @if (mineBusy && mineDraft)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" aria-label="Submitting" />
+                                    }
+                                    else
+                                    {
+                                        <MudTooltip Text="@(mineDraft ? "Submit" : "Only a draft can be submitted")">
+                                            <span class="expense-row-action-hit">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Send" Size="Size.Small" Color="Color.Primary"
+                                                               aria-label="Submit"
+                                                               Disabled="@(!mineDraft || mineBusy)"
+                                                               OnClick="@(() => SubmitAsync(mine))" />
+                                            </span>
+                                        </MudTooltip>
+                                    }
+                                </div>
+                                <div class="expense-row-action">
+                                    <MudTooltip Text="@(mineDraft ? "Delete draft" : "Only a draft can be deleted")">
+                                        <span class="expense-row-action-hit">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                                           aria-label="Delete draft"
+                                                           Disabled="@(!mineDraft || mineBusy)"
+                                                           OnClick="@(() => DeleteAsync(mine))" />
+                                        </span>
                                     </MudTooltip>
-                                }
+                                </div>
                             </div>
                         </CellTemplate>
                     </TemplateColumn>
                 </Columns>
             </MudDataGrid>
+            </div>
         }
     }
 
@@ -188,10 +249,11 @@
         {
             <EmptyState Icon="@Icons.Material.Outlined.FilterList"
                         Title="No reports match"
-                        Message="Change Year, Employee, or Status, or clear Search." />
+                        Message="Change Year, Employee, Charge to, or Status, or clear Search." />
         }
         else
         {
+            <div class="expense-grid">
             <MudDataGrid T="ExpenseReportListDto" Items="@visibleTeamRows"
                          Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm"
                          Filterable="false"
@@ -199,56 +261,81 @@
                          RowClass="expense-grid-row"
                          RowClick="OnExpenseRowClick">
                 <Columns>
-                    <PropertyColumn Property="x => x.EmployeeName" Title="Employee" />
+                    <PropertyColumn Property="x => x.EmployeeName" Title="Employee"
+                                    HeaderClass="expense-shrink" CellClass="expense-shrink" />
                     <PropertyColumn Property="x => ExpenseReportRules.CoverRangeLabel(x.CoverStart, x.CoverEnd)" Title="Period"
                                     SortBy="x => x.CoverStart"
-                                    InitialDirection="SortDirection.Descending" />
-                    <PropertyColumn Property="x => x.Status" Title="Status">
+                                    InitialDirection="SortDirection.Descending"
+                                    HeaderClass="expense-period" CellClass="expense-period" />
+                    <PropertyColumn Property="x => x.ChargeToName" Title="Charge to"
+                                    HeaderClass="expense-shrink" CellClass="expense-shrink" />
+                    <PropertyColumn Property="x => x.Status" Title="Status"
+                                    HeaderClass="expense-status" CellClass="expense-status">
                         <CellTemplate>
-                            <ExpenseStatusChip Status="@context.Item.Status" />
+                            <ExpenseStatusChip Status="@context.Item.Status"
+                                               PaymentDate="@ExpensePaymentDateRules.ShownDay(context.Item.HasPaymentDate, context.Item.PaymentDate, context.Item.ReimbursedAt)" />
                         </CellTemplate>
                     </PropertyColumn>
                     <PropertyColumn Property="x => x.LineCount" Title="Lines"
-                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                                    HeaderClass="expense-num" CellClass="expense-num" />
                     <PropertyColumn Property="x => x.TotalAmount" Title="Total" Format="C"
-                                    HeaderStyle="text-align:right;" CellStyle="text-align:right;" />
+                                    HeaderClass="expense-num expense-money" CellClass="expense-num expense-money" />
                     <TemplateColumn Title="Actions" Sortable="false"
-                                    HeaderStyle="width:120px; text-align:right;" CellStyle="text-align:right;">
+                                    HeaderClass="expense-actions" CellClass="expense-actions">
                         <CellTemplate>
-                            <div class="d-flex justify-end align-center" @onclick:stopPropagation="true">
-                                <ExpensePdfMenu ReportId="@context.Item.ExpenseReportId"
-                                                FileName="@PdfFileName(context.Item)"
-                                                IconOnly="true"
-                                                Disabled="@(busyId == context.Item.ExpenseReportId)" />
-                                @if (ExpenseStatusRules.IsSubmitted(context.Item.Status))
-                                {
-                                    <MudTooltip Text="Reimburse">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Paid" Size="Size.Small" Color="Color.Tertiary"
-                                                       aria-label="Reimburse"
-                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
-                                                       OnClick="@(() => ReimburseAsync(context.Item))" />
+                            @{
+                                var team = context.Item;
+                                var teamBusy = busyId == team.ExpenseReportId;
+                                var teamSubmitted = ExpenseStatusRules.IsSubmitted(team.Status);
+                                var teamPaid = ExpenseStatusRules.IsReimbursed(team.Status);
+                            }
+                            <div class="expense-row-actions" @onclick:stopPropagation="true">
+                                <div class="expense-row-action">
+                                    <ExpensePdfMenu ReportId="@team.ExpenseReportId"
+                                                    FileName="@PdfFileName(team)"
+                                                    Targets="@PdfTargets(team)"
+                                                    CoverStart="@team.CoverStart"
+                                                    CoverEnd="@team.CoverEnd"
+                                                    EmployeeName="@team.EmployeeName"
+                                                    IconOnly="true"
+                                                    Disabled="@teamBusy" />
+                                </div>
+                                <div class="expense-row-action">
+                                    <MudTooltip Text="@(teamSubmitted ? "Mark paid" : "Only a submitted report can be marked paid")">
+                                        <span class="expense-row-action-hit">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Paid" Size="Size.Small" Color="Color.Tertiary"
+                                                           aria-label="Mark paid"
+                                                           Disabled="@(!teamSubmitted || teamBusy)"
+                                                           OnClick="@(() => ReimburseAsync(team))" />
+                                        </span>
                                     </MudTooltip>
-                                    <MudTooltip Text="Unsubmit">
-                                        <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" Color="Color.Warning"
-                                                       aria-label="Unsubmit"
-                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
-                                                       OnClick="@(() => UnsubmitAsync(context.Item))" />
+                                </div>
+                                <div class="expense-row-action">
+                                    <MudTooltip Text="@(teamSubmitted ? "Unsubmit" : "Only a submitted report can be unsubmitted")">
+                                        <span class="expense-row-action-hit">
+                                            <MudIconButton Icon="@Icons.Material.Filled.LockOpen" Size="Size.Small" Color="Color.Warning"
+                                                           aria-label="Unsubmit"
+                                                           Disabled="@(!teamSubmitted || teamBusy)"
+                                                           OnClick="@(() => UnsubmitAsync(team))" />
+                                        </span>
                                     </MudTooltip>
-                                }
-                                else if (ExpenseStatusRules.IsReimbursed(context.Item.Status))
-                                {
-                                    <MudTooltip Text="Undo reimbursed">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Color="Color.Default"
-                                                       aria-label="Undo reimbursed"
-                                                       Disabled="@(busyId == context.Item.ExpenseReportId)"
-                                                       OnClick="@(() => UndoReimburseAsync(context.Item))" />
+                                </div>
+                                <div class="expense-row-action">
+                                    <MudTooltip Text="@(teamPaid ? "Undo payment" : "Only a paid report can be undone")">
+                                        <span class="expense-row-action-hit">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small" Color="Color.Default"
+                                                           aria-label="Undo payment"
+                                                           Disabled="@(!teamPaid || teamBusy)"
+                                                           OnClick="@(() => UndoReimburseAsync(team))" />
+                                        </span>
                                     </MudTooltip>
-                                }
+                                </div>
                             </div>
                         </CellTemplate>
                     </TemplateColumn>
                 </Columns>
             </MudDataGrid>
+            </div>
         }
     }
 </PageLoader>

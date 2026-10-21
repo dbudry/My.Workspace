@@ -89,21 +89,22 @@ namespace My.Client.Services
         public async Task UpdateProjectColorSourceAsync(ProjectColorSource source)
         {
             var current = await GetSettingsAsync();
-            await UpdateSettingsAsync(new UpdateUserSettingsDto
-            {
-                Use24HourTime = current.Use24HourTime,
-                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
-                TimeZone = current.TimeZone,
-                PublishToGoogleCalendar = current.PublishToGoogleCalendar,
-                ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,
-                GoogleCalendarAvailabilityOnly = current.GoogleCalendarAvailabilityOnly,
-                GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
-                TymeEventColorId = current.TymeEventColorId,
-                TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
-                ProjectColorSource = source,
-                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>(),
-                ExpenseHomeAddress = current.ExpenseHomeAddress
-            });
+            var dto = CopyUpdate(current);
+            dto.ProjectColorSource = source;
+            await UpdateSettingsAsync(dto);
+        }
+
+        /// <summary>
+        /// Saves the person's expense currency and editor view without resetting the rest of settings.
+        /// </summary>
+        public async Task UpdateExpensePreferencesAsync(string currencyCode, string editorView, string currencyLayout)
+        {
+            var current = await GetSettingsAsync();
+            var dto = CopyUpdate(current);
+            dto.ExpenseDefaultCurrencyCode = currencyCode;
+            dto.ExpenseEditorView = editorView;
+            dto.ExpenseCurrencyLayout = currencyLayout;
+            await UpdateSettingsAsync(dto);
         }
 
         /// <summary>
@@ -116,21 +117,11 @@ namespace My.Client.Services
             bool publishToGoogleCalendar, bool importFromGoogleCalendar, bool availabilityOnly = false)
         {
             var current = await GetSettingsAsync();
-            await UpdateSettingsAsync(new UpdateUserSettingsDto
-            {
-                Use24HourTime = current.Use24HourTime,
-                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
-                TimeZone = current.TimeZone,
-                PublishToGoogleCalendar = publishToGoogleCalendar,
-                ImportFromGoogleCalendar = importFromGoogleCalendar,
-                GoogleCalendarAvailabilityOnly = availabilityOnly,
-                GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
-                TymeEventColorId = current.TymeEventColorId,
-                TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
-                ProjectColorSource = current.ProjectColorSource,
-                FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>(),
-                ExpenseHomeAddress = current.ExpenseHomeAddress
-            });
+            var dto = CopyUpdate(current);
+            dto.PublishToGoogleCalendar = publishToGoogleCalendar;
+            dto.ImportFromGoogleCalendar = importFromGoogleCalendar;
+            dto.GoogleCalendarAvailabilityOnly = availabilityOnly;
+            await UpdateSettingsAsync(dto);
         }
 
         /// <summary>Forces the next GetSettingsAsync to fetch from the server.</summary>
@@ -195,22 +186,9 @@ namespace My.Client.Services
 
                 // Echo every field back — the update endpoint replaces the row wholesale,
                 // so omitting a field here would silently reset it to its DTO default.
-                await UpdateSettingsAsync(new UpdateUserSettingsDto
-                {
-                    Use24HourTime = _cachedSettings.Use24HourTime,
-                    DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(
-                        _cachedSettings.DefaultStartTimeMinutes),
-                    TimeZone = browserTz.Trim(),
-                    PublishToGoogleCalendar = _cachedSettings.PublishToGoogleCalendar,
-                    ImportFromGoogleCalendar = _cachedSettings.ImportFromGoogleCalendar,
-                    GoogleCalendarAvailabilityOnly = _cachedSettings.GoogleCalendarAvailabilityOnly,
-                    GoogleCalendarRemoveExcludedEvents = _cachedSettings.GoogleCalendarRemoveExcludedEvents,
-                    TymeEventColorId = _cachedSettings.TymeEventColorId,
-                    TymeUnmatchedEventColorId = _cachedSettings.TymeUnmatchedEventColorId,
-                    ProjectColorSource = _cachedSettings.ProjectColorSource,
-                    FavoriteIntranetPageIds = _cachedSettings.FavoriteIntranetPageIds ?? new List<string>(),
-                    ExpenseHomeAddress = _cachedSettings.ExpenseHomeAddress
-                });
+                var dto = CopyUpdate(_cachedSettings);
+                dto.TimeZone = browserTz.Trim();
+                await UpdateSettingsAsync(dto);
             }
             catch
             {
@@ -239,22 +217,8 @@ namespace My.Client.Services
             else
                 list.Add(pageId);
 
-            var dto = new UpdateUserSettingsDto
-            {
-                Use24HourTime = current.Use24HourTime,
-                DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
-                TimeZone = current.TimeZone,
-                PublishToGoogleCalendar = current.PublishToGoogleCalendar,
-                ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,
-                GoogleCalendarAvailabilityOnly = current.GoogleCalendarAvailabilityOnly,
-                GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
-                TymeEventColorId = current.TymeEventColorId,
-                TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
-                ProjectColorSource = current.ProjectColorSource,
-                FavoriteIntranetPageIds = list,
-                ExpenseHomeAddress = current.ExpenseHomeAddress
-            };
-
+            var dto = CopyUpdate(current);
+            dto.FavoriteIntranetPageIds = list;
             await UpdateSettingsAsync(dto);
         }
 
@@ -272,6 +236,29 @@ namespace My.Client.Services
         /// The settings callback reads it once so a rejected token cannot reopen that page forever.
         /// </summary>
         public const string GoogleCalendarConsentForcedKey = "googleCalendarConsentForced";
+
+        private static UpdateUserSettingsDto CopyUpdate(UserSettingsDto current) => new()
+        {
+            Use24HourTime = current.Use24HourTime,
+            DefaultStartTimeMinutes = DefaultStartTimeRules.ClampMinutes(current.DefaultStartTimeMinutes),
+            TimeZone = current.TimeZone,
+            PublishToGoogleCalendar = current.PublishToGoogleCalendar,
+            ImportFromGoogleCalendar = current.ImportFromGoogleCalendar,
+            GoogleCalendarAvailabilityOnly = current.GoogleCalendarAvailabilityOnly,
+            GoogleCalendarRemoveExcludedEvents = current.GoogleCalendarRemoveExcludedEvents,
+            TymeEventColorId = current.TymeEventColorId,
+            TymeUnmatchedEventColorId = current.TymeUnmatchedEventColorId,
+            ProjectColorSource = current.ProjectColorSource,
+            FavoriteIntranetPageIds = current.FavoriteIntranetPageIds ?? new List<string>(),
+            ExpenseHomeAddress = current.ExpenseHomeAddress,
+            ExpenseDefaultCurrencyCode = ExpenseCurrencyRules.OptionalCode(current.ExpenseDefaultCurrencyCode),
+            ExpenseEditorView = string.IsNullOrWhiteSpace(current.ExpenseEditorView)
+                ? ExpenseCurrencyRules.EditorDetail
+                : current.ExpenseEditorView,
+            ExpenseCurrencyLayout = string.IsNullOrWhiteSpace(current.ExpenseCurrencyLayout)
+                ? ExpenseCurrencyRules.LayoutMixed
+                : current.ExpenseCurrencyLayout
+        };
 
         /// <summary>
         /// Starts Calendar-only Google consent (Settings and post-login auto-connect).
