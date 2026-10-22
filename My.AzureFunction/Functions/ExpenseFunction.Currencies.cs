@@ -32,15 +32,25 @@ namespace My.Functions
             if (ExpenseCurrencyRules.IsUsd(code))
                 return new ConflictObjectResult("US dollars are already on the list.");
 
+            var policy = await LoadExpensePolicyAsync();
             var existing = await _dbContext.ExpenseCurrencies.FirstOrDefaultAsync(row => row.Code == code);
             if (existing != null)
             {
-                return new ConflictObjectResult(existing.IsRemoved
-                    ? $"{code} was removed and is still on an expense line, so it cannot be added again."
-                    : $"{code} already exists.");
+                if (!existing.IsRemoved)
+                    return new ConflictObjectResult($"{code} already exists.");
+
+                existing.Name = dto.Name.Trim();
+                existing.Color = ExpenseCurrencyRules.NormalizeColor(dto.Color, ExpenseCurrencyRules.DefaultEurColor);
+                existing.RateToUsd = ExpenseCurrencyRules.NormalizeRate(
+                    code,
+                    policy.UserEntersRates ? 1m : dto.RateToUsd,
+                    policy.CompanyCurrencyCode);
+                existing.IsActive = dto.IsActive;
+                existing.IsRemoved = false;
+                await _dbContext.SaveChangesAsync();
+                return new OkObjectResult(await LoadExpenseSettingsDtoAsync());
             }
 
-            var policy = await LoadExpensePolicyAsync();
             var sort = await _dbContext.ExpenseCurrencies.Select(row => (int?)row.SortOrder).MaxAsync() ?? 0;
             _dbContext.ExpenseCurrencies.Add(new ExpenseCurrency
             {

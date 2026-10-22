@@ -374,6 +374,12 @@
     cursor: default;
     font-weight: 700;
     background: #fff59d;
+    color: var(--mud-palette-black);
+}
+
+.app-dark .expense-form-total {
+    background: #3a4640;
+    color: var(--mud-palette-text-primary);
 }
 
 .expense-form-span {
@@ -384,6 +390,12 @@
 
 .expense-form-pay {
     background: #fff59d;
+    color: var(--mud-palette-black);
+}
+
+.app-dark .expense-form-pay {
+    background: #3a4640;
+    color: var(--mud-palette-text-primary);
 }
 
 .expense-form-grand {
@@ -477,12 +489,19 @@
 
 .expense-yellow {
     background: #fff59d;
+    color: var(--mud-palette-black);
     border: 1px solid #f9a825;
     border-radius: var(--mud-default-borderradius);
     padding: 0.75rem 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+}
+
+.app-dark .expense-yellow {
+    background: #3a4640;
+    color: var(--mud-palette-text-primary);
+    border-color: #6a8076;
 }
 
 .expense-yellow-cats {
@@ -501,6 +520,15 @@
 }
 
 .expense-yellow-cat span,
+.expense-yellow-pay span,
+.expense-yellow-cat strong,
+.expense-yellow-pay strong,
+.expense-yellow-currency,
+.expense-yellow-currency span {
+    color: inherit;
+}
+
+.expense-yellow-cat span,
 .expense-yellow-pay span {
     font-size: 0.75rem;
     line-height: 1.3;
@@ -513,6 +541,10 @@
     gap: 0.75rem 1.5rem;
     padding-top: 0.65rem;
     border-top: 1px solid #f9a825;
+}
+
+.app-dark .expense-yellow-foot {
+    border-top-color: #6a8076;
 }
 
 .expense-yellow-currencies {
