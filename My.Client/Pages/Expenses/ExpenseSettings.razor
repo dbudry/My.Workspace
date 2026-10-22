@@ -8,7 +8,7 @@
 <PageTitle>Expense settings</PageTitle>
 
 <PageHeader Title="Expense settings"
-            Description="Money is mileage, currencies, and returned expenses. Codes are the statement letters. Filing is the approval signature and the submission email." />
+            Description="Money is mileage and currencies. Codes are the statement letters. Filing is the approval signature and the submission email." />
 
 <PageLoader IsLoading="@isLoading">
     <div class="expense-settings">
@@ -135,13 +135,6 @@
                 }
                 </tbody>
             </MudSimpleTable>
-        </SectionCard>
-        <SectionCard Title="Credits">
-            <MudSwitch T="bool" Value="creditBucketEnabled" ValueChanged="OnCreditChangedAsync"
-                       Color="Color.Primary" Label="Use credits" Class="mb-2" />
-            <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                When on, credits follow the credit entry in Admin settings: from a paid line onto the next unpaid expense with the same Charge to, or entered on the expense so it reduces that expense. When off, credits are not applied.
-            </MudText>
         </SectionCard>
             </MudTabPanel>
             <MudTabPanel Text="Codes" Icon="@Icons.Material.Filled.Sell">
@@ -361,12 +354,40 @@
                     </MudChip>
                 }
             </MudStack>
-            <MudAutocomplete @key="notifyFieldKey" T="ExpenseNotifyUserDto" Value="@notifyPick" ValueChanged="AddNotifyAsync"
-                             SearchFunc="@SearchDirectory" ToStringFunc="@NotifyText"
-                             Label="Add a person" Variant="Variant.Outlined" Margin="Margin.Dense"
-                             Clearable="true" OpenOnFocus="true" CoerceText="true" ResetValueOnEmptyText="true"
-                             Disabled="@codesBusy"
-                             Placeholder="Name or email" />
+            <div class="org-picker-field @(notifyOpen ? "org-picker-open" : null)" @onfocusin="OpenNotifyList" @onmousedown="OpenNotifyList">
+                <MudTextField T="string" Value="notifyText" ValueChanged="OnNotifyTextChanged"
+                              Label="Add a person" Placeholder="Name or email"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                              Clearable="true" Disabled="@codesBusy"
+                              Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                              OnClearButtonClick="ClearNotifyText" OnBlur="CloseNotifyListAsync" />
+                @* Do not set MaxHeight on MudPopover — that steals scroll from the inner list. *@
+                <MudPopover Open="notifyOpen" Fixed="true" Paper="true" Elevation="8"
+                            RelativeWidth="DropdownWidth.Ignore" OverflowBehavior="OverflowBehavior.FlipOnOpen"
+                            AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft"
+                            Class="org-picker-popover"
+                            Style="min-width: 18rem; max-width: min(28rem, 92vw); z-index: 3000;">
+                    <div class="org-picker-scroll" @onmousedown:preventDefault="true" @onmousedown:stopPropagation="true" @onclick:stopPropagation="true">
+                        @if (notifyResults.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Class="px-3 py-2" Style="color: var(--mud-palette-text-secondary);">
+                                No one matches.
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudList T="ExpenseNotifyUserDto" Dense="true" Class="py-1">
+                                @foreach (var person in notifyResults)
+                                {
+                                    <MudListItem T="ExpenseNotifyUserDto" Disabled="@codesBusy" OnClick="@(() => AddNotifyAsync(person))">
+                                        @person.Name (@person.Email)
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+                    </div>
+                </MudPopover>
+            </div>
         </SectionCard>
             </MudTabPanel>
         </MudTabs>

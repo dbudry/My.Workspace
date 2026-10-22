@@ -79,7 +79,9 @@ function Invoke-DevBlazorClientPrep {
         }
         'Clean' {
             Write-Host "Cleaning client output..." -ForegroundColor DarkGray
-            dotnet clean --nologo -v q
+            # Do not clean My.Shared / My.DAL. The debug session just built them for the
+            # Functions host, and a reference clean deletes My.Shared.dll out from under it.
+            dotnet clean --nologo -v q -p:BuildProjectReferences=false
         }
         default { }
     }

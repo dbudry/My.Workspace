@@ -509,6 +509,13 @@
                 </SectionCard>
 
                 <SectionCard Title="Credits">
+                    <div class="app-expense-rate">
+                        <MudSwitch T="bool" @bind-Value="expenseCreditBucketEnabled" Color="Color.Primary"
+                                   Label="Use credits" />
+                        <span class="app-expense-credit-note">When on, credits follow the credit entry in Admin settings: from a paid line onto the next unpaid expense with the same Charge to, or entered on the expense so it reduces that expense. When off, credits are not applied.</span>
+                    </div>
+                    @if (expenseCreditBucketEnabled)
+                    {
                     <div class="app-expense-credits">
                         <MudRadioGroup T="string" @bind-Value="expenseCreditEntryMode">
                             <MudRadio T="string" Value="@ExpenseCreditEntryRules.FromLine" Color="Color.Primary">
@@ -525,6 +532,7 @@
                             </MudRadio>
                         </MudRadioGroup>
                     </div>
+                    }
                 </SectionCard>
             </MudTabPanel>
         </MudTabs>
