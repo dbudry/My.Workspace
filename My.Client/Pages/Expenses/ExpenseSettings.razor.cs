@@ -15,8 +15,6 @@ public partial class ExpenseSettings
     private bool codesBusy;
     private decimal mileageRatePerMile = ExpenseMileageRateRules.DefaultPerMile;
     private decimal lastSavedRate = ExpenseMileageRateRules.DefaultPerMile;
-    private bool creditBucketEnabled;
-    private bool lastSavedCredit;
     private bool userEntersRates;
     private bool lastSavedUserEntersRates;
     private string companyCurrencyCode = ExpenseCurrencyRules.UsdCode;
@@ -38,8 +36,11 @@ public partial class ExpenseSettings
     private string? subcategoryFor;
     private string subcategoryDigits = "";
     private string subcategoryLabel = "";
-    private ExpenseNotifyUserDto? notifyPick;
-    private int notifyFieldKey;
+    private string notifyText = "";
+    private bool notifyOpen;
+    private bool notifySuppressBlur;
+    private int notifyBlurGeneration;
+    private List<ExpenseNotifyUserDto> notifyResults = [];
 
     [Inject] private IHttpClientFactory ClientFactory { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
@@ -54,7 +55,6 @@ public partial class ExpenseSettings
             if (loaded != null)
                 ApplySettings(loaded);
             lastSavedRate = mileageRatePerMile;
-            lastSavedCredit = creditBucketEnabled;
             lastSavedUserEntersRates = userEntersRates;
             lastSavedCompanyCurrency = companyCurrencyCode;
             lastSavedCreditEntryMode = creditEntryMode;
@@ -81,7 +81,6 @@ public partial class ExpenseSettings
     {
         settings = loaded;
         mileageRatePerMile = loaded.MileageRatePerMile;
-        creditBucketEnabled = loaded.CreditBucketEnabled;
         userEntersRates = loaded.UserEntersRates;
         companyCurrencyCode = ExpenseCurrencyRules.NormalizeCode(
             string.IsNullOrWhiteSpace(loaded.CompanyCurrencyCode)
@@ -109,12 +108,6 @@ public partial class ExpenseSettings
     private bool RateLocked(ExpenseCurrencyDto row) =>
         userEntersRates || ExpenseCurrencyRules.IsHome(row.Code, companyCurrencyCode);
 
-    private Task OnCreditChangedAsync(bool value)
-    {
-        creditBucketEnabled = value;
-        return PersistAsync();
-    }
-
     private Task OnMileageChangedAsync(decimal value)
     {
         mileageRatePerMile = value;
@@ -137,14 +130,12 @@ public partial class ExpenseSettings
         await persistLock.WaitAsync();
         try
         {
-            if (mileageRatePerMile == lastSavedRate
-                && creditBucketEnabled == lastSavedCredit)
+            if (mileageRatePerMile == lastSavedRate)
                 return;
 
             var payload = new UpdateExpenseSettingsDto
             {
                 MileageRatePerMile = mileageRatePerMile,
-                CreditBucketEnabled = creditBucketEnabled,
                 UserEntersRates = userEntersRates,
                 CompanyCurrencyCode = companyCurrencyCode,
                 CreditEntryMode = creditEntryMode
@@ -162,7 +153,6 @@ public partial class ExpenseSettings
             if (updated != null)
                 ApplySettings(updated);
             lastSavedRate = mileageRatePerMile;
-            lastSavedCredit = creditBucketEnabled;
             lastSavedUserEntersRates = userEntersRates;
             lastSavedCompanyCurrency = companyCurrencyCode;
             lastSavedCreditEntryMode = creditEntryMode;
@@ -182,7 +172,6 @@ public partial class ExpenseSettings
     private void RevertPolicy()
     {
         mileageRatePerMile = lastSavedRate;
-        creditBucketEnabled = lastSavedCredit;
         userEntersRates = lastSavedUserEntersRates;
         companyCurrencyCode = lastSavedCompanyCurrency;
         creditEntryMode = lastSavedCreditEntryMode;
@@ -428,32 +417,63 @@ public partial class ExpenseSettings
         }
     }
 
-    private Task<IEnumerable<ExpenseNotifyUserDto>> SearchDirectory(string? text, CancellationToken _)
+    private void OpenNotifyList()
+    {
+        if (codesBusy || notifyOpen)
+            return;
+        notifyBlurGeneration++;
+        FilterNotify(notifyText);
+    }
+
+    private void OnNotifyTextChanged(string? value)
+    {
+        notifyText = value ?? "";
+        FilterNotify(notifyText);
+    }
+
+    private void ClearNotifyText()
+    {
+        notifyBlurGeneration++;
+        notifyText = "";
+        FilterNotify("");
+    }
+
+    private void FilterNotify(string? query)
     {
         var selected = settings.NotifyUsers.Select(user => user.UserId).ToHashSet(StringComparer.Ordinal);
-        IEnumerable<ExpenseNotifyUserDto> options = directory.Where(user => !selected.Contains(user.UserId));
-        if (!string.IsNullOrWhiteSpace(text))
+        var options = directory.Where(user => !selected.Contains(user.UserId));
+        if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = text.Trim();
+            var term = query.Trim();
             options = options.Where(user =>
                 user.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
                 || user.Email.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
 
-        return Task.FromResult(options.Take(30));
+        notifyResults = options.ToList();
+        notifyOpen = true;
     }
 
-    private static string NotifyText(ExpenseNotifyUserDto? user) =>
-        user == null ? "" : $"{user.Name} ({user.Email})";
-
-    private async Task AddNotifyAsync(ExpenseNotifyUserDto? user)
+    private async Task CloseNotifyListAsync()
     {
-        if (user == null || settings.NotifyUsers.Any(existing => existing.UserId == user.UserId))
+        var generation = ++notifyBlurGeneration;
+        await Task.Delay(150);
+        if (generation != notifyBlurGeneration || notifySuppressBlur)
             return;
-        notifyPick = null;
-        notifyFieldKey++;
+        notifyOpen = false;
+    }
+
+    private async Task AddNotifyAsync(ExpenseNotifyUserDto user)
+    {
+        if (settings.NotifyUsers.Any(existing => existing.UserId == user.UserId))
+            return;
+        notifySuppressBlur = true;
+        notifyOpen = false;
+        notifyText = "";
+        notifyResults = [];
         var ids = settings.NotifyUsers.Select(existing => existing.UserId).Append(user.UserId).ToList();
         await SaveNotifyAsync(ids, "Added to the submission email.");
+        notifySuppressBlur = false;
     }
 
     private Task RemoveNotifyAsync(ExpenseNotifyUserDto user)

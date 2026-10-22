@@ -158,8 +158,11 @@ if ($SkipDockerSql) {
     Write-Host "`n[1/5] Skipping SQL Docker setup (-SkipDockerSql). Using DefaultConnection from local.settings.json." -ForegroundColor Yellow
 } else {
     Write-Host "`n[1/5] Ensuring SQL Server Docker container is running..." -ForegroundColor Yellow
-    Write-Host "   (Requires Docker Desktop to be running. On first run or after reset this can take 5-12 minutes while SQL 2022 Express upgrades its internal system databases. Be patient or watch 'docker logs my-workspace-mssql -f' in another window.)" -ForegroundColor DarkGray
+    Write-Host "   (Starts Docker Desktop if it is down. On first run or after reset this can take 5-12 minutes while SQL 2022 Express upgrades its internal system databases. Be patient or watch 'docker logs my-workspace-mssql -f' in another window.)" -ForegroundColor DarkGray
     & "$PSScriptRoot\Dev-SetupDockerSql.ps1" -UpdateConnectionString $true
+    if (-not $?) {
+        throw "Docker SQL setup failed. Dev-StartDebugSession.cmd stopped."
+    }
     Write-Host "SQL Server Docker container ready (see Dev-SetupDockerSql.ps1 output for connection details)." -ForegroundColor Green
 }
 
@@ -296,12 +299,12 @@ $hostCmd = @"
 cd '$funcDir'
 
 # Do NOT clean the shared projects here (My.Shared / My.DAL).
-# The main script already did a clean + explicit build of them (to populate ref assemblies
-# in obj\...\ref\). Cleaning them again here would delete the reference metadata that
-# the Azure Functions build needs, causing CS0006 "Metadata file ... \ref\*.dll could not be found".
-# Only clean the function app project itself.
+# The main script already did a clean + explicit build of them.
+# Plain "dotnet clean" also cleans project references, which deletes My.Shared.dll.
+# The Functions metadata task then fails with FileNotFoundException before the
+# reference is built again. BuildProjectReferences=false cleans only this project.
 Write-Host 'Cleaning function app project (shared projects were pre-built by main script to ensure ref metadata)...' -ForegroundColor Yellow
-dotnet clean . -c Debug --nologo -v q   # clean the function app itself
+dotnet clean . -c Debug --nologo -v q -p:BuildProjectReferences=false
 
 Write-Host 'Ensuring self-signed certificate for Functions HTTPS...' -ForegroundColor Yellow
 Write-Host '  Using existing certificate: $certPath' -ForegroundColor Green

@@ -136,10 +136,6 @@ namespace My.Functions
                 Constants.SettingKeys.ExpensesMileageRatePerMile,
                 ExpenseMileageRateRules.ToStorage(dto!.MileageRatePerMile),
                 "Personal-car mileage reimbursement rate in USD per mile.");
-            await UpsertSettingAsync(
-                Constants.SettingKeys.ExpensesCreditBucketEnabled,
-                dto.CreditBucketEnabled ? "true" : "false",
-                "When true, a returned paid expense line becomes a credit against later expenses.");
             await _dbContext.SaveChangesAsync();
 
             return new OkObjectResult(await LoadExpenseSettingsDtoAsync());

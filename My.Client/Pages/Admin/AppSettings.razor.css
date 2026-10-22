@@ -29,6 +29,10 @@
     margin-bottom: 0;
 }
 
+.app-expense-credits {
+    margin-top: 0.85rem;
+}
+
 .app-expense-credits ::deep .mud-radio-group {
     display: flex;
     flex-direction: column;

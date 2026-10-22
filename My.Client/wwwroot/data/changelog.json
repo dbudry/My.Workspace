@@ -4,6 +4,22 @@
     "date": "2026-09-22",
     "changes": [
       {
+        "type": "Changed",
+        "text": "Turning credits on or off is under Admin → App Settings → Expenses. The two ways to enter a credit show only when credits are on."
+      },
+      {
+        "type": "Fixed",
+        "text": "The expense submission email uses the search dropdown and lists every active person with an email."
+      },
+      {
+        "type": "Fixed",
+        "text": "Adding a removed currency that is still on an expense line puts that currency back on the list."
+      },
+      {
+        "type": "Changed",
+        "text": "In dark mode, expense totals use a gray-green highlight instead of bright yellow."
+      },
+      {
         "type": "Added",
         "text": "Expense lines can be in more than one currency. The company default currency, who enters exchange rates, and whether a credit comes from a paid line or is entered on the expense are set under App Settings → Expenses."
       },

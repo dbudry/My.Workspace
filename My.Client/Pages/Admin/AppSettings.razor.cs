@@ -51,6 +51,7 @@ namespace My.Client.Pages.Admin
         private bool expenseUserEntersRates;
         private string expenseCompanyCurrencyCode = ExpenseCurrencyRules.UsdCode;
         private string expenseCreditEntryMode = ExpenseCreditEntryRules.FromLine;
+        private bool expenseCreditBucketEnabled;
         private List<ExpenseCurrencyDto> expenseCurrencies = [];
         private AppDriveStatusDto? appDriveStatus;
         private bool appDriveStatusLoaded;
@@ -208,6 +209,10 @@ namespace My.Client.Pages.Admin
                         ?? ExpenseCurrencyRules.UsdCode;
                     var creditModeVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.ExpensesCreditEntryMode);
                     expenseCreditEntryMode = ExpenseCreditEntryRules.NormalizeMode(creditModeVal?.Value);
+                    var creditBucketVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.ExpensesCreditBucketEnabled);
+                    expenseCreditBucketEnabled = creditBucketVal != null
+                        && bool.TryParse(creditBucketVal.Value, out var creditsOn)
+                        && creditsOn;
 
                     var navDepthVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.IntranetNavigationMaxDepth);
                     if (navDepthVal != null)
@@ -531,6 +536,12 @@ namespace My.Client.Pages.Admin
                         Key = Constants.SettingKeys.ExpensesCreditEntryMode,
                         Value = ExpenseCreditEntryRules.NormalizeMode(expenseCreditEntryMode),
                         Description = "Line credits a paid line. Form types the credit on the expense."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.ExpensesCreditBucketEnabled,
+                        Value = expenseCreditBucketEnabled ? "true" : "false",
+                        Description = "When true, credits are applied. When false, credits are not applied."
                     }
                 };
 

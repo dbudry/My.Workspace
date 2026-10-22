@@ -20,7 +20,7 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<div class="page">
+<div class="page @(_isDarkMode ? "app-dark" : null)">
     <header class="app-bar">
         <span class="nav-toggle">
             <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"

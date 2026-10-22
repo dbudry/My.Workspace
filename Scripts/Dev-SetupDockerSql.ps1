@@ -138,6 +138,53 @@ function Wait-ForSqlReady {
     return $false
 }
 
+function Get-DockerDesktopExecutable {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'Docker\Docker\Docker Desktop.exe')
+        (Join-Path ${env:ProgramFiles(x86)} 'Docker\Docker\Docker Desktop.exe')
+        (Join-Path $env:LocalAppData 'Programs\Docker\Docker\Docker Desktop.exe')
+        (Join-Path $env:LocalAppData 'Docker\Docker Desktop.exe')
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+function Test-DockerEngineReachable {
+    $hasNativePreference = Test-Path variable:PSNativeCommandUseErrorActionPreference
+    $savedPreference = $null
+    if ($hasNativePreference) {
+        $savedPreference = $PSNativeCommandUseErrorActionPreference
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
+    try {
+        $null = docker info 2>&1
+        return $LASTEXITCODE -eq 0
+    } finally {
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $savedPreference
+        }
+    }
+}
+
+function Wait-DockerEngine {
+    param([int]$TimeoutSeconds = 180)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-DockerEngineReachable) {
+            Write-Host ""
+            return $true
+        }
+        Write-Host "." -NoNewline -ForegroundColor DarkGray
+        Start-Sleep -Seconds 3
+    }
+    Write-Host ""
+    return $false
+}
+
 function Test-DockerDaemonReady {
     $cliCheck = Get-Command docker -ErrorAction SilentlyContinue
     if (-not $cliCheck) {
@@ -147,24 +194,51 @@ function Test-DockerDaemonReady {
         }
     }
 
-    $null = docker info 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        return @{
-            Ok = $false
-            Message = @"
-Docker Desktop is not running (daemon unreachable).
-
-  1. Start Docker Desktop from the Start menu and wait until it shows "Docker Desktop is running".
-  2. Re-run Dev-StartDebugSession.ps1 (or Dev-SetupDockerSql.ps1).
-
-If you use a local SQL Server / Azure SQL instead of Docker, skip the Docker step:
-  .\Scripts\Dev-StartDebugSession.ps1 -SkipDockerSql
-  (Ensure My.AzureFunction\local.settings.json DefaultConnection points at your database.)
-"@
-        }
+    if (Test-DockerEngineReachable) {
+        return @{ Ok = $true; Message = $null }
     }
 
-    return @{ Ok = $true; Message = $null }
+    Write-Host "Docker Desktop is not running. Starting it..." -ForegroundColor Yellow
+    $desktopProcess = Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue
+    if (-not $desktopProcess) {
+        $exe = Get-DockerDesktopExecutable
+        if (-not $exe) {
+            return @{
+                Ok = $false
+                Message = @"
+Docker Desktop is not running, and Docker Desktop.exe was not found.
+Looked under Program Files, Program Files (x86), and LocalAppData.
+Install Docker Desktop, then run Dev-StartDebugSession.cmd again.
+"@
+            }
+        }
+        try {
+            Start-Process -FilePath $exe | Out-Null
+        } catch {
+            return @{
+                Ok = $false
+                Message = "Docker Desktop is not running, and starting '$exe' failed: $($_.Exception.Message)"
+            }
+        }
+    } else {
+        Write-Host "Docker Desktop is already starting. Waiting for the engine..." -ForegroundColor DarkGray
+    }
+
+    Write-Host "Waiting up to 3 minutes for the Docker engine..." -ForegroundColor DarkGray
+    if (Wait-DockerEngine -TimeoutSeconds 180) {
+        Write-Host "Docker Desktop is running." -ForegroundColor Green
+        return @{ Ok = $true; Message = $null }
+    }
+
+    return @{
+        Ok = $false
+        Message = @"
+Docker Desktop did not become ready within 3 minutes. docker info still cannot reach the engine.
+Dev-StartDebugSession.cmd stopped.
+Start Docker Desktop from the Start menu, wait until it is running, then run Dev-StartDebugSession.cmd again.
+To skip Docker SQL: .\Scripts\Dev-StartDebugSession.ps1 -SkipDockerSql
+"@
+    }
 }
 
 Write-Host "=== Setting up SQL Server Docker for My.Workspace ===" -ForegroundColor Cyan
