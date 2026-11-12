@@ -22,6 +22,8 @@ public class TrackedTaskListMappingTests
         var stamp = Guid.NewGuid().ToString("N")[..8];
         var now = DateTime.UtcNow;
 
+        try
+        {
         await using (var db = IntegrationTestConnection.NewContext())
         {
             db.Users.Add(new ApplicationUser
@@ -78,5 +80,10 @@ public class TrackedTaskListMappingTests
 
         foreach (var task in page)
             mapper.TrackedTaskToDto(task);
+        }
+        finally
+        {
+            await IntegrationTestFixtures.DeleteUserAsync(userId);
+        }
     }
 }

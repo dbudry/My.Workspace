@@ -10,6 +10,7 @@ Tracking docs for in-flight and shipped efforts. Each initiative may have a dedi
 | [Intranet](intranet.md) | `feature/intranet-favorite-branch` | **Shipped** (v1) - was planned as "Knowledge Base" |
 | [Expenses](expenses.md) | `feature/port-expenses-and-fixes` | Porting expenses + App Drive + related fixes |
 | [Project Color Preference](project-color-preference.md) | `fix/calendar-sync-bounds` | Shipped 2026-05-18 |
+| [Tyme submission grid and email](tyme-submission-grid.md) | `feat/#1121_tyme-grid-crm-potentials` | In progress |
 
 ## How these docs work
 

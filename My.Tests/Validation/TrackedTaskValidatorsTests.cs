@@ -10,6 +10,37 @@ public class TrackedTaskValidatorsTests
     private readonly CreateTrackedTaskDtoValidator _create = new();
     private readonly UpdateTrackedTaskDtoValidator _update = new();
 
+    [Fact]
+    public async Task Create_allows_a_guid_task_id_for_safe_retries()
+    {
+        var dto = new CreateTrackedTaskDto
+        {
+            StartDate = new DateTime(2026, 8, 14, 9, 0, 0),
+            Duration = TimeSpan.FromHours(1),
+            TaskId = Guid.NewGuid().ToString()
+        };
+
+        Assert.True((await _create.ValidateAsync(dto)).IsValid);
+    }
+
+    [Theory]
+    [InlineData("not-a-guid")]
+    [InlineData("1; DROP TABLE TrackedTasks")]
+    public async Task Create_rejects_a_task_id_that_is_not_a_guid(string taskId)
+    {
+        var dto = new CreateTrackedTaskDto
+        {
+            StartDate = new DateTime(2026, 8, 14, 9, 0, 0),
+            Duration = TimeSpan.FromHours(1),
+            TaskId = taskId
+        };
+
+        var result = await _create.ValidateAsync(dto);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(CreateTrackedTaskDto.TaskId));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

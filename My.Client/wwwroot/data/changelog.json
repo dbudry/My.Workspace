@@ -4,6 +4,62 @@
     "date": "2026-09-22",
     "changes": [
       {
+        "type": "Added",
+        "text": "CRM managers choose who gets an email when a discussion is posted. Open CRM → Settings → Discussion emails and check the users. Until someone is checked, no discussion emails go out."
+      },
+      {
+        "type": "Fixed",
+        "text": "The Search box on the CRM page no longer stretches tall."
+      },
+      {
+        "type": "Added",
+        "text": "Managers can email an employee a reminder about unsubmitted time. Click a Not submitted cell on Tyme → Submit → Grid and choose Send reminder, or use Remind on the Team view. You see the email first and choose Send or Cancel. An Admin turns it on under App Settings → Tyme."
+      },
+      {
+        "type": "Added",
+        "text": "Tyme → Settings → Reminder Email Grid sets what the reminder covers: the month clicked, a range of months around it, or its whole year, and which time statuses the grid shows."
+      },
+      {
+        "type": "Fixed",
+        "text": "Tyme → Settings shows each picked recipient as a chip under the Recipients select, so every recipient is visible and can be removed with its X."
+      },
+      {
+        "type": "Added",
+        "text": "Tyme → Submit has a Grid view for Managers: every active Tyme user by month, colored by status. Click a cell to unsubmit a submitted month or submit it for the employee. The Team view has checkbox filters."
+      },
+      {
+        "type": "Added",
+        "text": "Tyme → Settings lets Managers pick which Tyme Editors and Managers are emailed when someone submits time. The email shows the same grid around the submitted month."
+      },
+      {
+        "type": "Changed",
+        "text": "The Submit button shows a spinner and a progress bar while the request runs."
+      },
+      {
+        "type": "Fixed",
+        "text": "Typing hours in the Week grid and pressing Enter, then clicking away, no longer saves the same entry twice. The same entry is also not added twice when a save is repeated after a slow reply."
+      },
+      {
+        "type": "Added",
+        "text": "CRM deals are potentials. Each potential has its own stage path, from Lead through Closed Won or Closed Lost. Managers edit the stages and contact types under CRM → Settings."
+      },
+      {
+        "type": "Added",
+        "text": "CRM Reporting lists potentials with their latest status. Stage totals are on the home dashboard."
+      },
+      {
+        "type": "Added",
+        "text": "Posting a discussion on a potential emails the other CRM users."
+      },
+      {
+        "type": "Changed",
+        "text": "View as is grouped by area, then role."
+      },
+      {
+        "type": "Fixed",
+        "text": "Dragging a home dashboard tile keeps the empty rows, so it can be dropped in a gap instead of jumping onto another tile."
+      },
+      {
         "type": "Changed",
         "text": "Turning credits on or off is under Admin → App Settings → Expenses. The two ways to enter a credit show only when credits are on."
       },

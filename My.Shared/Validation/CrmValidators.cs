@@ -4,79 +4,162 @@ using My.Shared.Rules;
 
 namespace My.Shared.Validation;
 
-public class CreateOpportunityDtoValidator : AbstractValidator<CreateOpportunityDto>
+public class CreatePotentialDtoValidator : AbstractValidator<CreatePotentialDto>
 {
-    public const int NoteMaxLength = 500;
+    public const int DescriptionMaxLength = 500;
 
-    public CreateOpportunityDtoValidator()
+    public CreatePotentialDtoValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Opportunity name is required.")
-            .MaximumLength(200).WithMessage("Opportunity name can't exceed 200 characters.");
+            .NotEmpty().WithMessage("Potential name is required.")
+            .MaximumLength(200).WithMessage("Potential name can't exceed 200 characters.");
 
-        RuleFor(x => x.Stage)
-            .Must(stage => CrmStageRules.TryCanonical(stage, out _))
-            .WithMessage("Stage must be Lead, Qualified, Proposal, Negotiation, Won, or Lost.");
+        RuleFor(x => x.Description).MaximumLength(DescriptionMaxLength);
+
+        RuleFor(x => x.CrmStageId)
+            .NotEmpty().WithMessage("Stage is required.")
+            .MaximumLength(450);
+
+        RuleFor(x => x.Probability)
+            .InclusiveBetween(CrmStageRules.ProbabilityMin, CrmStageRules.ProbabilityMax)
+            .WithMessage("Probability must be a whole number from 0 to 100.");
 
         RuleFor(x => x.Amount)
             .GreaterThanOrEqualTo(0).When(x => x.Amount.HasValue)
-            .WithMessage("Amount can't be negative.");
+            .WithMessage("Forecast revenue can't be negative.");
 
-        RuleFor(x => x.Note).MaximumLength(NoteMaxLength);
         RuleFor(x => x.OrganizationId).MaximumLength(450);
         RuleFor(x => x.ContactId).MaximumLength(450);
+        RuleFor(x => x.RelationshipType).Custom(RelationshipTypeValidation.AddOptionalFailure);
     }
 }
 
-public class UpdateOpportunityDtoValidator : AbstractValidator<UpdateOpportunityDto>
+public class UpdatePotentialDtoValidator : AbstractValidator<UpdatePotentialDto>
 {
-    public UpdateOpportunityDtoValidator()
+    public UpdatePotentialDtoValidator()
     {
-        RuleFor(x => x.OpportunityId).NotEmpty().WithMessage("Opportunity id is required.");
-        Include(new CreateOpportunityDtoValidator());
+        RuleFor(x => x.PotentialId).NotEmpty().WithMessage("Potential id is required.");
+        Include(new CreatePotentialDtoValidator());
     }
 }
 
-public class SetOpportunityArchivedDtoValidator : AbstractValidator<SetOpportunityArchivedDto>
+public class SetPotentialArchivedDtoValidator : AbstractValidator<SetPotentialArchivedDto>
 {
-    public SetOpportunityArchivedDtoValidator()
+    public SetPotentialArchivedDtoValidator()
     {
-        RuleFor(x => x).NotNull();
     }
 }
 
-public class CreateCrmActivityDtoValidator : AbstractValidator<CreateCrmActivityDto>
+public class CreatePotentialStatusDtoValidator : AbstractValidator<CreatePotentialStatusDto>
 {
-    public CreateCrmActivityDtoValidator()
+    public CreatePotentialStatusDtoValidator()
     {
-        RuleFor(x => x.OpportunityId).NotEmpty().WithMessage("Opportunity id is required.");
-
-        RuleFor(x => x.ActivityType)
-            .Must(kind => CrmActivityTypeRules.TryCanonical(kind, out _))
-            .WithMessage("Activity type must be Note, Call, Meeting, or Task.");
-
-        RuleFor(x => x.Subject)
-            .NotEmpty().WithMessage("Subject is required.")
-            .MaximumLength(200).WithMessage("Subject can't exceed 200 characters.");
-
-        RuleFor(x => x.Body).MaximumLength(CreateOpportunityDtoValidator.NoteMaxLength);
+        RuleFor(x => x.CrmStageId).NotEmpty().WithMessage("Stage is required.").MaximumLength(450);
+        RuleFor(x => x.StatusDate).NotEmpty().WithMessage("Date is required.");
+        RuleFor(x => x.Body)
+            .NotEmpty().WithMessage("Status is required.")
+            .MaximumLength(CreatePotentialDtoValidator.DescriptionMaxLength);
     }
 }
 
-public class UpdateCrmActivityDtoValidator : AbstractValidator<UpdateCrmActivityDto>
+public class CreateCrmDiscussionDtoValidator : AbstractValidator<CreateCrmDiscussionDto>
 {
-    public UpdateCrmActivityDtoValidator()
+    public CreateCrmDiscussionDtoValidator()
     {
-        RuleFor(x => x.CrmActivityId).NotEmpty().WithMessage("Activity id is required.");
+        RuleFor(x => x.Message)
+            .NotEmpty().WithMessage("Discussion is required.")
+            .MaximumLength(CreatePotentialDtoValidator.DescriptionMaxLength);
+    }
+}
 
-        RuleFor(x => x.ActivityType)
-            .Must(kind => CrmActivityTypeRules.TryCanonical(kind, out _))
-            .WithMessage("Activity type must be Note, Call, Meeting, or Task.");
+public class CreateCrmStageDtoValidator : AbstractValidator<CreateCrmStageDto>
+{
+    public CreateCrmStageDtoValidator()
+    {
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Stage name is required.")
+            .MaximumLength(CrmStageRules.NameMaxLength);
+        RuleFor(x => x.DefaultProbability)
+            .InclusiveBetween(CrmStageRules.ProbabilityMin, CrmStageRules.ProbabilityMax)
+            .WithMessage("Default percent must be a whole number from 0 to 100.");
+        RuleFor(x => x.Outcome)
+            .Must(outcome => CrmStageRules.TryCanonicalOutcome(outcome, out _))
+            .WithMessage("Outcome must be Open, Closed Won, or Closed Lost.");
+    }
+}
 
-        RuleFor(x => x.Subject)
-            .NotEmpty().WithMessage("Subject is required.")
-            .MaximumLength(200).WithMessage("Subject can't exceed 200 characters.");
+public class UpdateCrmStageDtoValidator : AbstractValidator<UpdateCrmStageDto>
+{
+    public UpdateCrmStageDtoValidator()
+    {
+        RuleFor(x => x.CrmStageId).NotEmpty().WithMessage("Stage id is required.");
+        Include(new CreateCrmStageDtoValidator());
+    }
+}
 
-        RuleFor(x => x.Body).MaximumLength(CreateOpportunityDtoValidator.NoteMaxLength);
+public class ReorderCrmStagesDtoValidator : AbstractValidator<ReorderCrmStagesDto>
+{
+    public ReorderCrmStagesDtoValidator()
+    {
+        RuleFor(x => x.StageIds)
+            .NotNull()
+            .Must(ids => ids.Count > 0).WithMessage("Stage order is required.");
+    }
+}
+
+public class SaveCrmRelationshipTypesDtoValidator : AbstractValidator<SaveCrmRelationshipTypesDto>
+{
+    public SaveCrmRelationshipTypesDtoValidator()
+    {
+        RuleFor(x => x.Types).NotNull();
+    }
+}
+
+public class SaveCrmNotifyUsersDtoValidator : AbstractValidator<SaveCrmNotifyUsersDto>
+{
+    public SaveCrmNotifyUsersDtoValidator()
+    {
+        RuleFor(x => x.UserIds).NotNull();
+        RuleForEach(x => x.UserIds).NotEmpty().MaximumLength(CrmNotifyRecipientRules.UserIdMaxLength);
+    }
+}
+
+public class UploadCrmAttachmentDtoValidator : AbstractValidator<UploadCrmAttachmentDto>
+{
+    public UploadCrmAttachmentDtoValidator()
+    {
+        RuleFor(x => x.FileName).NotEmpty().MaximumLength(CrmAttachmentRules.FileNameMaxLength);
+        RuleFor(x => x.MimeType).MaximumLength(100);
+        RuleFor(x => x.ContentBase64).NotEmpty().WithMessage("File content is required.");
+        RuleFor(x => x.CrmStageId).MaximumLength(450);
+    }
+}
+
+public class MoveCrmAttachmentStageDtoValidator : AbstractValidator<MoveCrmAttachmentStageDto>
+{
+    public MoveCrmAttachmentStageDtoValidator()
+    {
+        RuleFor(x => x.CrmStageId).NotEmpty().WithMessage("Stage is required.").MaximumLength(450);
+    }
+}
+
+internal static class RelationshipTypeValidation
+{
+    internal static void AddOptionalFailure<T>(string? relationshipType, ValidationContext<T> context)
+    {
+        if (string.IsNullOrWhiteSpace(relationshipType))
+            return;
+
+        if (!context.RootContextData.TryGetValue(
+                ValidationContextKeys.AllowedRelationshipTypes,
+                out var allowedObj)
+            || allowedObj is not IReadOnlyList<CrmRelationshipType> allowed)
+        {
+            context.AddFailure("Relationship type is not available.");
+            return;
+        }
+
+        if (!CrmRelationshipTypeRules.IsAllowed(relationshipType, allowed))
+            context.AddFailure($"Type must be one of: {string.Join(", ", allowed.Select(type => type.Name))}.");
     }
 }

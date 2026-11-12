@@ -1,0 +1,306 @@
+@page "/crm/potential/new"
+@page "/crm/potential/{PotentialId}"
+@attribute [Authorize(Policy = "CrmRead")]
+@using My.Client.Components.Organizations
+@using My.Shared.Dtos.Contact
+@using My.Shared.Dtos.Crm
+@using My.Shared.Rules
+@using My.Shared.Validation
+
+<PageTitle>@(IsNew ? "New potential" : name)</PageTitle>
+
+<PageHeader Title="@(IsNew ? "New potential" : name)">
+    <Actions>
+        @if (canEdit)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="saving" OnClick="SaveAsync">Save</MudButton>
+        }
+        @if (canManage && !IsNew)
+        {
+            <MudButton Variant="Variant.Outlined" Disabled="saving" OnClick="ArchiveAsync">@(isArchived ? "Restore" : "Archive")</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="saving" OnClick="DeleteAsync">Delete</MudButton>
+        }
+    </Actions>
+</PageHeader>
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap" Class="mb-4">
+        @foreach (var stage in stages)
+        {
+            var selected = stage.CrmStageId == stageId;
+            <MudButton Variant="@(selected ? Variant.Filled : Variant.Outlined)"
+                       Color="@StageColor(stage.Outcome)"
+                       Size="Size.Small"
+                       Disabled="@(IsNew || (!canEdit && !selected))"
+                       OnClick="@(() => OnStageChanged(stage.CrmStageId))">
+                @stage.Name
+            </MudButton>
+        }
+    </MudStack>
+    <MudTabs>
+        <MudTabPanel Text="Details">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="name" Label="Potential name" Required="true" Variant="Variant.Outlined"
+                                  Immediate="true" Disabled="@(!canEdit)" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="int" @bind-Value="probability" Label="Probability" Variant="Variant.Outlined"
+                                     Min="0" Max="100" HideSpinButtons="true" Disabled="@(!canEdit)" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal?" @bind-Value="amount" Label="Forecast Revenue" Variant="Variant.Outlined"
+                                     Min="0" HideSpinButtons="true" Format="N2"
+                                     Adornment="Adornment.Start" AdornmentText="$" Disabled="@(!canEdit)" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField Value="@ExpectedRevenueText" Label="Expected Revenue" Variant="Variant.Outlined" ReadOnly="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="expectedClose" Label="Forecast Close" Variant="Variant.Outlined" Disabled="@(!canEdit)" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="actualClose" Label="Actual Close" Variant="Variant.Outlined" Disabled="@(!canEdit)" />
+                </MudItem>
+                <MudItem xs="12">
+                    @if (canEdit)
+                    {
+                        <OrganizationPickerFields OrganizationId="@organizationId"
+                                                  OrganizationIdChanged="OnOrganizationChanged"
+                                                  OrganizationName="@organizationName"
+                                                  OrganizationNameChanged="OnOrganizationNameChanged"
+                                                  ShowDepartment="false"
+                                                  InputVariant="Variant.Outlined"
+                                                  OrganizationLabel="Account" />
+                    }
+                    else
+                    {
+                        <MudTextField Value="@organizationName" Label="Account" Variant="Variant.Outlined" ReadOnly="true" />
+                    }
+                </MudItem>
+                @if (!string.IsNullOrEmpty(organizationId))
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="string" Value="contactChoice" ValueChanged="OnContactChanged" Label="Contact"
+                                   Variant="Variant.Outlined" Disabled="@(!canEdit)" Required="true">
+                            <MudSelectItem T="string" Value="@NewContactChoice">Add a new contact</MudSelectItem>
+                            @foreach (var contact in contacts)
+                            {
+                                <MudSelectItem T="string" Value="@contact.ContactId">@contact.Name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        @if (contactChoice == NewContactChoice)
+                        {
+                            <MudSelect T="string" @bind-Value="newRelationshipType" Label="Type" Variant="Variant.Outlined" Disabled="@(!canEdit)">
+                                @foreach (var type in relationshipTypes)
+                                {
+                                    <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                        else if (!string.IsNullOrEmpty(contactChoice))
+                        {
+                            <MudSelect T="string" Value="relationshipType" ValueChanged="OnRelationshipChanged" Label="Type"
+                                       Variant="Variant.Outlined" Disabled="@(!canEdit)" Clearable="true">
+                                @foreach (var type in relationshipTypes)
+                                {
+                                    <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                }
+                            </MudSelect>
+                        }
+                    </MudItem>
+                    @if (contactChoice == NewContactChoice && canEdit)
+                    {
+                        <MudItem xs="12">
+                            <div class="pa-3" style="border: 1px solid var(--mud-palette-lines-default); border-radius: 4px;">
+                                <MudGrid Spacing="2">
+                                    <MudItem xs="12" sm="6">
+                                        <MudTextField @bind-Value="newContactName" Label="Name" Required="true" Variant="Variant.Outlined" Immediate="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudTextField @bind-Value="newContactTitle" Label="Title" Variant="Variant.Outlined" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudTextField @bind-Value="newContactPhone" Label="Phone" Variant="Variant.Outlined" />
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudTextField @bind-Value="newContactEmail" Label="Email" Variant="Variant.Outlined" />
+                                    </MudItem>
+                                </MudGrid>
+                            </div>
+                        </MudItem>
+                    }
+                }
+                <MudItem xs="12">
+                    <CountedTextArea Value="@description" ValueChanged="@(value => description = value)"
+                                     Label="Description" MaxLength="@CreatePotentialDtoValidator.DescriptionMaxLength"
+                                     Disabled="@(!canEdit)" />
+                </MudItem>
+                @if (!IsNew)
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudTextField Value="@createdLabel" Label="Created" Variant="Variant.Outlined" ReadOnly="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField Value="@createdByName" Label="Created By" Variant="Variant.Outlined" ReadOnly="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField Value="@modifiedLabel" Label="Modified" Variant="Variant.Outlined" ReadOnly="true" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField Value="@modifiedByName" Label="Modified By" Variant="Variant.Outlined" ReadOnly="true" />
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudTabPanel>
+        @if (!IsNew)
+        {
+            <MudTabPanel Text="Status">
+                @if (canEdit)
+                {
+                    <MudGrid Spacing="2" Class="mb-3">
+                        <MudItem xs="12" sm="8">
+                            <MudTextField @bind-Value="statusBody" Label="Status" Variant="Variant.Outlined" Immediate="true"
+                                          MaxLength="@CreatePotentialDtoValidator.DescriptionMaxLength" />
+                        </MudItem>
+                        <MudItem xs="12" sm="4">
+                            <MudDatePicker @bind-Date="statusDate" Label="Date" Variant="Variant.Outlined" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="saving" OnClick="AddStatusAsync">Add status</MudButton>
+                        </MudItem>
+                    </MudGrid>
+                }
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Stage</th>
+                            <th>Status</th>
+                            <th>By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var status in StageStatuses)
+                        {
+                            <tr>
+                                <td>@status.StatusDate.ToString("yyyy-MM-dd")</td>
+                                <td>@status.StageName</td>
+                                <td>@status.Body</td>
+                                <td>@status.CreatedByName</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudTabPanel>
+            <MudTabPanel Text="Discussion">
+                @if (canPost)
+                {
+                    <MudGrid Spacing="2" Class="mb-3">
+                        <MudItem xs="12">
+                            <MudTextField @bind-Value="discussionMessage" Label="Discussion" Variant="Variant.Outlined" Immediate="true"
+                                          Lines="3" MaxLength="@CreatePotentialDtoValidator.DescriptionMaxLength" />
+                        </MudItem>
+                        <MudItem xs="12">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="saving" OnClick="AddDiscussionAsync">Post</MudButton>
+                        </MudItem>
+                    </MudGrid>
+                }
+                @foreach (var note in StageDiscussions)
+                {
+                    <MudPaper Outlined="true" Class="pa-3 mb-2">
+                        <MudText Typo="Typo.caption">@note.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm") · @note.StageName · @note.AuthorName</MudText>
+                        <MudText Typo="Typo.body2">@note.Message</MudText>
+                    </MudPaper>
+                }
+            </MudTabPanel>
+        }
+            <MudTabPanel Text="Attachments">
+                @if (canEdit)
+                {
+                    <InputFile OnChange="OnFileAsync" accept="@Accept" class="mb-3" />
+                }
+                @if (IsNew)
+                {
+                    <MudText Typo="Typo.body2" Class="mb-2">Files are uploaded when you save the potential.</MudText>
+                    <MudSimpleTable Dense="true" Hover="true">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var pending in pendingFiles)
+                            {
+                                <tr>
+                                    <td>@pending.FileName</td>
+                                    <td>
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => pendingFiles.Remove(pending))" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+                else
+                {
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Stage</th>
+                            <th>Uploaded</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var file in StageAttachments)
+                        {
+                            <tr>
+                                <td>
+                                    <MudLink OnClick="@(() => DownloadAsync(file))">@file.OriginalFileName</MudLink>
+                                </td>
+                                <td>
+                                    @if (canEdit)
+                                    {
+                                        <MudSelect T="string" Value="@file.CrmStageId" ValueChanged="@(value => MoveFileAsync(file, value))"
+                                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+                                            @foreach (var stage in stages)
+                                            {
+                                                <MudSelectItem T="string" Value="@stage.CrmStageId">@stage.Name</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    }
+                                    else
+                                    {
+                                        @file.StageName
+                                    }
+                                </td>
+                                <td>@file.UploadedAt.LocalDateTime.ToString("yyyy-MM-dd") · @file.UploadedByName</td>
+                                <td>
+                                    @if (canManage)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                                       OnClick="@(() => DeleteFileAsync(file))" />
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+                }
+            </MudTabPanel>
+    </MudTabs>
+}

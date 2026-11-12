@@ -1,0 +1,7 @@
+<MudSimpleTable Dense="true" Hover="true" Bordered="true" Class="settings-list-table">
+    @ChildContent
+</MudSimpleTable>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -41,6 +41,7 @@ namespace My.Client.Components.Dashboard
         private bool hasTymeAccess;
         private bool hasExpensesAccess;
         private bool hasIntranetAccess;
+        private bool hasCrmAccess;
 
         private List<ExpenseReportListDto> visibleLastMonthExpenses =>
             lastMonthTeamExpenses.Take(LastMonthExpenseMaxRows).ToList();
@@ -249,6 +250,8 @@ namespace My.Client.Components.Dashboard
                     ids.Add(DashboardLayoutRules.UnsubmittedTime);
                 if (canManageExpenses)
                     ids.Add(DashboardLayoutRules.LastMonthExpenses);
+                if (hasCrmAccess)
+                    ids.Add(DashboardLayoutRules.Crm);
                 return ids;
             }
         }
@@ -315,6 +318,7 @@ namespace My.Client.Components.Dashboard
                 hasTymeAccess = false;
                 hasExpensesAccess = false;
                 hasIntranetAccess = false;
+                hasCrmAccess = false;
                 canManageTyme = false;
                 canManageExpenses = false;
                 overdueMonths.Clear();
@@ -344,6 +348,7 @@ namespace My.Client.Components.Dashboard
             hasTymeAccess = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Tyme);
             hasExpensesAccess = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses);
             hasIntranetAccess = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
+            hasCrmAccess = Constants.Roles.HasCrmRead(user);
 
             List<string> favoriteIds = [];
             try

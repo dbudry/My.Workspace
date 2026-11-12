@@ -51,9 +51,12 @@ window.dashboardLayout = {
         var tileEl = gridEl.querySelector('[data-dashboard-tile="' + widgetId + '"]');
         if (!tileEl) return;
 
+        // Keep the rows put, and stop the page from scroll-anchoring.
+        // Either one throws the pointer off the gap and onto the tiles above.
+        var spacer = this._holdRows(gridEl);
         var metrics = this._metrics(gridEl);
         var grabCol = this._colAt(metrics, clientX) - start.col;
-        var grabRow = this._rowAt(metrics, clientY) - start.row;
+        var grabRow = this._rowOnTracks(this._tracks(gridEl), clientY - metrics.top) - start.row;
         var pending = {
             col: start.col,
             row: start.row,
@@ -79,7 +82,8 @@ window.dashboardLayout = {
                 next.col = window.dashboardLayout._clamp(
                     window.dashboardLayout._colAt(m, e.clientX) - grabCol,
                     1, 13 - start.columns);
-                next.row = Math.max(1, window.dashboardLayout._rowAt(m, e.clientY) - grabRow);
+                next.row = Math.max(1, window.dashboardLayout._rowOnTracks(
+                    window.dashboardLayout._tracks(gridEl), e.clientY - m.top) - grabRow);
             } else if (mode === 'east') {
                 var cols = Math.round((e.clientX - tileEl.getBoundingClientRect().left + m.gapX) / (m.colW + m.gapX));
                 next.columns = window.dashboardLayout._clamp(
@@ -121,7 +125,7 @@ window.dashboardLayout = {
                 pending.rows);
         };
 
-        this._drag = { onMove: onMove, onUp: onUp, tileEl: tileEl };
+        this._drag = { onMove: onMove, onUp: onUp, tileEl: tileEl, spacer: spacer };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', onUp);
         window.addEventListener('pointercancel', onUp);
@@ -134,6 +138,8 @@ window.dashboardLayout = {
         window.removeEventListener('pointermove', state.onMove);
         window.removeEventListener('pointerup', state.onUp);
         window.removeEventListener('pointercancel', state.onUp);
+        if (state.spacer && state.spacer.restore)
+            state.spacer.restore();
         if (state.tileEl) {
             state.tileEl.classList.remove('dashboard-tile--dragging', 'dashboard-tile--resizing');
             state.tileEl.style.zIndex = '';
@@ -223,23 +229,87 @@ window.dashboardLayout = {
         }
     },
 
+    _holdRows: function (gridEl) {
+        var pack = this._tracks(gridEl);
+        var previousRows = gridEl.style.gridTemplateRows;
+        var previousAnchor = gridEl.style.overflowAnchor;
+        var css = [];
+        for (var i = 0; i < pack.tracks.length; i++)
+            css.push(pack.tracks[i].size + 'px');
+        // Auto rows vanish when the dragged tile leaves them. The page then
+        // clamps scroll, and the same pointer is read on a tile above the gap.
+        gridEl.style.gridTemplateRows = css.join(' ');
+        // The browser also scroll-anchors on the moving tile. That scroll
+        // walks the pointer up the same way, even while the rows stay put.
+        gridEl.style.overflowAnchor = 'none';
+        var ancestors = [];
+        for (var parent = gridEl.parentElement; parent; parent = parent.parentElement) {
+            var overflowY = getComputedStyle(parent).overflowY;
+            if (overflowY === 'auto' || overflowY === 'scroll' || parent === document.scrollingElement) {
+                ancestors.push({ el: parent, value: parent.style.overflowAnchor });
+                parent.style.overflowAnchor = 'none';
+            }
+        }
+        return {
+            restore: function () {
+                gridEl.style.gridTemplateRows = previousRows;
+                gridEl.style.overflowAnchor = previousAnchor;
+                for (var i = 0; i < ancestors.length; i++)
+                    ancestors[i].el.style.overflowAnchor = ancestors[i].value;
+            }
+        };
+    },
+
     _metrics: function (gridEl) {
         var r = gridEl.getBoundingClientRect();
         var cs = getComputedStyle(gridEl);
         var gapX = parseFloat(cs.columnGap) || 0;
         var gapY = parseFloat(cs.rowGap) || 0;
         var colW = (r.width - gapX * 11) / 12;
-        var rowH = parseFloat(cs.gridAutoRows);
-        if (!rowH || isNaN(rowH)) rowH = 192;
+        var pack = this._tracks(gridEl);
+        var rowH = pack.tracks.length ? pack.tracks[0].size : 192;
         return { left: r.left, top: r.top, colW: colW, rowH: rowH, gapX: gapX, gapY: gapY };
+    },
+
+    // Used track sizes. A uniform grid-auto-rows value is wrong once a tile
+    // stretches the rows it spans: the pointer then maps into a neighbor.
+    _tracks: function (gridEl) {
+        var cs = getComputedStyle(gridEl);
+        var gap = parseFloat(cs.rowGap) || 0;
+        var fallback = parseFloat(cs.gridAutoRows);
+        if (!fallback || isNaN(fallback)) fallback = 192;
+        var tokens = (cs.gridTemplateRows || '').split(/\s+/);
+        var tracks = [];
+        var y = 0;
+        for (var i = 0; i < tokens.length; i++) {
+            var token = tokens[i];
+            var size = token.slice(-2) === 'px' ? parseFloat(token) : NaN;
+            if (!(size > 1)) size = fallback;
+            tracks.push({ start: y, size: size });
+            y += size + gap;
+        }
+        if (!tracks.length)
+            tracks.push({ start: 0, size: fallback });
+        return { tracks: tracks, gap: gap };
+    },
+
+    _rowOnTracks: function (pack, y) {
+        var tracks = pack.tracks;
+        if (!tracks.length || y < tracks[0].start) return 1;
+        for (var i = 0; i < tracks.length; i++) {
+            var boundary = i + 1 < tracks.length
+                ? tracks[i + 1].start
+                : tracks[i].start + tracks[i].size + pack.gap;
+            if (y < boundary) return i + 1;
+        }
+        var last = tracks[tracks.length - 1];
+        var pitch = last.size + pack.gap;
+        if (!(pitch > 0)) return tracks.length;
+        return tracks.length + Math.floor((y - (last.start + last.size)) / pitch);
     },
 
     _colAt: function (m, x) {
         return Math.floor((x - m.left) / (m.colW + m.gapX)) + 1;
-    },
-
-    _rowAt: function (m, y) {
-        return Math.floor((y - m.top) / (m.rowH + m.gapY)) + 1;
     },
 
     _clamp: function (value, min, max) {

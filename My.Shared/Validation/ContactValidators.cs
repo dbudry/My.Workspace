@@ -19,6 +19,7 @@ namespace My.Shared.Validation
                 .MaximumLength(256);
 
             RuleFor(x => x.ContactType).Custom(ContactTypeValidation.AddFailures);
+            RuleFor(x => x.RelationshipType).Custom(RelationshipTypeValidation.AddOptionalFailure);
         }
     }
 
@@ -39,6 +40,7 @@ namespace My.Shared.Validation
                 .MaximumLength(256);
 
             RuleFor(x => x.ContactType).Custom(ContactTypeValidation.AddFailures);
+            RuleFor(x => x.RelationshipType).Custom(RelationshipTypeValidation.AddOptionalFailure);
         }
     }
 

@@ -24,6 +24,14 @@ public class ScopedRolePolicyProvider : IAuthorizationPolicyProvider
     /// </summary>
     public Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
+        if (string.Equals(policyName, Constants.API.Policies.CrmRead, StringComparison.Ordinal))
+        {
+            var crmRead = new AuthorizationPolicyBuilder()
+                .AddRequirements(new CrmReadRequirement())
+                .Build();
+            return Task.FromResult<AuthorizationPolicy?>(crmRead);
+        }
+
         var parts = policyName.Split(':');
         if (parts.Length >= 2 && parts.Length <= 3)
         {

@@ -377,7 +377,10 @@ public class RoleAdministrationTests
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm)));
         Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Crm)));
+        Assert.True(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Analyst, Constants.Scopes.Crm)));
+        Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Analyst, Constants.Scopes.Tyme)));
         Assert.False(Constants.Roles.IsAssignableRole(Constants.Roles.Scoped(Constants.Roles.Admin, Constants.Scopes.Crm)));
+        Assert.DoesNotContain(Constants.Roles.Analyst, Constants.Roles.OperationalHierarchy);
     }
 
     [Fact]

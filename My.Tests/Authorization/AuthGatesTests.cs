@@ -279,6 +279,49 @@ public class AuthGatesTests
         Assert.Null(AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Manager));
     }
 
+    [Fact]
+    public void RequireCrmRead_analyst_can_read_and_cannot_post()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Analyst, Constants.Scopes.Crm));
+
+        Assert.Null(AuthGates.RequireCrmRead(principal, out var userId));
+        Assert.Equal(UserIdValue, userId);
+
+        var post = AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.User);
+        var status = Assert.IsType<StatusCodeResult>(post);
+        Assert.Equal(403, status.StatusCode);
+    }
+
+    [Fact]
+    public void RequireCrmRead_user_and_editor_pass()
+    {
+        Assert.Null(AuthGates.RequireCrmRead(
+            Authenticated(Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm)), out _));
+        Assert.Null(AuthGates.RequireCrmRead(
+            Authenticated(Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm)), out _));
+    }
+
+    [Fact]
+    public void RequireCrmRead_user_access_and_global_admin_fail()
+    {
+        var userAccess = AuthGates.RequireCrmRead(
+            Authenticated(Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Crm)), out _);
+        var admin = AuthGates.RequireCrmRead(Authenticated(Constants.Roles.Admin), out _);
+
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(userAccess).StatusCode);
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(admin).StatusCode);
+    }
+
+    [Fact]
+    public void RequireScopedTyme_analyst_fails()
+    {
+        var principal = Authenticated(Constants.Roles.Scoped(Constants.Roles.Analyst, Constants.Scopes.Crm));
+
+        var result = AuthGates.RequireScopedTyme(principal, out _);
+
+        Assert.Equal(403, Assert.IsType<StatusCodeResult>(result).StatusCode);
+    }
+
     // ---------- RequireOrganizations ----------
     //
     // Same as Tyme/Intranet: an Organizations-scoped role is required. Global Admin does not pass.

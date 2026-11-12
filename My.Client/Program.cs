@@ -80,6 +80,7 @@ builder.Services.AddScoped<SessionExpiryService>();
 builder.Services.AddScoped<TimeSubmissionEvents>();
 builder.Services.AddScoped<TasksPagePreferencesService>();
 builder.Services.AddScoped<AppVersionService>();
+builder.Services.AddScoped<SubmissionActionsService>();
 builder.Services.AddScoped<IntranetNavigationEvents>();
 builder.Services.AddScoped(_ => new HttpClient
 {
@@ -100,6 +101,7 @@ builder.Services.AddScoped<IntranetSearchService>();
 builder.Services.AddMudServices();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, ScopedRolePolicyProvider>();
 builder.Services.AddSingleton<IAuthorizationHandler, ScopedRoleHandler>();
+builder.Services.AddSingleton<IAuthorizationHandler, CrmReadHandler>();
 
 // Decorate the OIDC AuthenticationStateProvider so impersonation can downgrade
 // the visible role on the client. Server-side enforcement is in AuthMiddleware.

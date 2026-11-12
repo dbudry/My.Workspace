@@ -90,6 +90,7 @@ namespace My.Client.Models
         public string? PhoneNumber { get; set; }
         public string? Email { get; set; }
         public string? ContactType { get; set; }
+        public string? RelationshipType { get; set; }
         public string? OrganizationId { get; set; }
         public string? DepartmentId { get; set; }
 
@@ -105,6 +106,7 @@ namespace My.Client.Models
             PhoneNumber = dto.PhoneNumber;
             Email = dto.Email;
             ContactType = dto.ContactType;
+            RelationshipType = dto.RelationshipType;
             OrganizationId = dto.OrganizationId;
             DepartmentId = dto.DepartmentId;
         }

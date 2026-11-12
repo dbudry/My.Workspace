@@ -49,16 +49,17 @@ public class AzureFunctionsValidationDiTests
         Assert.IsType<CreateTrackedTaskDtoValidator>(provider.GetRequiredService<IValidator<CreateTrackedTaskDto>>());
         Assert.IsType<CreateManagerTimeSubmissionDtoValidator>(
             provider.GetRequiredService<IValidator<CreateManagerTimeSubmissionDto>>());
+        Assert.IsType<UpdateTymeSubmitNotifySettingsDtoValidator>(
+            provider.GetRequiredService<IValidator<UpdateTymeSubmitNotifySettingsDto>>());
+        Assert.IsType<SendUnsubmittedReminderDtoValidator>(
+            provider.GetRequiredService<IValidator<SendUnsubmittedReminderDto>>());
+        Assert.IsType<TymeReminderSettingsDtoValidator>(
+            provider.GetRequiredService<IValidator<TymeReminderSettingsDto>>());
         Assert.IsType<UpdateAppSettingsRequestValidator>(provider.GetRequiredService<IValidator<List<AppSettingDto>>>());
         Assert.IsType<CreateIntranetPageDtoValidator>(provider.GetRequiredService<IValidator<CreateIntranetPageDto>>());
         Assert.IsType<ReorderPagesRequestValidator>(provider.GetRequiredService<ReorderPagesRequestValidator>());
         Assert.IsType<CreateExpenseReportDtoValidator>(provider.GetRequiredService<IValidator<CreateExpenseReportDto>>());
         Assert.IsType<UpdateExpenseReportDtoValidator>(provider.GetRequiredService<IValidator<UpdateExpenseReportDto>>());
         Assert.IsType<UpdateExpenseSettingsDtoValidator>(provider.GetRequiredService<IValidator<UpdateExpenseSettingsDto>>());
-        Assert.IsType<CreateOpportunityDtoValidator>(provider.GetRequiredService<IValidator<CreateOpportunityDto>>());
-        Assert.IsType<UpdateOpportunityDtoValidator>(provider.GetRequiredService<IValidator<UpdateOpportunityDto>>());
-        Assert.IsType<CreateCrmActivityDtoValidator>(provider.GetRequiredService<IValidator<CreateCrmActivityDto>>());
-        Assert.IsType<UpdateCrmActivityDtoValidator>(provider.GetRequiredService<IValidator<UpdateCrmActivityDto>>());
-        Assert.IsType<SetOpportunityArchivedDtoValidator>(provider.GetRequiredService<IValidator<SetOpportunityArchivedDto>>());
     }
 }

@@ -15,6 +15,8 @@ public class TrackedTaskDurationSortTests
         var stamp = Guid.NewGuid().ToString("N")[..8];
         var start = new DateTime(2026, 8, 10, 0, 0, 0, DateTimeKind.Unspecified);
 
+        try
+        {
         await using (var db = IntegrationTestConnection.NewContext())
         {
             db.Users.Add(NewUser(userId, stamp));
@@ -54,6 +56,11 @@ public class TrackedTaskDurationSortTests
             .Select(t => t.Details)
             .ToListAsync();
         Assert.Equal(new[] { "all-day-three-days", "timed-short" }, taskListOrder);
+        }
+        finally
+        {
+            await IntegrationTestFixtures.DeleteUserAsync(userId);
+        }
     }
 
     private static ApplicationUser NewUser(string userId, string stamp) => new()

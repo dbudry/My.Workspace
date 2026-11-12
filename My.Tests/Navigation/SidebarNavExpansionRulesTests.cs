@@ -14,6 +14,9 @@ public class SidebarNavExpansionRulesTests
     [InlineData("intranet/editor/abc", true)]
     [InlineData("expenses", true)]
     [InlineData("expenses/settings", true)]
+    [InlineData("crm", true)]
+    [InlineData("crm/settings", true)]
+    [InlineData("crm/potential/abc", true)]
     [InlineData("intranet/pages/bitlocker", false)]
     public void RouteClassifiers_MatchExpectedSections(string path, bool isBuiltIn)
     {
@@ -21,7 +24,8 @@ public class SidebarNavExpansionRulesTests
             SidebarNavExpansionRules.IsTymeRoute(path)
             || SidebarNavExpansionRules.IsAdminRoute(path)
             || SidebarNavExpansionRules.IsIntranetMaintenanceRoute(path)
-            || SidebarNavExpansionRules.IsExpensesRoute(path));
+            || SidebarNavExpansionRules.IsExpensesRoute(path)
+            || SidebarNavExpansionRules.IsCrmRoute(path));
     }
 
     [Theory]

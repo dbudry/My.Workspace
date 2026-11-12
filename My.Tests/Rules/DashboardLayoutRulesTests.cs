@@ -110,7 +110,7 @@ public class DashboardLayoutRulesTests
     }
 
     [Fact]
-    public void TryMove_stays_put_when_target_overlaps_two_tiles()
+    public void TryMove_overlapping_two_tiles_settles_into_the_nearest_open_row()
     {
         var layout = new List<DashboardLayoutItem>
         {
@@ -123,9 +123,60 @@ public class DashboardLayoutRulesTests
 
         var mix = result.Single(w => w.Id == DashboardLayoutRules.ProjectMix);
         Assert.Equal(1, mix.Col);
-        Assert.Equal(1, mix.Row);
-        Assert.Equal(1, result.Single(w => w.Id == DashboardLayoutRules.Favorites).Col);
-        Assert.Equal(5, result.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Col);
+        Assert.Equal(5, mix.Row);
+        Assert.Equal(3, result.Single(w => w.Id == DashboardLayoutRules.Favorites).Row);
+        Assert.Equal(3, result.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Row);
+        AssertNoOverlaps(result);
+    }
+
+    [Fact]
+    public void TryMove_full_width_tile_onto_a_full_row_settles_into_the_gap_below()
+    {
+        var layout = new List<DashboardLayoutItem>
+        {
+            new() { Id = DashboardLayoutRules.UnsubmittedTime, Col = 1, Row = 1, Columns = 6, Rows = 1 },
+            new() { Id = DashboardLayoutRules.LastMonthExpenses, Col = 7, Row = 1, Columns = 6, Rows = 1 },
+            new() { Id = DashboardLayoutRules.Crm, Col = 1, Row = 8, Columns = 12, Rows = 2 }
+        };
+
+        var result = DashboardLayoutRules.Sanitize(
+            DashboardLayoutRules.TryMove(layout, DashboardLayoutRules.Crm, 1, 1));
+
+        var crm = result.Single(w => w.Id == DashboardLayoutRules.Crm);
+        Assert.Equal(1, crm.Col);
+        Assert.Equal(2, crm.Row);
+        Assert.Equal(12, crm.Columns);
+        Assert.Equal(2, crm.Rows);
+        Assert.Equal(1, result.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Row);
+        Assert.Equal(1, result.Single(w => w.Id == DashboardLayoutRules.LastMonthExpenses).Row);
+        AssertNoOverlaps(result);
+    }
+
+    [Fact]
+    public void TryMove_into_the_gap_under_a_full_row_leaves_that_row()
+    {
+        var layout = new List<DashboardLayoutItem>
+        {
+            new() { Id = DashboardLayoutRules.UnsubmittedTime, Col = 1, Row = 1, Columns = 6, Rows = 1 },
+            new() { Id = DashboardLayoutRules.LastMonthExpenses, Col = 7, Row = 1, Columns = 6, Rows = 1 },
+            new() { Id = DashboardLayoutRules.Crm, Col = 1, Row = 8, Columns = 12, Rows = 2 }
+        };
+
+        var result = DashboardLayoutRules.TryMove(layout, DashboardLayoutRules.Crm, 1, 2);
+
+        Assert.Equal(2, result.Single(w => w.Id == DashboardLayoutRules.Crm).Row);
+        Assert.Equal(1, result.Single(w => w.Id == DashboardLayoutRules.UnsubmittedTime).Row);
+        Assert.Equal(1, result.Single(w => w.Id == DashboardLayoutRules.LastMonthExpenses).Row);
+        AssertNoOverlaps(result);
+    }
+
+    private static void AssertNoOverlaps(IReadOnlyList<DashboardLayoutItem> layout)
+    {
+        for (var i = 0; i < layout.Count; i++)
+        {
+            for (var j = i + 1; j < layout.Count; j++)
+                Assert.False(DashboardLayoutRules.Overlaps(layout[i], layout[j]));
+        }
     }
 
     [Fact]

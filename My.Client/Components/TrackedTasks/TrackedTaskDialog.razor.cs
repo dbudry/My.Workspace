@@ -88,6 +88,10 @@ namespace My.Client.Components.TrackedTasks
         private Project? selectedProject;
 
         private bool isBusy;
+
+        // Same id for every Save of this open dialog: if the first POST saved but its reply
+        // was lost, the second Save returns that row instead of adding another.
+        private readonly string createRequestId = Guid.NewGuid().ToString();
         private string? saveError;
         private string? timeParseError;
         private double workdayHours = AllDayEntryRules.DefaultWorkdayHours;
@@ -357,7 +361,8 @@ namespace My.Client.Components.TrackedTasks
                         IsAllDay = editIsAllDay,
                         EndDate = editIsAllDay ? endDate : null,
                         ProjectId = EffectiveProjectId,
-                        StopwatchItemId = string.IsNullOrWhiteSpace(StopwatchItemId) ? null : StopwatchItemId
+                        StopwatchItemId = string.IsNullOrWhiteSpace(StopwatchItemId) ? null : StopwatchItemId,
+                        TaskId = createRequestId
                     };
                     response = await HttpClient.PostAsJsonAsync(Constants.API.TrackedTask.Create, dto);
                 }

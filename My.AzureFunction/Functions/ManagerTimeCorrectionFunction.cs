@@ -262,15 +262,62 @@ public class ManagerTimeCorrectionFunction
 
             if (!string.IsNullOrEmpty(task.GoogleEventId) && settings.PublishToGoogleCalendar)
             {
-                await _googleCalendar.UpdateEventAsync(
-                    settings.GoogleRefreshToken,
-                    settings.GoogleCalendarId,
-                    task.GoogleEventId,
-                    task,
-                    project?.Slug,
-                    settings.TimeZone,
-                    settings.TymeEventColorId,
-                    settings.TymeUnmatchedEventColorId);
+                if (GoogleCalendarAvailabilitySyncRules.ShouldPublishToPersonalCalendar(
+                        settings.PublishToGoogleCalendar,
+                        settings.GoogleCalendarAvailabilityOnly,
+                        project?.IsSharedAvailability == true))
+                {
+                    var result = await _googleCalendar.UpdateEventAsync(
+                        settings.GoogleRefreshToken,
+                        settings.GoogleCalendarId,
+                        task.GoogleEventId,
+                        task,
+                        project?.Slug,
+                        settings.TimeZone,
+                        settings.TymeEventColorId,
+                        settings.TymeUnmatchedEventColorId);
+                    // Record what Google now holds so inbound sync sees the push as unchanged.
+                    // NotOrganizer: correction stays in Tyme only; snapshot stays at Google's
+                    // times, so the nightly import keeps the correction. Gone: leave the link;
+                    // the next in-app edit recreates it.
+                    if (result.Kind == CalendarEventUpdateKind.Pushed)
+                    {
+                        GoogleCalendarService.RecordSyncedEvent(task, result.Event);
+                        await _dbContext.SaveChangesAsync();
+                    }
+                }
+                else if (GoogleCalendarAvailabilitySyncRules.ShouldUnlinkPersonalEvent(
+                        settings.PublishToGoogleCalendar,
+                        settings.GoogleCalendarAvailabilityOnly,
+                        project?.IsSharedAvailability == true))
+                {
+                    // Availability-only excludes this project now — same cleanup rule as the
+                    // in-app update paths (TrackedTaskFunction / StopwatchItemFunction): always
+                    // unlink so Tyme stops overwriting an event it shouldn't touch, only delete
+                    // it on Google when the user opted in.
+                    // Export-off is not this path: keep GoogleEventId so turning export
+                    // back on updates the same event instead of creating a duplicate.
+                    if (settings.GoogleCalendarRemoveExcludedEvents)
+                    {
+                        try
+                        {
+                            await _googleCalendar.DeleteEventAsync(
+                                settings.GoogleRefreshToken, settings.GoogleCalendarId, task.GoogleEventId);
+                        }
+                        catch (Google.GoogleApiException ex) when (
+                            ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound ||
+                            ex.HttpStatusCode == System.Net.HttpStatusCode.Gone)
+                        {
+                            // Already gone.
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to remove now-disallowed Google event for TrackedTask {TaskId}.", task.TaskId);
+                        }
+                    }
+                    GoogleCalendarService.ClearSyncedEvent(task);
+                    await _dbContext.SaveChangesAsync();
+                }
             }
 
             await _teamAvailabilityPublisher.PublishAsync(task, settings);

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -7,233 +8,259 @@ using My.DAL.Data;
 using My.DAL.Models;
 using My.Functions.Authorization;
 using My.Functions.Helpers;
+using My.Functions.Services;
 using My.Shared.Constants;
 using My.Shared.Dtos.Contact;
 using My.Shared.Dtos.Crm;
 using My.Shared.Dtos.Paging;
 using My.Shared.Rules;
 using My.Shared.Validation;
-using System.Security.Claims;
 
 namespace My.Functions;
 
-public class CrmFunctions
+public partial class CrmFunctions
 {
     private readonly ApplicationDbContext db;
-    private readonly IValidator<CreateOpportunityDto> createOpportunityValidator;
-    private readonly IValidator<UpdateOpportunityDto> updateOpportunityValidator;
-    private readonly IValidator<SetOpportunityArchivedDto> archiveValidator;
-    private readonly IValidator<CreateCrmActivityDto> createActivityValidator;
-    private readonly IValidator<UpdateCrmActivityDto> updateActivityValidator;
+    private readonly GoogleDriveService drive;
+    private readonly CrmDiscussionMailer mailer;
+    private readonly IValidator<CreatePotentialDto> createPotentialValidator;
+    private readonly IValidator<UpdatePotentialDto> updatePotentialValidator;
+    private readonly IValidator<SetPotentialArchivedDto> archiveValidator;
+    private readonly IValidator<CreatePotentialStatusDto> createStatusValidator;
+    private readonly IValidator<CreateCrmDiscussionDto> createDiscussionValidator;
+    private readonly IValidator<CreateCrmStageDto> createStageValidator;
+    private readonly IValidator<UpdateCrmStageDto> updateStageValidator;
+    private readonly IValidator<ReorderCrmStagesDto> reorderStagesValidator;
+    private readonly IValidator<SaveCrmRelationshipTypesDto> saveRelationshipTypesValidator;
+    private readonly IValidator<SaveCrmNotifyUsersDto> saveNotifyUsersValidator;
+    private readonly IValidator<UploadCrmAttachmentDto> uploadAttachmentValidator;
+    private readonly IValidator<MoveCrmAttachmentStageDto> moveAttachmentValidator;
     private readonly IValidator<CreateContactDto> createContactValidator;
 
     public CrmFunctions(
         ApplicationDbContext db,
-        IValidator<CreateOpportunityDto> createOpportunityValidator,
-        IValidator<UpdateOpportunityDto> updateOpportunityValidator,
-        IValidator<SetOpportunityArchivedDto> archiveValidator,
-        IValidator<CreateCrmActivityDto> createActivityValidator,
-        IValidator<UpdateCrmActivityDto> updateActivityValidator,
+        GoogleDriveService drive,
+        CrmDiscussionMailer mailer,
+        IValidator<CreatePotentialDto> createPotentialValidator,
+        IValidator<UpdatePotentialDto> updatePotentialValidator,
+        IValidator<SetPotentialArchivedDto> archiveValidator,
+        IValidator<CreatePotentialStatusDto> createStatusValidator,
+        IValidator<CreateCrmDiscussionDto> createDiscussionValidator,
+        IValidator<CreateCrmStageDto> createStageValidator,
+        IValidator<UpdateCrmStageDto> updateStageValidator,
+        IValidator<ReorderCrmStagesDto> reorderStagesValidator,
+        IValidator<SaveCrmRelationshipTypesDto> saveRelationshipTypesValidator,
+        IValidator<SaveCrmNotifyUsersDto> saveNotifyUsersValidator,
+        IValidator<UploadCrmAttachmentDto> uploadAttachmentValidator,
+        IValidator<MoveCrmAttachmentStageDto> moveAttachmentValidator,
         IValidator<CreateContactDto> createContactValidator)
     {
         this.db = db;
-        this.createOpportunityValidator = createOpportunityValidator;
-        this.updateOpportunityValidator = updateOpportunityValidator;
+        this.drive = drive;
+        this.mailer = mailer;
+        this.createPotentialValidator = createPotentialValidator;
+        this.updatePotentialValidator = updatePotentialValidator;
         this.archiveValidator = archiveValidator;
-        this.createActivityValidator = createActivityValidator;
-        this.updateActivityValidator = updateActivityValidator;
+        this.createStatusValidator = createStatusValidator;
+        this.createDiscussionValidator = createDiscussionValidator;
+        this.createStageValidator = createStageValidator;
+        this.updateStageValidator = updateStageValidator;
+        this.reorderStagesValidator = reorderStagesValidator;
+        this.saveRelationshipTypesValidator = saveRelationshipTypesValidator;
+        this.saveNotifyUsersValidator = saveNotifyUsersValidator;
+        this.uploadAttachmentValidator = uploadAttachmentValidator;
+        this.moveAttachmentValidator = moveAttachmentValidator;
         this.createContactValidator = createContactValidator;
     }
 
-    [Function("GetCrmOpportunities")]
-    public async Task<IActionResult> GetOpportunitiesAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "crmopportunities")] HttpRequestData req)
+    [Function("GetCrmPotentials")]
+    public async Task<IActionResult> GetPotentialsAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "crmpotentials")] HttpRequestData req)
     {
         var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out _) is { } denied) return denied;
+        if (AuthGates.RequireCrmRead(principal, out _) is { } denied) return denied;
 
         var query = HttpListQueryParser.ParseListQuery(req);
-        var stage = req.Query["stage"];
-        var organizationId = req.Query["organizationId"];
-        var canonicalStage = CrmStageRules.TryCanonical(stage, out var parsedStage) ? parsedStage : null;
+        var stageId = BlankToNull(req.Query["stage"]);
+        var organizationId = BlankToNull(req.Query["organizationId"]);
         var search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
 
-        var rows = db.Opportunities.AsNoTracking().Where(o => query.IncludeArchived || !o.IsArchived);
-        if (canonicalStage != null)
-            rows = rows.Where(o => o.Stage == canonicalStage);
-        if (!string.IsNullOrWhiteSpace(organizationId))
-            rows = rows.Where(o => o.OrganizationId == organizationId);
+        var rows = db.Potentials.AsNoTracking().Where(p => query.IncludeArchived || !p.IsArchived);
+        if (stageId != null)
+            rows = rows.Where(p => p.CrmStageId == stageId);
+        if (organizationId != null)
+            rows = rows.Where(p => p.OrganizationId == organizationId);
         if (search != null)
-            rows = rows.Where(o => o.Name.Contains(search));
+            rows = rows.Where(p => p.Name.Contains(search));
 
         var total = await rows.CountAsync();
         var pageSize = query.EffectivePageSize;
         var page = query.PageNumber < 1 ? 1 : query.PageNumber;
-
         var items = await ProjectList(rows)
-            .OrderBy(o => o.ExpectedCloseDate == null)
-            .ThenBy(o => o.ExpectedCloseDate)
-            .ThenBy(o => o.Name)
+            .OrderBy(p => p.ExpectedCloseDate == null)
+            .ThenBy(p => p.ExpectedCloseDate)
+            .ThenBy(p => p.Name)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
-
-        var totalPages = pageSize == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize);
-        return new OkObjectResult(new PagedResponse<OpportunityListItemDto>
-        {
-            Items = items,
-            TotalCount = total,
-            PageSize = pageSize,
-            CurrentPage = page,
-            TotalPages = totalPages,
-            HasNext = page < totalPages,
-            HasPrevious = page > 1
-        });
+        return Page(items, total, pageSize, page);
     }
 
-    [Function("GetCrmOpportunity")]
-    public async Task<IActionResult> GetOpportunityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "crmopportunities/{id}")] HttpRequestData req,
+    [Function("GetCrmPotential")]
+    public async Task<IActionResult> GetPotentialAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "crmpotentials/{id}")] HttpRequestData req,
         string id)
     {
         var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out _) is { } denied) return denied;
+        if (AuthGates.RequireCrmRead(principal, out _) is { } denied) return denied;
 
-        var item = await ProjectDetail(db.Opportunities.AsNoTracking().Where(o => o.OpportunityId == id))
+        var row = await ProjectDetail(db.Potentials.AsNoTracking().Where(p => p.PotentialId == id))
             .FirstOrDefaultAsync();
-        if (item == null)
-            return new NotFoundObjectResult("Opportunity not found.");
+        if (row == null)
+            return new NotFoundObjectResult("Potential not found.");
 
-        item.Activities = await db.CrmActivities.AsNoTracking()
-            .Where(a => a.OpportunityId == id)
-            .OrderByDescending(a => a.CreatedAt)
-            .Select(a => new CrmActivityDto
-            {
-                CrmActivityId = a.CrmActivityId,
-                OpportunityId = a.OpportunityId,
-                ActivityType = a.ActivityType,
-                Subject = a.Subject,
-                Body = a.Body,
-                DueAt = a.DueAt,
-                CompletedAt = a.CompletedAt,
-                OwnerUserId = a.OwnerUserId,
-                CreatedAt = a.CreatedAt
-            })
-            .ToListAsync();
-
+        var item = FinishDetail(row);
+        item.Statuses = await StatusesAsync(id);
+        item.Discussions = await DiscussionsAsync(id);
+        item.Attachments = await AttachmentsAsync(id);
         return new OkObjectResult(item);
     }
 
-    [Function("CreateCrmOpportunity")]
-    public async Task<IActionResult> CreateOpportunityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "crmopportunities")] HttpRequestData req)
+    [Function("CreateCrmPotential")]
+    public async Task<IActionResult> CreatePotentialAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "crmpotentials")] HttpRequestData req)
     {
         var principal = new ClaimsPrincipal(req.Identities);
         if (AuthGates.RequireScopedCrm(principal, out var userId, Constants.Roles.Editor) is { } denied)
             return denied;
 
-        var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(req, createOpportunityValidator);
+        var relationshipTypes = await RelationshipTypesAsync();
+        var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(
+            req,
+            createPotentialValidator,
+            ctx => ctx.RootContextData[ValidationContextKeys.AllowedRelationshipTypes] = relationshipTypes);
         if (error != null) return error;
 
         var linked = await ResolveLinksAsync(dto!);
         if (linked.Error != null) return linked.Error;
 
         var now = DateTimeOffset.UtcNow;
-        var opportunity = new Opportunity
+        var potential = new Potential
         {
-            OpportunityId = Guid.NewGuid().ToString(),
+            PotentialId = Guid.NewGuid().ToString(),
             Name = dto!.Name.Trim(),
-            Stage = linked.Stage,
+            Description = BlankToNull(dto.Description),
+            CrmStageId = linked.Stage!.CrmStageId,
+            Probability = dto.Probability,
             Amount = dto.Amount,
             ExpectedCloseDate = AsDate(dto.ExpectedCloseDate),
+            ActualCloseDate = CrmStageRules.ResolveActualClose(true, linked.Stage.Outcome, AsDate(dto.ActualCloseDate), DateTime.UtcNow),
             OwnerUserId = userId,
+            CreatedByUserId = userId,
+            ModifiedByUserId = userId,
             OrganizationId = linked.OrganizationId,
             ContactId = linked.ContactId,
-            Note = BlankToNull(dto.Note),
             CreatedAt = now,
             UpdatedAt = now
         };
-
-        db.Opportunities.Add(opportunity);
+        db.Potentials.Add(potential);
+        await ApplyRelationshipAsync(linked.ContactId, dto.RelationshipType, relationshipTypes);
         await db.SaveChangesAsync();
-
-        var created = await ProjectDetail(db.Opportunities.AsNoTracking()
-                .Where(o => o.OpportunityId == opportunity.OpportunityId))
-            .FirstAsync();
-        created.Activities = new List<CrmActivityDto>();
-        return new OkObjectResult(created);
+        return new OkObjectResult(await LoadDetailAsync(potential.PotentialId));
     }
 
-    [Function("UpdateCrmOpportunity")]
-    public async Task<IActionResult> UpdateOpportunityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "crmopportunities")] HttpRequestData req)
+    [Function("UpdateCrmPotential")]
+    public async Task<IActionResult> UpdatePotentialAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "crmpotentials")] HttpRequestData req)
     {
         var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Editor) is { } denied)
+        if (AuthGates.RequireScopedCrm(principal, out var userId, Constants.Roles.Editor) is { } denied)
             return denied;
 
-        var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(req, updateOpportunityValidator);
+        var relationshipTypes = await RelationshipTypesAsync();
+        var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(
+            req,
+            updatePotentialValidator,
+            ctx => ctx.RootContextData[ValidationContextKeys.AllowedRelationshipTypes] = relationshipTypes);
         if (error != null) return error;
 
-        var opportunity = await db.Opportunities.FirstOrDefaultAsync(o => o.OpportunityId == dto!.OpportunityId);
-        if (opportunity == null)
-            return new NotFoundObjectResult("Opportunity not found.");
+        var potential = await db.Potentials.FirstOrDefaultAsync(p => p.PotentialId == dto!.PotentialId);
+        if (potential == null)
+            return new NotFoundObjectResult("Potential not found.");
 
         var linked = await ResolveLinksAsync(dto!);
         if (linked.Error != null) return linked.Error;
 
-        opportunity.Name = dto!.Name.Trim();
-        opportunity.Stage = linked.Stage;
-        opportunity.Amount = dto.Amount;
-        opportunity.ExpectedCloseDate = AsDate(dto.ExpectedCloseDate);
-        opportunity.OrganizationId = linked.OrganizationId;
-        opportunity.ContactId = linked.ContactId;
-        opportunity.Note = BlankToNull(dto.Note);
-        opportunity.UpdatedAt = DateTimeOffset.UtcNow;
+        var stageChanged = !string.Equals(potential.CrmStageId, linked.Stage!.CrmStageId, StringComparison.Ordinal);
+        potential.Name = dto!.Name.Trim();
+        potential.Description = BlankToNull(dto.Description);
+        potential.CrmStageId = linked.Stage.CrmStageId;
+        potential.Probability = dto.Probability;
+        potential.Amount = dto.Amount;
+        potential.ExpectedCloseDate = AsDate(dto.ExpectedCloseDate);
+        potential.ActualCloseDate = CrmStageRules.ResolveActualClose(
+            stageChanged, linked.Stage.Outcome, AsDate(dto.ActualCloseDate), DateTime.UtcNow);
+        potential.OrganizationId = linked.OrganizationId;
+        potential.ContactId = linked.ContactId;
+        potential.ModifiedByUserId = userId;
+        potential.UpdatedAt = DateTimeOffset.UtcNow;
+        await ApplyRelationshipAsync(linked.ContactId, dto.RelationshipType, relationshipTypes);
         await db.SaveChangesAsync();
-
-        var updated = await ProjectDetail(db.Opportunities.AsNoTracking()
-                .Where(o => o.OpportunityId == opportunity.OpportunityId))
-            .FirstAsync();
-        return new OkObjectResult(updated);
+        return new OkObjectResult(await LoadDetailAsync(potential.PotentialId));
     }
 
-    [Function("ArchiveCrmOpportunity")]
-    public async Task<IActionResult> ArchiveOpportunityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "crmopportunities/{id}/archive")] HttpRequestData req,
+    [Function("ArchiveCrmPotential")]
+    public async Task<IActionResult> ArchivePotentialAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "crmpotentials/{id}/archive")] HttpRequestData req,
         string id)
     {
         var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Manager) is { } denied)
+        if (AuthGates.RequireScopedCrm(principal, out var userId, Constants.Roles.Manager) is { } denied)
             return denied;
 
         var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(req, archiveValidator);
         if (error != null) return error;
 
-        var opportunity = await db.Opportunities.FirstOrDefaultAsync(o => o.OpportunityId == id);
-        if (opportunity == null)
-            return new NotFoundObjectResult("Opportunity not found.");
+        var potential = await db.Potentials.FirstOrDefaultAsync(p => p.PotentialId == id);
+        if (potential == null)
+            return new NotFoundObjectResult("Potential not found.");
 
-        opportunity.IsArchived = dto!.IsArchived;
-        opportunity.UpdatedAt = DateTimeOffset.UtcNow;
+        potential.IsArchived = dto!.IsArchived;
+        potential.ModifiedByUserId = userId;
+        potential.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
-        return new OkObjectResult(new { opportunity.OpportunityId, opportunity.IsArchived });
+        return new OkObjectResult(new { potential.PotentialId, potential.IsArchived });
     }
 
-    [Function("DeleteCrmOpportunity")]
-    public async Task<IActionResult> DeleteOpportunityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "crmopportunities/{id}")] HttpRequestData req,
+    [Function("DeleteCrmPotential")]
+    public async Task<IActionResult> DeletePotentialAsync(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "crmpotentials/{id}")] HttpRequestData req,
         string id)
     {
         var principal = new ClaimsPrincipal(req.Identities);
         if (AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Manager) is { } denied)
             return denied;
 
-        var opportunity = await db.Opportunities.FirstOrDefaultAsync(o => o.OpportunityId == id);
-        if (opportunity == null)
-            return new NotFoundObjectResult("Opportunity not found.");
+        var potential = await db.Potentials.FirstOrDefaultAsync(p => p.PotentialId == id);
+        if (potential == null)
+            return new NotFoundObjectResult("Potential not found.");
 
-        db.Opportunities.Remove(opportunity);
+        var fileIds = await db.CrmAttachments.AsNoTracking()
+            .Where(a => a.PotentialId == id && a.DriveFileId != "")
+            .Select(a => a.DriveFileId)
+            .ToListAsync();
+        if (fileIds.Count > 0)
+        {
+            var access = await TryGetCrmDriveAsync();
+            if (access.Error != null) return access.Error;
+            foreach (var fileId in fileIds)
+            {
+                var deleted = await TryDeleteDriveFileAsync(access.Token!, fileId);
+                if (deleted != null) return deleted;
+            }
+        }
+
+        db.Potentials.Remove(potential);
         await db.SaveChangesAsync();
         return new NoContentResult();
     }
@@ -251,12 +278,14 @@ public class CrmFunctions
             .Select(s => s.Value)
             .FirstOrDefaultAsync();
         var allowedTypes = ContactTypeRules.Parse(contactTypesJson);
+        var relationshipTypes = await RelationshipTypesAsync();
         var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(
             req,
             createContactValidator,
             ctx =>
             {
                 ctx.RootContextData[ValidationContextKeys.AllowedContactTypes] = allowedTypes;
+                ctx.RootContextData[ValidationContextKeys.AllowedRelationshipTypes] = relationshipTypes;
                 ctx.RootContextData[ValidationContextKeys.ContactTypeRequired] = false;
             });
         if (error != null) return error;
@@ -271,6 +300,9 @@ public class CrmFunctions
         var requestedType = string.IsNullOrWhiteSpace(dto.ContactType)
             ? ContactTypeRules.DefaultForManualEntry(allowedTypes)
             : dto.ContactType;
+        var requestedRelationship = string.IsNullOrWhiteSpace(dto.RelationshipType)
+            ? CrmRelationshipTypeRules.DecisionMaker
+            : dto.RelationshipType;
         var contact = new Contact
         {
             ContactId = Guid.NewGuid().ToString(),
@@ -279,11 +311,12 @@ public class CrmFunctions
             PhoneNumber = BlankToNull(dto.PhoneNumber),
             Email = BlankToNull(dto.Email),
             ContactType = ContactTypeRules.Normalize(requestedType, allowedTypes),
+            RelationshipType = CrmRelationshipTypeRules.Canonical(requestedRelationship, relationshipTypes)
+                ?? relationshipTypes.FirstOrDefault()?.Name,
             OrganizationId = dto.OrganizationId
         };
         db.Contacts.Add(contact);
         await db.SaveChangesAsync();
-
         return new OkObjectResult(new ContactDto
         {
             ContactId = contact.ContactId,
@@ -292,92 +325,23 @@ public class CrmFunctions
             PhoneNumber = contact.PhoneNumber,
             Email = contact.Email,
             ContactType = contact.ContactType,
+            RelationshipType = contact.RelationshipType,
             OrganizationId = contact.OrganizationId
         });
     }
 
-    [Function("CreateCrmActivity")]
-    public async Task<IActionResult> CreateActivityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "crmactivities")] HttpRequestData req)
+    private async Task<PotentialDetailDto> LoadDetailAsync(string potentialId) =>
+        FinishDetail(await ProjectDetail(db.Potentials.AsNoTracking().Where(p => p.PotentialId == potentialId)).FirstAsync());
+
+    private async Task<(CrmStage? Stage, string? OrganizationId, string? ContactId, IActionResult? Error)> ResolveLinksAsync(
+        CreatePotentialDto dto)
     {
-        var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out var userId, Constants.Roles.Editor) is { } denied)
-            return denied;
+        var stage = await db.CrmStages.AsNoTracking().FirstOrDefaultAsync(s => s.CrmStageId == dto.CrmStageId);
+        if (stage == null)
+            return (null, null, null, new BadRequestObjectResult("Stage not found."));
 
-        var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(req, createActivityValidator);
-        if (error != null) return error;
-
-        var exists = await db.Opportunities.AnyAsync(o => o.OpportunityId == dto!.OpportunityId);
-        if (!exists)
-            return new NotFoundObjectResult("Opportunity not found.");
-
-        CrmActivityTypeRules.TryCanonical(dto!.ActivityType, out var activityType);
-        var activity = new CrmActivity
-        {
-            CrmActivityId = Guid.NewGuid().ToString(),
-            OpportunityId = dto.OpportunityId,
-            ActivityType = activityType,
-            Subject = dto.Subject.Trim(),
-            Body = BlankToNull(dto.Body),
-            DueAt = dto.DueAt,
-            OwnerUserId = userId,
-            CreatedAt = DateTimeOffset.UtcNow
-        };
-        db.CrmActivities.Add(activity);
-        await db.SaveChangesAsync();
-        return new OkObjectResult(ToDto(activity));
-    }
-
-    [Function("UpdateCrmActivity")]
-    public async Task<IActionResult> UpdateActivityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "crmactivities")] HttpRequestData req)
-    {
-        var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Editor) is { } denied)
-            return denied;
-
-        var (dto, error) = await RequestValidator.ReadJsonAndValidateAsync(req, updateActivityValidator);
-        if (error != null) return error;
-
-        var activity = await db.CrmActivities.FirstOrDefaultAsync(a => a.CrmActivityId == dto!.CrmActivityId);
-        if (activity == null)
-            return new NotFoundObjectResult("Activity not found.");
-
-        CrmActivityTypeRules.TryCanonical(dto!.ActivityType, out var activityType);
-        activity.ActivityType = activityType;
-        activity.Subject = dto.Subject.Trim();
-        activity.Body = BlankToNull(dto.Body);
-        activity.DueAt = dto.DueAt;
-        activity.CompletedAt = dto.CompletedAt;
-        await db.SaveChangesAsync();
-        return new OkObjectResult(ToDto(activity));
-    }
-
-    [Function("DeleteCrmActivity")]
-    public async Task<IActionResult> DeleteActivityAsync(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "crmactivities/{id}")] HttpRequestData req,
-        string id)
-    {
-        var principal = new ClaimsPrincipal(req.Identities);
-        if (AuthGates.RequireScopedCrm(principal, out _, Constants.Roles.Manager) is { } denied)
-            return denied;
-
-        var activity = await db.CrmActivities.FirstOrDefaultAsync(a => a.CrmActivityId == id);
-        if (activity == null)
-            return new NotFoundObjectResult("Activity not found.");
-
-        db.CrmActivities.Remove(activity);
-        await db.SaveChangesAsync();
-        return new NoContentResult();
-    }
-
-    private async Task<(string Stage, string? OrganizationId, string? ContactId, IActionResult? Error)> ResolveLinksAsync(
-        CreateOpportunityDto dto)
-    {
-        CrmStageRules.TryCanonical(dto.Stage, out var stage);
         var organizationId = BlankToNull(dto.OrganizationId);
         var contactId = BlankToNull(dto.ContactId);
-
         if (organizationId != null)
         {
             var orgExists = await db.Organizations.AnyAsync(o => o.OrganizationId == organizationId);
@@ -393,74 +357,311 @@ public class CrmFunctions
                 .FirstOrDefaultAsync();
             if (contact == null)
                 return (stage, null, null, new BadRequestObjectResult("Contact not found."));
-
-            if (organizationId != null
-                && contact.OrganizationId != null
-                && contact.OrganizationId != organizationId)
-            {
+            if (organizationId != null && contact.OrganizationId != null && contact.OrganizationId != organizationId)
                 return (stage, null, null, new BadRequestObjectResult("Contact is not in that organization."));
-            }
-
             organizationId ??= contact.OrganizationId;
         }
+
+        if (organizationId != null && contactId == null)
+            return (stage, organizationId, null, new BadRequestObjectResult("Contact is required."));
 
         return (stage, organizationId, contactId, null);
     }
 
-    private IQueryable<OpportunityListItemDto> ProjectList(IQueryable<Opportunity> rows) =>
-        from o in rows
-        join org in db.Organizations.AsNoTracking() on o.OrganizationId equals org.OrganizationId into orgs
-        from org in orgs.DefaultIfEmpty()
-        join contact in db.Contacts.AsNoTracking() on o.ContactId equals contact.ContactId into contacts
-        from contact in contacts.DefaultIfEmpty()
-        select new OpportunityListItemDto
-        {
-            OpportunityId = o.OpportunityId,
-            Name = o.Name,
-            Stage = o.Stage,
-            Amount = o.Amount,
-            ExpectedCloseDate = o.ExpectedCloseDate,
-            OrganizationId = o.OrganizationId,
-            OrganizationName = org != null ? org.Name : null,
-            ContactId = o.ContactId,
-            ContactName = contact != null ? contact.Name : null,
-            IsArchived = o.IsArchived
-        };
-
-    private IQueryable<OpportunityDetailDto> ProjectDetail(IQueryable<Opportunity> rows) =>
-        from o in rows
-        join org in db.Organizations.AsNoTracking() on o.OrganizationId equals org.OrganizationId into orgs
-        from org in orgs.DefaultIfEmpty()
-        join contact in db.Contacts.AsNoTracking() on o.ContactId equals contact.ContactId into contacts
-        from contact in contacts.DefaultIfEmpty()
-        select new OpportunityDetailDto
-        {
-            OpportunityId = o.OpportunityId,
-            Name = o.Name,
-            Stage = o.Stage,
-            Amount = o.Amount,
-            ExpectedCloseDate = o.ExpectedCloseDate,
-            OrganizationId = o.OrganizationId,
-            OrganizationName = org != null ? org.Name : null,
-            ContactId = o.ContactId,
-            ContactName = contact != null ? contact.Name : null,
-            IsArchived = o.IsArchived,
-            Note = o.Note,
-            OwnerUserId = o.OwnerUserId
-        };
-
-    private static CrmActivityDto ToDto(CrmActivity activity) => new()
+    private async Task ApplyRelationshipAsync(
+        string? contactId,
+        string? relationshipType,
+        IReadOnlyList<CrmRelationshipType> allowed)
     {
-        CrmActivityId = activity.CrmActivityId,
-        OpportunityId = activity.OpportunityId,
-        ActivityType = activity.ActivityType,
-        Subject = activity.Subject,
-        Body = activity.Body,
-        DueAt = activity.DueAt,
-        CompletedAt = activity.CompletedAt,
-        OwnerUserId = activity.OwnerUserId,
-        CreatedAt = activity.CreatedAt
-    };
+        if (contactId == null || relationshipType == null)
+            return;
+        var contact = await db.Contacts.FirstOrDefaultAsync(c => c.ContactId == contactId);
+        if (contact == null)
+            return;
+        contact.RelationshipType = CrmRelationshipTypeRules.Canonical(relationshipType, allowed);
+    }
+
+    private IQueryable<PotentialListItemDto> ProjectList(IQueryable<Potential> rows) =>
+        from p in rows
+        join stage in db.CrmStages.AsNoTracking() on p.CrmStageId equals stage.CrmStageId
+        join org in db.Organizations.AsNoTracking() on p.OrganizationId equals org.OrganizationId into orgs
+        from org in orgs.DefaultIfEmpty()
+        join contact in db.Contacts.AsNoTracking() on p.ContactId equals contact.ContactId into contacts
+        from contact in contacts.DefaultIfEmpty()
+        select new PotentialListItemDto
+        {
+            PotentialId = p.PotentialId,
+            Name = p.Name,
+            OrganizationId = p.OrganizationId,
+            OrganizationName = org != null ? org.Name : null,
+            ContactId = p.ContactId,
+            ContactName = contact != null ? contact.Name : null,
+            CrmStageId = p.CrmStageId,
+            StageName = stage.Name,
+            StageOutcome = stage.Outcome,
+            Probability = p.Probability,
+            Amount = p.Amount,
+            ExpectedCloseDate = p.ExpectedCloseDate,
+            IsArchived = p.IsArchived
+        };
+
+    private IQueryable<DetailNameRow> ProjectDetail(IQueryable<Potential> rows) =>
+        from p in rows
+        join stage in db.CrmStages.AsNoTracking() on p.CrmStageId equals stage.CrmStageId
+        join org in db.Organizations.AsNoTracking() on p.OrganizationId equals org.OrganizationId into orgs
+        from org in orgs.DefaultIfEmpty()
+        join contact in db.Contacts.AsNoTracking() on p.ContactId equals contact.ContactId into contacts
+        from contact in contacts.DefaultIfEmpty()
+        join created in db.Users.AsNoTracking() on p.CreatedByUserId equals created.Id into createdUsers
+        from created in createdUsers.DefaultIfEmpty()
+        join modified in db.Users.AsNoTracking() on p.ModifiedByUserId equals modified.Id into modifiedUsers
+        from modified in modifiedUsers.DefaultIfEmpty()
+        select new DetailNameRow
+        {
+            Item = new PotentialDetailDto
+            {
+                PotentialId = p.PotentialId,
+                Name = p.Name,
+                Description = p.Description,
+                OrganizationId = p.OrganizationId,
+                OrganizationName = org != null ? org.Name : null,
+                ContactId = p.ContactId,
+                ContactName = contact != null ? contact.Name : null,
+                RelationshipType = contact != null ? contact.RelationshipType : null,
+                CrmStageId = p.CrmStageId,
+                StageName = stage.Name,
+                StageOutcome = stage.Outcome,
+                Probability = p.Probability,
+                Amount = p.Amount,
+                ExpectedCloseDate = p.ExpectedCloseDate,
+                ActualCloseDate = p.ActualCloseDate,
+                IsArchived = p.IsArchived,
+                CreatedAt = p.CreatedAt,
+                UpdatedAt = p.UpdatedAt
+            },
+            CreatedPresent = created != null,
+            CreatedFirst = created != null ? created.FirstName : null,
+            CreatedLast = created != null ? created.LastName : null,
+            CreatedEmail = created != null ? created.Email : null,
+            ModifiedPresent = modified != null,
+            ModifiedFirst = modified != null ? modified.FirstName : null,
+            ModifiedLast = modified != null ? modified.LastName : null,
+            ModifiedEmail = modified != null ? modified.Email : null
+        };
+
+    private static PotentialDetailDto FinishDetail(DetailNameRow row)
+    {
+        row.Item.CreatedByName = DisplayName(row.CreatedPresent, row.CreatedFirst, row.CreatedLast, row.CreatedEmail);
+        row.Item.ModifiedByName = DisplayName(row.ModifiedPresent, row.ModifiedFirst, row.ModifiedLast, row.ModifiedEmail);
+        return row.Item;
+    }
+
+    private static string? DisplayName(bool present, string? first, string? last, string? email) =>
+        present ? UserDisplayNameRules.Resolve(first, last, email) : null;
+
+    private async Task<List<PotentialStatusDto>> StatusesAsync(string potentialId)
+    {
+        var rows = await (
+            from status in db.PotentialStatuses.AsNoTracking()
+            where status.PotentialId == potentialId
+            join stage in db.CrmStages.AsNoTracking() on status.CrmStageId equals stage.CrmStageId
+            join user in db.Users.AsNoTracking() on status.CreatedByUserId equals user.Id into users
+            from user in users.DefaultIfEmpty()
+            orderby status.StatusDate descending, status.CreatedAt descending
+            select new StatusNameRow
+            {
+                Item = new PotentialStatusDto
+                {
+                    PotentialStatusId = status.PotentialStatusId,
+                    PotentialId = status.PotentialId,
+                    CrmStageId = status.CrmStageId,
+                    StageName = stage.Name,
+                    StatusDate = status.StatusDate,
+                    Body = status.Body,
+                    CreatedAt = status.CreatedAt
+                },
+                Present = user != null,
+                First = user != null ? user.FirstName : null,
+                Last = user != null ? user.LastName : null,
+                Email = user != null ? user.Email : null
+            }).ToListAsync();
+        foreach (var row in rows)
+            row.Item.CreatedByName = DisplayName(row.Present, row.First, row.Last, row.Email);
+        return rows.Select(row => row.Item).ToList();
+    }
+
+    private async Task<List<CrmDiscussionDto>> DiscussionsAsync(string potentialId)
+    {
+        var rows = await (
+            from note in db.CrmDiscussions.AsNoTracking()
+            where note.PotentialId == potentialId
+            join stage in db.CrmStages.AsNoTracking() on note.CrmStageId equals stage.CrmStageId
+            join user in db.Users.AsNoTracking() on note.AuthorUserId equals user.Id into users
+            from user in users.DefaultIfEmpty()
+            orderby note.CreatedAt descending
+            select new DiscussionNameRow
+            {
+                Item = new CrmDiscussionDto
+                {
+                    CrmDiscussionId = note.CrmDiscussionId,
+                    PotentialId = note.PotentialId,
+                    CrmStageId = note.CrmStageId,
+                    StageName = stage.Name,
+                    Message = note.Message,
+                    CreatedAt = note.CreatedAt
+                },
+                Present = user != null,
+                First = user != null ? user.FirstName : null,
+                Last = user != null ? user.LastName : null,
+                Email = user != null ? user.Email : null
+            }).ToListAsync();
+        foreach (var row in rows)
+            row.Item.AuthorName = DisplayName(row.Present, row.First, row.Last, row.Email);
+        return rows.Select(row => row.Item).ToList();
+    }
+
+    private async Task<List<CrmAttachmentDto>> AttachmentsAsync(string potentialId)
+    {
+        var rows = await (
+            from file in db.CrmAttachments.AsNoTracking()
+            where file.PotentialId == potentialId
+            join stage in db.CrmStages.AsNoTracking() on file.CrmStageId equals stage.CrmStageId
+            join user in db.Users.AsNoTracking() on file.UploadedByUserId equals user.Id into users
+            from user in users.DefaultIfEmpty()
+            orderby file.UploadedAt descending
+            select new AttachmentNameRow
+            {
+                Item = new CrmAttachmentDto
+                {
+                    CrmAttachmentId = file.CrmAttachmentId,
+                    PotentialId = file.PotentialId,
+                    CrmStageId = file.CrmStageId,
+                    StageName = stage.Name,
+                    OriginalFileName = file.OriginalFileName,
+                    MimeType = file.MimeType,
+                    SizeBytes = file.SizeBytes,
+                    UploadedAt = file.UploadedAt
+                },
+                Present = user != null,
+                First = user != null ? user.FirstName : null,
+                Last = user != null ? user.LastName : null,
+                Email = user != null ? user.Email : null
+            }).ToListAsync();
+        foreach (var row in rows)
+            row.Item.UploadedByName = DisplayName(row.Present, row.First, row.Last, row.Email);
+        return rows.Select(row => row.Item).ToList();
+    }
+
+    private sealed class DetailNameRow
+    {
+        public PotentialDetailDto Item { get; set; } = new();
+        public bool CreatedPresent { get; set; }
+        public string? CreatedFirst { get; set; }
+        public string? CreatedLast { get; set; }
+        public string? CreatedEmail { get; set; }
+        public bool ModifiedPresent { get; set; }
+        public string? ModifiedFirst { get; set; }
+        public string? ModifiedLast { get; set; }
+        public string? ModifiedEmail { get; set; }
+    }
+
+    private sealed class StatusNameRow
+    {
+        public PotentialStatusDto Item { get; set; } = new();
+        public bool Present { get; set; }
+        public string? First { get; set; }
+        public string? Last { get; set; }
+        public string? Email { get; set; }
+    }
+
+    private sealed class DiscussionNameRow
+    {
+        public CrmDiscussionDto Item { get; set; } = new();
+        public bool Present { get; set; }
+        public string? First { get; set; }
+        public string? Last { get; set; }
+        public string? Email { get; set; }
+    }
+
+    private sealed class AttachmentNameRow
+    {
+        public CrmAttachmentDto Item { get; set; } = new();
+        public bool Present { get; set; }
+        public string? First { get; set; }
+        public string? Last { get; set; }
+        public string? Email { get; set; }
+    }
+
+    private async Task<IReadOnlyList<CrmRelationshipType>> RelationshipTypesAsync()
+    {
+        var json = await db.AppSettings.AsNoTracking()
+            .Where(s => s.Key == Constants.SettingKeys.CrmRelationshipTypes)
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        return CrmRelationshipTypeRules.Parse(json);
+    }
+
+    private async Task<(string? Token, string? FolderId, IActionResult? Error)> TryGetCrmDriveAsync()
+    {
+        var cred = await db.AppDriveCredentials.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.AppDriveCredentialId == AppDriveLayoutRules.CredentialId);
+        if (cred == null || string.IsNullOrEmpty(cred.EncryptedRefreshToken))
+            return (null, null, new ObjectResult(AppDriveLayoutRules.NotConnectedMessage) { StatusCode = 409 });
+
+        var folder = await db.AppSettings.AsNoTracking()
+            .Where(s => s.Key == Constants.SettingKeys.CrmDriveParentFolderId)
+            .Select(s => s.Value)
+            .FirstOrDefaultAsync();
+        var folderId = string.IsNullOrWhiteSpace(folder) ? null : folder.Trim();
+        if (string.IsNullOrEmpty(folderId))
+            return (null, null, new ObjectResult("CRM folder is missing. Open App Settings and click Ensure folders.") { StatusCode = 409 });
+
+        return (cred.EncryptedRefreshToken, folderId, null);
+    }
+
+    private async Task<IActionResult?> TryDeleteDriveFileAsync(string token, string fileId)
+    {
+        try
+        {
+            await drive.DeleteFileAsync(token, fileId);
+            return null;
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+        catch (Exception)
+        {
+            return new ObjectResult("A Drive file could not be removed.") { StatusCode = 409 };
+        }
+    }
+
+    private async Task UpsertSettingAsync(string key, string value, string description)
+    {
+        var row = await db.AppSettings.FirstOrDefaultAsync(s => s.Key == key);
+        if (row == null)
+        {
+            db.AppSettings.Add(new AppSetting { Key = key, Value = value, Description = description });
+            return;
+        }
+
+        row.Value = value;
+    }
+
+    private static OkObjectResult Page<T>(List<T> items, int total, int pageSize, int page)
+    {
+        var totalPages = pageSize == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize);
+        return new OkObjectResult(new PagedResponse<T>
+        {
+            Items = items,
+            TotalCount = total,
+            PageSize = pageSize,
+            CurrentPage = page,
+            TotalPages = totalPages,
+            HasNext = page < totalPages,
+            HasPrevious = page > 1
+        });
+    }
 
     private static string? BlankToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

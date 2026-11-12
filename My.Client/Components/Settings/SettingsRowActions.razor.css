@@ -1,0 +1,24 @@
+.settings-row-actions {
+    display: grid;
+    grid-template-columns: 2.5rem 2.5rem;
+    justify-content: end;
+    align-items: center;
+    gap: 0 0.25rem;
+    min-height: 40px;
+}
+
+.settings-row-actions.has-order {
+    grid-template-columns: 2.5rem 2.5rem 2.5rem 2.5rem;
+}
+
+.settings-row-actions > * {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.settings-row-spacer {
+    display: block;
+    width: 2.5rem;
+    height: 2.5rem;
+}

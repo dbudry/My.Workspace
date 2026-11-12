@@ -33,6 +33,7 @@ namespace My.Client.Pages.Admin
         private int dataRetentionDays = 2555;
         private int submissionMonthInterval = 1;
         private bool allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.DefaultEnabled;
+        private bool unsubmittedReminderEnabled = UnsubmittedReminderRules.DefaultEnabled;
         private bool allowUserTeamReports = TymeUserTeamReportsRules.DefaultEnabled;
         private bool allowManagerTimeCorrection = true;
         private string managerCorrectionMode = "Alias";
@@ -150,6 +151,9 @@ namespace My.Client.Pages.Admin
 
                     var managerSubmitVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf);
                     allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(managerSubmitVal?.Value);
+
+                    var reminderVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeUnsubmittedReminderEnabled);
+                    unsubmittedReminderEnabled = UnsubmittedReminderRules.IsEnabled(reminderVal?.Value);
 
                     var userTeamReportsVal = settings.FirstOrDefault(s => s.Key == Constants.SettingKeys.TymeAllowUserTeamReports);
                     allowUserTeamReports = TymeUserTeamReportsRules.IsEnabled(userTeamReportsVal?.Value);
@@ -466,6 +470,12 @@ namespace My.Client.Pages.Admin
                         Key = Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf,
                         Value = allowManagerSubmitOnBehalf.ToString().ToLower(),
                         Description = "When enabled, Tyme managers and admins can submit an employee's time month on their behalf."
+                    },
+                    new()
+                    {
+                        Key = Constants.SettingKeys.TymeUnsubmittedReminderEnabled,
+                        Value = unsubmittedReminderEnabled.ToString().ToLower(),
+                        Description = "When enabled, Tyme managers can email an employee a reminder about unsubmitted months."
                     },
                     new()
                     {

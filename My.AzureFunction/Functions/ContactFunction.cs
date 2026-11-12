@@ -76,12 +76,14 @@ namespace My.Functions
             if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var allowedTypes = await ContactTypeSettings.GetAllowedTypesAsync(appSettingRepository);
+            var relationshipTypes = await RelationshipTypesAsync();
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(
                 req,
                 createValidator,
                 ctx =>
                 {
                     ctx.RootContextData[ValidationContextKeys.AllowedContactTypes] = allowedTypes;
+                    ctx.RootContextData[ValidationContextKeys.AllowedRelationshipTypes] = relationshipTypes;
                     ctx.RootContextData[ValidationContextKeys.ContactTypeRequired] = false;
                 });
             if (validationError != null)
@@ -113,6 +115,7 @@ namespace My.Functions
                 PhoneNumber = dto.PhoneNumber,
                 Email = dto.Email,
                 ContactType = normalizedType,
+                RelationshipType = CrmRelationshipTypeRules.Canonical(dto.RelationshipType, relationshipTypes),
                 OrganizationId = dto.OrganizationId,
                 DepartmentId = dto.DepartmentId
             };
@@ -129,12 +132,14 @@ namespace My.Functions
             if (AuthGates.RequireOrganizations(principal, out var userId, Constants.Roles.Editor) is IActionResult unauth) return unauth;
 
             var allowedTypes = await ContactTypeSettings.GetAllowedTypesAsync(appSettingRepository);
+            var relationshipTypes = await RelationshipTypesAsync();
             var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(
                 req,
                 updateValidator,
                 ctx =>
                 {
                     ctx.RootContextData[ValidationContextKeys.AllowedContactTypes] = allowedTypes;
+                    ctx.RootContextData[ValidationContextKeys.AllowedRelationshipTypes] = relationshipTypes;
                     ctx.RootContextData[ValidationContextKeys.ContactTypeRequired] = true;
                 });
             if (validationError != null)
@@ -151,6 +156,7 @@ namespace My.Functions
             contact.PhoneNumber = dto.PhoneNumber;
             contact.Email = dto.Email;
             contact.ContactType = normalizedType;
+            contact.RelationshipType = CrmRelationshipTypeRules.Canonical(dto.RelationshipType, relationshipTypes);
 
             await contactRepository.Update(contact);
 
@@ -172,6 +178,12 @@ namespace My.Functions
             await contactRepository.Delete(contact);
             logger.LogInformation("Contact {Id} was deleted.", id);
             return new NoContentResult();
+        }
+
+        private async Task<IReadOnlyList<CrmRelationshipType>> RelationshipTypesAsync()
+        {
+            var row = await appSettingRepository.GetById(Constants.SettingKeys.CrmRelationshipTypes);
+            return CrmRelationshipTypeRules.Parse(row?.Value);
         }
     }
 }

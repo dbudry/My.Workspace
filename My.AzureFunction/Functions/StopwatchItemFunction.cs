@@ -656,8 +656,7 @@ namespace My.Functions
                 }
 
                 var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
-                task.GoogleEventId = ev.Id;
-                task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
+                GoogleCalendarService.RecordSyncedEvent(task, ev);
                 await taskRepository.Update(task);
             }
             catch (Exception ex)
@@ -709,8 +708,7 @@ namespace My.Functions
                                 logger.LogWarning(ex, "Failed to remove now-disallowed Google event for stopwatch session {TaskId}.", task.TaskId);
                             }
                         }
-                        task.GoogleEventId = null;
-                        task.GoogleEventUpdatedUtc = null;
+                        GoogleCalendarService.ClearSyncedEvent(task);
                         await taskRepository.Update(task);
                         await TryPushTeamAvailabilityAsync(task, s);
                         return;
@@ -722,18 +720,33 @@ namespace My.Functions
                         return;
                     }
 
-                    var updatedEv = await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
-                    task.GoogleEventUpdatedUtc = updatedEv.UpdatedDateTimeOffset?.UtcDateTime;
-                    await taskRepository.Update(task);
-                    await TryPushTeamAvailabilityAsync(task, s);
-                    return;
+                    var result = await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
+                    if (result.Kind == CalendarEventUpdateKind.Pushed)
+                    {
+                        GoogleCalendarService.RecordSyncedEvent(task, result.Event);
+                        await taskRepository.Update(task);
+                        await TryPushTeamAvailabilityAsync(task, s);
+                        return;
+                    }
+                    if (result.Kind == CalendarEventUpdateKind.NotOrganizer)
+                    {
+                        // Invite the user does not organize: keep the Tyme edit only (see
+                        // TrackedTaskFunction.TryPushUpdateAsync).
+                        logger.LogInformation(
+                            "Stopwatch session {TaskId} edit kept in Tyme only; user does not organize Google event {EventId}.",
+                            task.TaskId, task.GoogleEventId);
+                        await TryPushTeamAvailabilityAsync(task, s);
+                        return;
+                    }
+
+                    // Cancelled on Google: drop the link and recreate below.
+                    GoogleCalendarService.ClearSyncedEvent(task);
                 }
 
                 if (CanPublishPersonal(s, project))
                 {
                     var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
-                    task.GoogleEventId = ev.Id;
-                    task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
+                    GoogleCalendarService.RecordSyncedEvent(task, ev);
                     await taskRepository.Update(task);
                 }
 

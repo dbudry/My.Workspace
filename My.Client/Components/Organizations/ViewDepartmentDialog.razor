@@ -11,6 +11,7 @@
                 <thead>
                     <tr>
                         <th>Name</th>
+                        <th>Role</th>
                         <th>Type</th>
                         <th>Title</th>
                         <th>Phone</th>
@@ -23,6 +24,7 @@
                         <tr>
                             <td>@c.Name</td>
                             <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                            <td>@(string.IsNullOrWhiteSpace(c.RelationshipType) ? "—" : c.RelationshipType)</td>
                             <td>@c.Title</td>
                             <td>@c.PhoneNumber</td>
                             <td>@c.Email</td>

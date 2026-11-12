@@ -85,6 +85,12 @@ var host = new HostBuilder()
         services.AddSingleton<GoogleTokenEncryptor>();
         services.AddSingleton<GoogleCalendarService>();
         services.AddSingleton<ExpenseSubmitMailer>();
+        services.AddSingleton<CrmDiscussionMailer>();
+        services.AddSingleton<TymeSubmitMailer>();
+        // Scoped: they depend on the DbContext (per-request).
+        services.AddScoped<SubmissionGridService>();
+        services.AddScoped<TymeSubmitNotifier>();
+        services.AddScoped<UnsubmittedReminderService>();
         // Scoped because it depends on the DbContext (per-request).
         services.AddScoped<TeamAvailabilityPublisher>();
         services.AddSingleton(sp =>

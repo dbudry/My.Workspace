@@ -1,0 +1,38 @@
+@namespace My.Client.Components.TimeSubmissions
+@using My.Shared.Dtos.TimeSubmission
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Send reminder</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-1">
+            <strong>To:</strong> @Preview.ToName (@Preview.ToEmail)
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            <strong>Subject:</strong> @Preview.Subject
+        </MudText>
+        <div class="reminder-preview">
+            @((MarkupString)Preview.Html)
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Send">Send</MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    /* The email is built for a white page, so show it on one in both themes. */
+    .reminder-preview { background: #fff; color: #222; padding: 16px; border-radius: 4px; overflow-x: auto; }
+    .reminder-preview a { color: #1a5fb4; }
+</style>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public UnsubmittedReminderPreviewDto Preview { get; set; } = new();
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Send() => MudDialog.Close(DialogResult.Ok(true));
+}

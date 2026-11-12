@@ -49,6 +49,17 @@ internal static class IntegrationTestFixtures
         }
     }
 
+    /// <summary>
+    /// Removes a throwaway test user. Tracked tasks, submissions and the rest cascade from the user,
+    /// so one delete cleans everything the test created. Tests run against the same dev database
+    /// the app uses, so a test that adds a user must call this in a finally block.
+    /// </summary>
+    public static async Task DeleteUserAsync(string userId)
+    {
+        await using var db = IntegrationTestConnection.NewContext();
+        await db.Users.Where(u => u.Id == userId).ExecuteDeleteAsync();
+    }
+
     private static Task<string?> FindTestUserIdAsync(ApplicationDbContext db, CancellationToken ct) =>
         db.Users.AsNoTracking()
             .Where(u => u.NormalizedUserName == NormalizedTestUserName)

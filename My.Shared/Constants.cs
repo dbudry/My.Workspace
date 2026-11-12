@@ -12,6 +12,8 @@ namespace My.Shared.Constants
             public const string UserAccess = "UserAccess";
             /// <summary>Orthogonal: Intranet curated sidebar. Does not stack over Editor.</summary>
             public const string Navigation = "Navigation";
+            /// <summary>Orthogonal CRM reader. Does not stack over User and is not on the shared ladder.</summary>
+            public const string Analyst = "Analyst";
 
             /// <summary>
             /// Sentinel value used in <see cref="AdministeredScopes"/> to mean
@@ -23,7 +25,7 @@ namespace My.Shared.Constants
             public static readonly string[] OperationalHierarchy = [User, Editor, Manager];
 
             /// <summary>Exact-match roles — they do not satisfy User/Editor/Manager gates.</summary>
-            public static readonly string[] OrthogonalRoles = [UserAccess, Navigation];
+            public static readonly string[] OrthogonalRoles = [UserAccess, Navigation, Analyst];
 
             /// <summary>
             /// Formats a scoped role, e.g. "Manager:Tyme". Pass null scope for a global role.
@@ -35,7 +37,15 @@ namespace My.Shared.Constants
                 roleName is User or Editor or Manager;
 
             public static bool IsOrthogonalRole(string? roleName) =>
-                roleName is UserAccess or Navigation;
+                roleName is UserAccess or Navigation or Analyst;
+
+            /// <summary>
+            /// CRM pages and read APIs. User and above on the CRM ladder, or exact Analyst:Crm.
+            /// Analyst does not post, upload, or edit. Global Admin does not pass.
+            /// </summary>
+            public static bool HasCrmRead(System.Security.Claims.ClaimsPrincipal principal) =>
+                HasScopedAccess(principal, Scopes.Crm)
+                || principal.IsInRole(Scoped(Analyst, Scopes.Crm));
 
             /// <summary>Picker/chip label: "Expenses — User Access", "Global — Admin".</summary>
             public static string FormatRole(string? role)
@@ -126,6 +136,7 @@ namespace My.Shared.Constants
                 Scoped(Manager, Scopes.Crm),
                 Scoped(Editor, Scopes.Crm),
                 Scoped(User, Scopes.Crm),
+                Scoped(Analyst, Scopes.Crm),
             };
 
             /// <summary>True when <paramref name="role"/> is in <see cref="Assignable"/>.</summary>
@@ -399,6 +410,17 @@ namespace My.Shared.Constants
             /// </summary>
             public const string TymeAllowManagerSubmitOnBehalf = "TymeAllowManagerSubmitOnBehalf";
             /// <summary>
+            /// When true, Manager:Tyme can email an employee a reminder about unsubmitted past months
+            /// (Grid menu and Team button). Default off until enabled under App Settings → Tyme.
+            /// </summary>
+            public const string TymeUnsubmittedReminderEnabled = "TymeUnsubmittedReminderEnabled";
+            /// <summary>Reminder grid coverage: month (clicked), range or year. See UnsubmittedReminderRules.</summary>
+            public const string TymeReminderCoverage = "TymeReminderCoverage";
+            public const string TymeReminderMonthsBefore = "TymeReminderMonthsBefore";
+            public const string TymeReminderMonthsAfter = "TymeReminderMonthsAfter";
+            /// <summary>Comma list of status keys shown in the reminder grid (always includes unsubmitted).</summary>
+            public const string TymeReminderStatuses = "TymeReminderStatuses";
+            /// <summary>
             /// When true, any Tyme user can pick other employees on Reports (read-only).
             /// Manager:Tyme+ can always do this. Default off until enabled under App Settings → Tyme.
             /// </summary>
@@ -418,9 +440,18 @@ namespace My.Shared.Constants
             /// When false, dialogs/grids are date + duration only; calendar/stopwatch still use real times.
             /// </summary>
             public const string TymeTrackTimeOfDay = "TymeTrackTimeOfDay";
+            /// <summary>JSON array of user ids emailed the submission grid when a Tyme user submits.</summary>
+            public const string TymeSubmitNotifyUserIds = "TymeSubmitNotifyUserIds";
+            /// <summary>Months before the submitted month shown in the submit email grid (default 1).</summary>
+            public const string TymeSubmitNotifyMonthsBefore = "TymeSubmitNotifyMonthsBefore";
+            /// <summary>Months after the submitted month shown in the submit email grid (default 1).</summary>
+            public const string TymeSubmitNotifyMonthsAfter = "TymeSubmitNotifyMonthsAfter";
             public const string WorkdayHours = "WorkdayHours";
             public const string TeamAvailabilityCalendarId = "TeamAvailabilityCalendarId";
             public const string ContactTypes = "ContactTypes";
+            public const string CrmRelationshipTypes = "CrmRelationshipTypes";
+            public const string CrmDiscussionNotifyUserIds = "CrmDiscussionNotifyUserIds";
+            public const string CrmDriveParentFolderId = "CrmDriveParentFolderId";
 
             /// <summary>Workspace display name shown in the UI (setup wizard / branding).</summary>
             public const string AppDisplayName = "App:DisplayName";
@@ -658,11 +689,24 @@ namespace My.Shared.Constants
 
             public static class Crm
             {
-                public const string Opportunities = "crmopportunities";
+                public const string Potentials = "crmpotentials";
 
-                public const string Activities = "crmactivities";
+                public const string Stages = "crmstages";
+
+                public const string RelationshipTypes = "crmrelationshiptypes";
+
+                public const string NotifyUsers = "crmnotifyusers";
+
+                public const string Dashboard = "crmdashboard";
+
+                public const string Report = "crmreport";
 
                 public const string Contacts = "crmcontacts";
+            }
+
+            public static class Policies
+            {
+                public const string CrmRead = "CrmRead";
             }
 
             public static class Department
@@ -798,8 +842,25 @@ namespace My.Shared.Constants
                 public const string GetEligible = $"{Api}/eligible";
 
                 /// <summary>GET — Manager:Tyme+ team view: per-(user × month) row with status.
-                /// Optional query: ?status=submitted|unsubmitted|all, ?userId=, ?year=, ?month=.</summary>
+                /// Optional query: ?status= comma list of submitted|unsubmitted|open|notime (default all), ?userId=, ?from=, ?to= (yyyy-MM).</summary>
                 public const string GetTeam = $"{Api}/team";
+
+                /// <summary>GET — Manager:Tyme+ employees × months grid.
+                /// Query: ?from=yyyy-MM&amp;to=yyyy-MM&amp;userIds=a,b (all optional; default last..next month, all employees).</summary>
+                public const string GetGrid = $"{Api}/grid";
+
+                /// <summary>GET/PUT — Manager:Tyme+ submit notification email settings.</summary>
+                public const string NotifySettings = $"{Api}/notify-settings";
+
+                /// <summary>GET — Manager:Tyme+ people who can be added as email recipients.</summary>
+                public const string NotifyDirectory = $"{Api}/notify-directory";
+
+                /// <summary>GET ?userId= — Manager:Tyme+ preview of the unsubmitted-time reminder email.
+                /// POST — send it. Both need the TymeUnsubmittedReminderEnabled app setting.</summary>
+                public const string Reminder = $"{Api}/reminder";
+
+                /// <summary>GET/PUT — Manager:Tyme+ what the reminder email grid covers and shows.</summary>
+                public const string ReminderSettings = $"{Api}/reminder-settings";
 
                 /// <summary>POST — submit a single (Year, Month) for the current user.</summary>
                 public const string Create = Api;

@@ -4,6 +4,7 @@
 @using My.Client.Services
 @using My.Shared.Rules
 @using My.Shared.Dtos.Contact
+@using My.Shared.Dtos.Crm
 @using My.Shared.Dtos.Department
 @using My.Shared.Dtos.Organization
 @using My.Shared.Constants
@@ -146,6 +147,17 @@
                                         else
                                         {
                                             <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th>Role</th>
+                                                        <th>Type</th>
+                                                        <th>Title</th>
+                                                        <th>Phone</th>
+                                                        <th>Email</th>
+                                                        <th style="width:80px; text-align:center;">Actions</th>
+                                                    </tr>
+                                                </thead>
                                                 <tbody>
                                                     @foreach (var c in dept.Contacts)
                                                     {
@@ -154,6 +166,12 @@
                                                             {
                                                                 <td><MudTextField @bind-Value="editName" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                                                 <td><ContactTypeSelect @bind-Value="editContactType" Types="contactTypes" /></td>
+                                                                <td><MudSelect T="string" @bind-Value="editRelationshipType" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true">
+                                                                    @foreach (var type in relationshipTypes)
+                                                                    {
+                                                                        <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                                                    }
+                                                                </MudSelect></td>
                                                                 <td><MudTextField @bind-Value="editTitle" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                                                 <td><MudTextField @bind-Value="editPhone" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                                                 <td><MudTextField @bind-Value="editEmail" Variant="Variant.Text" Margin="Margin.Dense" /></td>
@@ -167,6 +185,7 @@
                                                             {
                                                                 <td>@c.Name</td>
                                                                 <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                                                <td>@(string.IsNullOrWhiteSpace(c.RelationshipType) ? "—" : c.RelationshipType)</td>
                                                                 <td>@c.Title</td>
                                                                 <td>@c.PhoneNumber</td>
                                                                 <td>@c.Email</td>
@@ -188,6 +207,14 @@
                                                 <MudGrid Spacing="2">
                                                     <MudItem xs="6"><MudTextField @bind-Value="newName" Label="Name" Required="true" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                                                     <MudItem xs="6"><ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" /></MudItem>
+                                                    <MudItem xs="6">
+                                                        <MudSelect T="string" @bind-Value="newRelationshipType" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                                                            @foreach (var type in relationshipTypes)
+                                                            {
+                                                                <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                                            }
+                                                        </MudSelect>
+                                                    </MudItem>
                                                     <MudItem xs="6"><MudTextField @bind-Value="newTitle" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                                                     <MudItem xs="6"><MudTextField @bind-Value="newPhone" Label="Phone" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
                                                     <MudItem xs="12"><MudTextField @bind-Value="newEmail" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense" /></MudItem>
@@ -221,6 +248,7 @@
                     <thead>
                         <tr>
                             <th>Name</th>
+                            <th>Role</th>
                             <th>Type</th>
                             <th>Title</th>
                             <th>Phone</th>
@@ -236,6 +264,12 @@
                                 {
                                     <td><MudTextField @bind-Value="editName" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                     <td><ContactTypeSelect @bind-Value="editContactType" Types="contactTypes" /></td>
+                                    <td><MudSelect T="string" @bind-Value="editRelationshipType" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true">
+                                        @foreach (var type in relationshipTypes)
+                                        {
+                                            <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                        }
+                                    </MudSelect></td>
                                     <td><MudTextField @bind-Value="editTitle" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                     <td><MudTextField @bind-Value="editPhone" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                     <td><MudTextField @bind-Value="editEmail" Variant="Variant.Text" Margin="Margin.Dense" /></td>
@@ -250,6 +284,7 @@
                                 {
                                     <td>@c.Name</td>
                                     <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                    <td>@(string.IsNullOrWhiteSpace(c.RelationshipType) ? "—" : c.RelationshipType)</td>
                                     <td>@c.Title</td>
                                     <td>@c.PhoneNumber</td>
                                     <td>@c.Email</td>
@@ -279,6 +314,14 @@
                         </MudItem>
                         <MudItem xs="6">
                             <ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="newRelationshipType" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                                @foreach (var type in relationshipTypes)
+                                {
+                                    <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="6">
                             <MudTextField @bind-Value="newTitle" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" />
@@ -382,11 +425,12 @@
         contacts.Where(c => string.IsNullOrEmpty(c.DepartmentId));
     private string colorHex = "#1976d2";
     private IReadOnlyList<string> contactTypes = ContactTypeRules.DefaultTypes;
+    private List<CrmRelationshipTypeDto> relationshipTypes = new();
 
     // Add contact state
     private bool isAdding;
     private string? addingContactDepartmentId;
-    private string newName = "", newTitle = "", newPhone = "", newEmail = "", newContactType = "";
+    private string newName = "", newTitle = "", newPhone = "", newEmail = "", newContactType = "", newRelationshipType = "";
     private bool isAddingDepartment;
     private string newDepartmentName = "";
     private string? editingDepartmentId;
@@ -395,7 +439,7 @@
 
     // Edit contact state
     private string? editingContactId;
-    private string editName = "", editTitle = "", editPhone = "", editEmail = "", editContactType = "";
+    private string editName = "", editTitle = "", editPhone = "", editEmail = "", editContactType = "", editRelationshipType = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -407,6 +451,14 @@
         colorHex = string.IsNullOrWhiteSpace(Model.Color) ? "#1976d2" : Model.Color;
         contactTypes = await ContactTypeOptions.GetAsync(AppSettingsCache);
         newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+        try
+        {
+            relationshipTypes = await client.GetFromJsonAsync<List<CrmRelationshipTypeDto>>(Constants.API.Crm.RelationshipTypes) ?? new();
+        }
+        catch
+        {
+            relationshipTypes = new();
+        }
         if (StartAction == "department")
         {
             activeTab = DepartmentsTab;
@@ -428,6 +480,7 @@
             expandedDepartmentId = departmentId;
         newName = ""; newTitle = ""; newPhone = ""; newEmail = "";
         newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+        newRelationshipType = "";
     }
 
     private void CancelAdd() => isAdding = false;
@@ -443,6 +496,7 @@
                 PhoneNumber = string.IsNullOrWhiteSpace(newPhone) ? null : newPhone,
                 Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
                 ContactType = newContactType,
+                RelationshipType = newRelationshipType ?? "",
                 OrganizationId = Model.OrganizationId,
                 DepartmentId = addingContactDepartmentId
             };
@@ -480,6 +534,7 @@
         editTitle = c.Title ?? "";
         editPhone = c.PhoneNumber ?? "";
         editEmail = c.Email ?? "";
+        editRelationshipType = c.RelationshipType ?? "";
     }
 
     private void CancelEdit() => editingContactId = null;
@@ -496,6 +551,7 @@
                 ContactId = c.ContactId,
                 Name = editName,
                 ContactType = editContactType,
+                RelationshipType = editRelationshipType ?? "",
                 Title = string.IsNullOrWhiteSpace(editTitle) ? null : editTitle,
                 PhoneNumber = string.IsNullOrWhiteSpace(editPhone) ? null : editPhone,
                 Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail
@@ -504,6 +560,7 @@
             response.EnsureSuccessStatusCode();
             c.Name = editName;
             c.ContactType = editContactType;
+            c.RelationshipType = string.IsNullOrWhiteSpace(editRelationshipType) ? null : editRelationshipType;
             c.Title = string.IsNullOrWhiteSpace(editTitle) ? null : editTitle;
             c.PhoneNumber = string.IsNullOrWhiteSpace(editPhone) ? null : editPhone;
             c.Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail;

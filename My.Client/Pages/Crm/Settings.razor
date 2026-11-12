@@ -1,0 +1,134 @@
+@page "/crm/settings"
+@attribute [Authorize(Policy = "Crm:Manager:Scoped")]
+@using My.Shared.Dtos.Crm
+@using My.Shared.Rules
+
+<PageTitle>CRM settings</PageTitle>
+
+<PageHeader Title="CRM settings" />
+
+@if (loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <SectionCard Title="Stages">
+        <SettingsAddRow>
+            <MudTextField @bind-Value="newStageName" Label="Name" Class="settings-field-grow"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Disabled="@busy" />
+            <MudNumericField T="int" @bind-Value="newStagePercent" Label="Percent" Class="settings-field-narrow"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" Max="100" HideSpinButtons="true" Disabled="@busy" />
+            <MudSelect T="string" @bind-Value="newStageOutcome" Label="Outcome" Class="settings-field-medium"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@busy">
+                @foreach (var outcome in CrmStageRules.Outcomes)
+                {
+                    <MudSelectItem T="string" Value="@outcome">@outcome</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="settings-add-button"
+                       Disabled="@busy" OnClick="AddStageAsync">Add</MudButton>
+        </SettingsAddRow>
+        <SettingsListTable>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Percent</th>
+                    <th>Outcome</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var stage in stages)
+                {
+                    var index = stages.IndexOf(stage);
+                    <tr @key="stage.CrmStageId">
+                        <td>
+                            <MudTextField @bind-Value="stage.Name" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Disabled="@busy" />
+                        </td>
+                        <td>
+                            <MudNumericField T="int" @bind-Value="stage.DefaultProbability" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                             Min="0" Max="100" HideSpinButtons="true" Disabled="@busy" />
+                        </td>
+                        <td>
+                            <MudSelect T="string" @bind-Value="stage.Outcome" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@busy">
+                                @foreach (var outcome in CrmStageRules.Outcomes)
+                                {
+                                    <MudSelectItem T="string" Value="@outcome">@outcome</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </td>
+                        <td class="settings-list-actions">
+                            <SettingsRowActions Orderable="true" Disabled="@busy"
+                                                CanMoveUp="@(index > 0)" CanMoveDown="@(index < stages.Count - 1)"
+                                                OnMoveUp="@(() => MoveStageAsync(stage, -1))"
+                                                OnMoveDown="@(() => MoveStageAsync(stage, 1))"
+                                                OnSave="@(() => SaveStageAsync(stage))"
+                                                OnRemove="@(() => DeleteStageAsync(stage))" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </SettingsListTable>
+    </SectionCard>
+
+    <SectionCard Title="Relationship types">
+        <SettingsAddRow>
+            <MudTextField @bind-Value="newTypeName" Label="Name" Class="settings-field-medium"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Disabled="@busy" />
+            <MudTextField @bind-Value="newTypeDescription" Label="Description" Class="settings-field-grow"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Disabled="@busy" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="settings-add-button"
+                       Disabled="@busy" OnClick="AddTypeAsync">Add</MudButton>
+        </SettingsAddRow>
+        <SettingsListTable>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var type in relationshipTypes)
+                {
+                    <tr>
+                        <td>
+                            <MudTextField @bind-Value="type.Name" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true"
+                                          Disabled="@(busy || IsDecisionMaker(type))" />
+                        </td>
+                        <td>
+                            <MudTextField @bind-Value="type.Description" Variant="Variant.Outlined" Margin="Margin.Dense" Immediate="true" Disabled="@busy" />
+                        </td>
+                        <td class="settings-list-actions">
+                            <SettingsRowActions Disabled="@busy" ShowRemove="@(!IsDecisionMaker(type))"
+                                                OnSave="SaveTypesAsync" OnRemove="@(() => RemoveTypeAsync(type))" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </SettingsListTable>
+    </SectionCard>
+
+    <SectionCard Title="Discussion emails">
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Checked users get an email when someone posts a discussion on a potential. Only users with a CRM role are listed.
+        </MudText>
+        @if (notifyUsers.Count == 0)
+        {
+            <MudText Typo="Typo.body2">No users have a CRM role yet.</MudText>
+        }
+        else
+        {
+            @foreach (var user in notifyUsers)
+            {
+                <div>
+                    <MudCheckBox T="bool" @bind-Value="user.Selected" Disabled="@busy" Color="Color.Primary"
+                                 Label="@(string.IsNullOrWhiteSpace(user.Email) ? user.Name : $"{user.Name} ({user.Email})")" />
+                </div>
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                       Disabled="@busy" OnClick="SaveNotifyUsersAsync">Save</MudButton>
+        }
+    </SectionCard>
+}

@@ -115,21 +115,9 @@
                                        Disabled="@(codesBusy || structureLocked)" />
                         </td>
                         <td class="expense-code-actions expense-currency-actions">
-                            <div class="expense-code-action-row expense-code-action-icons">
-                                <MudTooltip Text="Save">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small"
-                                                   aria-label="Save" Disabled="@codesBusy"
-                                                   OnClick="@(() => SaveCurrencyAsync(currency))" />
-                                </MudTooltip>
-                                @if (!structureLocked)
-                                {
-                                    <MudTooltip Text="Remove">
-                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                                       aria-label="Remove" Disabled="@codesBusy"
-                                                       OnClick="@(() => RemoveCurrencyAsync(currency))" />
-                                    </MudTooltip>
-                                }
-                            </div>
+                            <SettingsRowActions Disabled="@codesBusy" ShowRemove="@(!structureLocked)"
+                                                OnSave="@(() => SaveCurrencyAsync(currency))"
+                                                OnRemove="@(() => RemoveCurrencyAsync(currency))" />
                         </td>
                     </tr>
                 }
@@ -191,24 +179,11 @@
                                                aria-label="Active" />
                                 </td>
                                 <td class="expense-code-actions">
-                                    <div class="expense-code-action-row expense-code-action-icons">
-                                        @if (!letterRow.IsLocked)
-                                        {
-                                            <MudTooltip Text="Save">
-                                                <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small"
-                                                               aria-label="Save" Disabled="@codesBusy"
-                                                               OnClick="@(() => SaveCodeAsync(letterRow))" />
-                                            </MudTooltip>
-                                        }
-                                        @if (!letterRow.IsLocked && !IsSoftwareCode(letterRow))
-                                        {
-                                            <MudTooltip Text="Remove">
-                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                                               aria-label="Remove" Disabled="@codesBusy"
-                                                               OnClick="@(() => RemoveCodeAsync(letterRow))" />
-                                            </MudTooltip>
-                                        }
-                                    </div>
+                                    <SettingsRowActions Disabled="@codesBusy"
+                                                        ShowSave="@(!letterRow.IsLocked)"
+                                                        ShowRemove="@(!letterRow.IsLocked && !IsSoftwareCode(letterRow))"
+                                                        OnSave="@(() => SaveCodeAsync(letterRow))"
+                                                        OnRemove="@(() => RemoveCodeAsync(letterRow))" />
                                 </td>
                             </tr>
                         }
@@ -238,21 +213,11 @@
                                                Disabled="@(codesBusy || child.IsLocked)" aria-label="Active" />
                                 </td>
                                 <td class="expense-code-actions">
-                                    @if (!child.IsLocked)
-                                    {
-                                        <div class="expense-code-action-row expense-code-action-icons">
-                                            <MudTooltip Text="Save">
-                                                <MudIconButton Icon="@Icons.Material.Filled.Save" Size="Size.Small"
-                                                               aria-label="Save" Disabled="@codesBusy"
-                                                               OnClick="@(() => SaveCodeAsync(child))" />
-                                            </MudTooltip>
-                                            <MudTooltip Text="Remove">
-                                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
-                                                               aria-label="Remove" Disabled="@codesBusy"
-                                                               OnClick="@(() => RemoveCodeAsync(child))" />
-                                            </MudTooltip>
-                                        </div>
-                                    }
+                                    <SettingsRowActions Disabled="@codesBusy"
+                                                        ShowSave="@(!child.IsLocked)"
+                                                        ShowRemove="@(!child.IsLocked)"
+                                                        OnSave="@(() => SaveCodeAsync(child))"
+                                                        OnRemove="@(() => RemoveCodeAsync(child))" />
                                 </td>
                             </tr>
                         }
