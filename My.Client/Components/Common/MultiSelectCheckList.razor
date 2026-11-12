@@ -1,0 +1,75 @@
+@namespace My.Client.Components.Common
+@using My.Shared.Rules
+
+@*
+    Dropdown with a checkbox per option and a search box. Shows the picked NAMES in the field.
+    A null selection means "all" (consumer sends no filter); empty means none.
+    Pattern extracted from the Management page employee menu.
+*@
+
+<MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" FullWidth="true"
+         Disabled="@(Disabled || Options.Count == 0)" MaxHeight="320">
+    <ActivatorContent>
+        <div @onclick="context.ToggleAsync" style="cursor: pointer;">
+            <MudTextField T="string" Value="@SummaryText" Label="@Label"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.ArrowDropDown"
+                          Disabled="@(Disabled || Options.Count == 0)" />
+        </div>
+    </ActivatorContent>
+    <ChildContent>
+        <div class="px-2 py-1" style="min-width: 240px;" @onclick:stopPropagation="true">
+            @if (ShowSearch)
+            {
+                <MudTextField T="string" @bind-Value="search" Placeholder="Search"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true" Class="mb-1" />
+            }
+            <MudCheckBox T="bool" Value="@IsAllSelected" Label="@AllLabel" Dense="true"
+                         ValueChanged="OnAllChanged" />
+            <MudDivider Class="my-1" />
+            @foreach (var o in FilteredOptions)
+            {
+                var key = o.Key;
+                <MudCheckBox T="bool" Value="@MultiSelectRules.IsChecked(SelectedKeys, AllKeys, key)"
+                             Label="@o.Text" Dense="true"
+                             ValueChanged="@((bool v) => OnItemChanged(key, v))" />
+            }
+        </div>
+    </ChildContent>
+</MudMenu>
+
+@code {
+    /// <summary>Everything that can be picked: Key is the id, Text is what the user sees.</summary>
+    [Parameter] public IReadOnlyList<(string Key, string Text)> Options { get; set; } = [];
+
+    /// <summary>Picked keys. <c>null</c> means all, empty means none.</summary>
+    [Parameter] public IReadOnlyCollection<string>? SelectedKeys { get; set; }
+    [Parameter] public EventCallback<IReadOnlyCollection<string>?> SelectedKeysChanged { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Employees";
+    [Parameter] public string AllLabel { get; set; } = "All";
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Show the search box. Turn off for short lists such as the Status filter.</summary>
+    [Parameter] public bool ShowSearch { get; set; } = true;
+
+    private string search = "";
+
+    private IReadOnlyList<string> AllKeys => Options.Select(o => o.Key).ToList();
+    private bool IsAllSelected => MultiSelectRules.IsAll(SelectedKeys, AllKeys);
+    private string SummaryText => MultiSelectRules.Summary(SelectedKeys, Options, AllLabel);
+
+    private IEnumerable<(string Key, string Text)> FilteredOptions =>
+        string.IsNullOrWhiteSpace(search)
+            ? Options
+            : Options.Where(o => o.Text.Contains(search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    // Ticking "All" selects everyone (null). Clearing it clears every box (empty list).
+    private Task OnAllChanged(bool isChecked) =>
+        SelectedKeysChanged.InvokeAsync(isChecked ? null : new List<string>());
+
+    private Task OnItemChanged(string key, bool isChecked) =>
+        SelectedKeysChanged.InvokeAsync(MultiSelectRules.Toggle(SelectedKeys, AllKeys, key, isChecked));
+}

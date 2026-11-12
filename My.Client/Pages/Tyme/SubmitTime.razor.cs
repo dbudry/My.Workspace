@@ -23,12 +23,15 @@ namespace My.Client.Pages.Tyme
 
         private bool ShowMyMonths => !canManage || _managerView == "my";
         private bool ShowTeamSubmissions => canManage && _managerView == "team";
+        private bool ShowGrid => canManage && _managerView == "grid";
 
         private string pageDescription => canManage switch
         {
             false => "Mark a month's work as final. Once a month is submitted, its tasks are locked from edits. You can submit the current or a future month early if you've already entered time for it — handy before going on leave.",
             true when _managerView == "team" =>
-                "Review and manage team submissions. Filter by status, employee, or month. Unsubmit a row when an employee needs to correct their time.",
+                "Review and manage team submissions. Filter by status, employee, or a range of months. Unsubmit a row when an employee needs to correct their time.",
+            true when _managerView == "grid" =>
+                "See who has submitted, by employee and month. Orange means a finished month is not submitted yet. Change the months or employees to look further back or at specific people.",
             _ =>
                 "Mark your own months as final — including early, if you've entered time ahead of when it's due. Switch to Team above to review or unsubmit employee months."
         };
@@ -67,6 +70,8 @@ namespace My.Client.Pages.Tyme
                 var query = Navigation.ToAbsoluteUri(Navigation.Uri).Query;
                 if (query.Contains("view=team", StringComparison.OrdinalIgnoreCase))
                     _managerView = "team";
+                else if (query.Contains("view=grid", StringComparison.OrdinalIgnoreCase))
+                    _managerView = "grid";
                 else if (query.Contains("view=my", StringComparison.OrdinalIgnoreCase))
                     _managerView = "my";
                 try
@@ -103,7 +108,7 @@ namespace My.Client.Pages.Tyme
             try
             {
                 var saved = await JS.InvokeAsync<string?>("sessionStorage.getItem", ManagerViewStorageKey);
-                if (saved is "my" or "team")
+                if (saved is "my" or "team" or "grid")
                     _managerView = saved;
                 else if (saved == "both")
                     _managerView = "team";
@@ -116,7 +121,7 @@ namespace My.Client.Pages.Tyme
 
         private async Task LoadAsync()
         {
-            if (canManage && _managerView == "team")
+            if (canManage && _managerView is "team" or "grid")
             {
                 rows.Clear();
                 isLoading = false;
@@ -186,7 +191,10 @@ namespace My.Client.Pages.Tyme
                 var resp = await client.PostAsJsonAsync(Constants.API.TimeSubmission.Create,
                     new CreateTimeSubmissionDto { Year = row.Year, Month = row.Month });
                 resp.EnsureSuccessStatusCode();
+                var result = await resp.Content.ReadFromJsonAsync<TimeSubmissionDto>();
                 Snackbar.Add($"Submitted {new DateTime(row.Year, row.Month, 1):MMMM yyyy}.", Severity.Success);
+                if (!string.IsNullOrWhiteSpace(result?.EmailWarning))
+                    Snackbar.Add(result.EmailWarning, Severity.Warning);
                 SubmissionEvents.NotifyChanged();
                 await LoadAsync();
             }

@@ -239,8 +239,7 @@ namespace My.Functions
                 }
 
                 var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
-                task.GoogleEventId = ev.Id;
-                task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
+                GoogleCalendarService.RecordSyncedEvent(task, ev);
                 await taskRepository.Update(task);
             }
             catch (Exception ex)
@@ -292,8 +291,7 @@ namespace My.Functions
                                 logger.LogWarning(ex, "Failed to remove now-disallowed Google event for TrackedTask {TaskId}.", task.TaskId);
                             }
                         }
-                        task.GoogleEventId = null;
-                        task.GoogleEventUpdatedUtc = null;
+                        GoogleCalendarService.ClearSyncedEvent(task);
                         await taskRepository.Update(task);
                         await TryPushTeamAvailabilityAsync(task, s);
                         return;
@@ -303,33 +301,51 @@ namespace My.Functions
                         await TryPushTeamAvailabilityAsync(task, s);
                         return;
                     }
+                    CalendarEventUpdateResult? result;
                     try
                     {
-                        var updatedEv = await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
-                        task.GoogleEventUpdatedUtc = updatedEv.UpdatedDateTimeOffset?.UtcDateTime;
-                        await taskRepository.Update(task);
-                        await TryPushTeamAvailabilityAsync(task, s);
-                        return;
+                        result = await googleCalendar.UpdateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task.GoogleEventId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
                     }
                     catch (Google.GoogleApiException ex) when (
                         ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound ||
                         ex.HttpStatusCode == System.Net.HttpStatusCode.Gone)
                     {
-                        // Stored event id no longer exists on Google (most often: user disconnected
-                        // and reconnected with a different account, so the linkage points at events
-                        // in the old account). Drop the stale id and fall through to create fresh.
-                        logger.LogInformation(
-                            "Stale Google event {EventId} for TrackedTask {TaskId} — recreating.",
-                            task.GoogleEventId, task.TaskId);
-                        task.GoogleEventId = null;
+                        result = null;
                     }
+
+                    if (result is { Kind: CalendarEventUpdateKind.Pushed })
+                    {
+                        GoogleCalendarService.RecordSyncedEvent(task, result.Event);
+                        await taskRepository.Update(task);
+                        await TryPushTeamAvailabilityAsync(task, s);
+                        return;
+                    }
+                    if (result is { Kind: CalendarEventUpdateKind.NotOrganizer })
+                    {
+                        // Invite the user does not organize: Google holds the organizer's
+                        // times. Keep the Tyme edit and the last-synced snapshot, so the
+                        // nightly import leaves it alone until the organizer moves it.
+                        logger.LogInformation(
+                            "TrackedTask {TaskId} edit kept in Tyme only; user does not organize Google event {EventId}.",
+                            task.TaskId, task.GoogleEventId);
+                        await TryPushTeamAvailabilityAsync(task, s);
+                        return;
+                    }
+
+                    // Stored event id no longer exists on Google, or is cancelled there (most
+                    // often: user disconnected and reconnected with a different account, so the
+                    // linkage points at events in the old account). Drop the stale id and fall
+                    // through to create fresh.
+                    logger.LogInformation(
+                        "Stale Google event {EventId} for TrackedTask {TaskId} — recreating.",
+                        task.GoogleEventId, task.TaskId);
+                    GoogleCalendarService.ClearSyncedEvent(task);
                 }
 
                 if (CanPublishPersonal(s, project))
                 {
                     var ev = await googleCalendar.CreateEventAsync(s.GoogleRefreshToken, s.GoogleCalendarId, task, project?.Slug, s.TimeZone, s.TymeEventColorId, s.TymeUnmatchedEventColorId);
-                    task.GoogleEventId = ev.Id;
-                    task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
+                    GoogleCalendarService.RecordSyncedEvent(task, ev);
                     await taskRepository.Update(task);
                 }
 
@@ -506,8 +522,21 @@ namespace My.Functions
             var sanitizedName = WeekEntryGridRules.SanitizeTaskName(trackedTask!.Details);
             trackedTask.Details = string.IsNullOrEmpty(sanitizedName) ? null : sanitizedName;
 
+            // A client that sends a TaskId is retrying the same create (slow reply, second
+            // Save, grid blur after Enter). If that row already exists for this caller,
+            // hand it back instead of inserting a duplicate.
+            var requestedTaskId = string.IsNullOrWhiteSpace(trackedTask.TaskId) ? null : trackedTask.TaskId;
+            if (requestedTaskId != null)
+            {
+                var existing = await taskRepository.Find(requestedTaskId);
+                if (existing != null)
+                    return await ExistingCreateResultAsync(existing, userId);
+            }
+
             var newTrackedTask = mapper.DtoToTrackedTask(trackedTask!);
             newTrackedTask.UserId = userId;
+            if (requestedTaskId != null)
+                newTrackedTask.TaskId = requestedTaskId;
             newTrackedTask.ProjectId = string.IsNullOrEmpty(trackedTask!.ProjectId) ? null : trackedTask.ProjectId;
 
             // Optional stopwatch work-item link (manual "Add session" from the sessions dialog).
@@ -572,7 +601,22 @@ namespace My.Functions
 
             newTrackedTask.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, newTrackedTask.ProjectId);
 
-            await taskRepository.Insert(newTrackedTask);
+            try
+            {
+                await taskRepository.Insert(newTrackedTask);
+            }
+            catch (DbUpdateException ex) when (requestedTaskId != null)
+            {
+                // The first attempt may have committed even though this one failed (SQL retry,
+                // two requests with the same id at once). Look again before reporting an error.
+                dbContext.ChangeTracker.Clear();
+                var saved = await taskRepository.Find(requestedTaskId);
+                if (saved == null)
+                    throw;
+                logger.LogInformation(ex,
+                    "CreateTrackedTask {TaskId}: insert failed but the row exists; returning it.", requestedTaskId);
+                return await ExistingCreateResultAsync(saved, userId);
+            }
 
             // Keep work-item recency in sync when logging a session outside Start/Stop.
             if (!string.IsNullOrEmpty(newTrackedTask.StopwatchItemId))
@@ -598,10 +642,27 @@ namespace My.Functions
 
             await TryPushCreateAsync(newTrackedTask);
 
+            // Successful creates were not logged before, so a duplicate row could not be traced.
+            logger.LogInformation(
+                "CreateTrackedTask saved {TaskId} for user {UserId}: start {StartDate:o}, duration {Duration}, client id supplied {HasClientId}.",
+                newTrackedTask.TaskId, userId, newTrackedTask.StartDate, newTrackedTask.Duration, requestedTaskId != null);
+
             await EnsureProjectLoadedAsync(newTrackedTask);
             var createdDto = ToDto(newTrackedTask, await GetWorkdayHoursAsync());
             createdDto.IsMonthSubmitted = false;
             return new OkObjectResult(createdDto);
+        }
+
+        private async Task<IActionResult> ExistingCreateResultAsync(TrackedTask existing, string userId)
+        {
+            // Another person's row must not be readable by guessing its id.
+            if (existing.UserId != userId)
+                return new BadRequestObjectResult("Task id is already in use.");
+
+            await EnsureProjectLoadedAsync(existing);
+            var dto = ToDto(existing, await GetWorkdayHoursAsync());
+            dto.IsMonthSubmitted = false;
+            return new OkObjectResult(dto);
         }
 
         [Function("DeleteTrackedTask")]

@@ -1,0 +1,238 @@
+@page "/tyme/settings"
+@attribute [Authorize(Policy = "Tyme:Manager:Scoped")]
+
+@using My.Client.Components.Common
+@using My.Client.Extensions
+@using My.Shared.Constants
+@using My.Shared.Dtos.TimeSubmission
+@using My.Shared.Rules
+
+@inject IHttpClientFactory ClientFactory
+@inject ISnackbar Snackbar
+
+<PageTitle>Tyme Settings</PageTitle>
+
+<PageHeader Title="Settings"
+            Description="Who is told when someone submits time, and what the email shows." />
+
+<PageLoader IsLoading="@isLoading">
+    <SectionCard>
+        <MudText Typo="Typo.h6">Submission Emails</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3" Style="color: var(--mud-palette-text-secondary);">
+            Tyme Editors and Managers picked here are emailed when someone submits time.
+            If nobody is picked, no email is sent.
+        </MudText>
+        <div style="max-width:300px;">
+            <MultiSelectCheckList Options="@recipientOptions" SelectedKeys="@recipientIds"
+                                  SelectedKeysChanged="@(k => recipientIds = k ?? recipientOptions.Select(o => o.Key).ToList())"
+                                  Label="Recipients" AllLabel="All" />
+        </div>
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap" Class="mt-3">
+            @foreach (var key in recipientIds ?? [])
+            {
+                var id = key;
+                <MudChip T="string" Variant="Variant.Outlined" CloseIcon="@Icons.Material.Filled.Close"
+                         OnClose="@(() => RemoveRecipient(id))">
+                    @RecipientName(id)
+                </MudChip>
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.h6" Class="mt-6">Employee Summary Grid</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3" Style="color: var(--mud-palette-text-secondary);">
+            The email shows every active Tyme user by month, with the submitter's row highlighted.
+            Months are counted from the month being submitted. The default is one month before and one month after.
+        </MudText>
+        <div class="d-flex flex-wrap align-center gap-3">
+            <div style="flex:0 0 150px; width:150px;">
+                <MudNumericField T="int" @bind-Value="monthsBefore" Label="Months before" Min="0"
+                                 Max="@SubmissionGridRules.MaxOffset" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </div>
+            <div style="flex:0 0 150px; width:150px;">
+                <MudNumericField T="int" @bind-Value="monthsAfter" Label="Months after" Min="0"
+                                 Max="@SubmissionGridRules.MaxOffset" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </div>
+        </div>
+        @if (!rangeOk)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">
+                The grid can show at most @SubmissionGridRules.MaxMonths months.
+            </MudAlert>
+        }
+    </SectionCard>
+
+    <SectionCard>
+        <MudText Typo="Typo.h6">Reminder Email Grid</MudText>
+        <MudText Typo="Typo.body2" Class="mt-1 mb-3" Style="color: var(--mud-palette-text-secondary);">
+            Used when you send an employee a reminder about unsubmitted time. Coverage is counted from the month you click.
+            Not submitted always shows. By month clicked, it is the only status.
+        </MudText>
+        <div class="d-flex flex-wrap align-center gap-3">
+            <div style="flex:0 0 220px; width:220px;">
+                <MudSelect T="string" Value="reminderCoverage" ValueChanged="OnCoverageChanged" Label="Date coverage"
+                           Variant="Variant.Outlined" Margin="Margin.Dense">
+                    @foreach (var o in UnsubmittedReminderRules.CoverageOptions)
+                    {
+                        <MudSelectItem T="string" Value="@o.Key">@o.Text</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+            <div style="flex:0 0 240px; width:240px;">
+                <MultiSelectCheckList Options="@SubmissionGridRules.StatusOptions" SelectedKeys="@reminderStatuses"
+                                      SelectedKeysChanged="OnReminderStatusesChanged" Label="Time status to send"
+                                      AllLabel="All statuses" ShowSearch="false"
+                                      Disabled="@(reminderCoverage == UnsubmittedReminderRules.CoverageMonth)" />
+            </div>
+            @if (reminderCoverage == UnsubmittedReminderRules.CoverageRange)
+            {
+                <div style="flex:0 0 150px; width:150px;">
+                    <MudNumericField T="int" @bind-Value="reminderBefore" Label="Months before" Min="0"
+                                     Max="@SubmissionGridRules.MaxOffset" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </div>
+                <div style="flex:0 0 150px; width:150px;">
+                    <MudNumericField T="int" @bind-Value="reminderAfter" Label="Months after" Min="0"
+                                     Max="@SubmissionGridRules.MaxOffset" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </div>
+            }
+        </div>
+        @if (!reminderRangeOk)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">
+                The grid can show at most @SubmissionGridRules.MaxMonths months.
+            </MudAlert>
+        }
+    </SectionCard>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+               Disabled="@(saving || !rangeOk || !reminderRangeOk)">Save</MudButton>
+</PageLoader>
+
+@code {
+    private HttpClient client = null!;
+    private bool isLoading = true;
+    private bool saving;
+
+    private IReadOnlyList<(string Key, string Text)> recipientOptions = [];
+    /// <summary>Picked recipient ids. Empty = nobody is emailed.</summary>
+    private IReadOnlyCollection<string>? recipientIds = new List<string>();
+    private int monthsBefore = SubmissionGridRules.DefaultMonthsBefore;
+    private int monthsAfter = SubmissionGridRules.DefaultMonthsAfter;
+
+    private bool rangeOk => monthsBefore + monthsAfter + 1 <= SubmissionGridRules.MaxMonths;
+
+    private string reminderCoverage = UnsubmittedReminderRules.CoverageMonth;
+    private int reminderBefore = SubmissionGridRules.DefaultMonthsBefore;
+    private int reminderAfter = SubmissionGridRules.DefaultMonthsAfter;
+    private IReadOnlyCollection<string>? reminderStatuses = new List<string> { UnsubmittedReminderRules.UnsubmittedKey };
+
+    private bool reminderRangeOk =>
+        reminderCoverage != UnsubmittedReminderRules.CoverageRange
+        || reminderBefore + reminderAfter + 1 <= SubmissionGridRules.MaxMonths;
+
+    // Switching coverage clears any status that no longer applies (by month clicked allows only Not submitted).
+    private void OnCoverageChanged(string coverage)
+    {
+        reminderCoverage = coverage;
+        reminderStatuses = UnsubmittedReminderRules.NormalizeStatuses(coverage, reminderStatuses);
+    }
+
+    // Not submitted can not be unticked. A null pick means All.
+    private void OnReminderStatusesChanged(IReadOnlyCollection<string>? keys) =>
+        reminderStatuses = UnsubmittedReminderRules.NormalizeStatuses(
+            reminderCoverage, keys ?? SubmissionGridRules.StatusOptions.Select(o => o.Key).ToList());
+
+    protected override async Task OnInitializedAsync()
+    {
+        client = ClientFactory.CreateClient(Constants.API.ClientName);
+        try
+        {
+            var settingsTask = client.GetFromJsonAsync<TymeSubmitNotifySettingsDto>(
+                Constants.API.TimeSubmission.NotifySettings);
+            var directoryTask = client.GetFromJsonAsync<List<TymeSubmitNotifyUserDto>>(
+                Constants.API.TimeSubmission.NotifyDirectory);
+            var reminderTask = client.GetFromJsonAsync<TymeReminderSettingsDto>(
+                Constants.API.TimeSubmission.ReminderSettings);
+            await Task.WhenAll(settingsTask, directoryTask, reminderTask);
+
+            var reminder = reminderTask.Result ?? new();
+            reminderCoverage = UnsubmittedReminderRules.ParseCoverage(reminder.Coverage);
+            reminderBefore = reminder.MonthsBefore;
+            reminderAfter = reminder.MonthsAfter;
+            reminderStatuses = UnsubmittedReminderRules.NormalizeStatuses(reminderCoverage, reminder.Statuses);
+
+            var settings = settingsTask.Result ?? new();
+            monthsBefore = settings.MonthsBefore;
+            monthsAfter = settings.MonthsAfter;
+            var directory = directoryTask.Result ?? [];
+            // A saved recipient who lost the Editor/Manager role stays visible so it can be unticked.
+            var options = directory.Select(p => (p.UserId, p.Name)).ToList();
+            foreach (var r in settings.Recipients.Where(r => options.All(o => o.UserId != r.UserId)))
+                options.Add((r.UserId, r.Name));
+            recipientOptions = options;
+            recipientIds = settings.Recipients.Select(r => r.UserId).ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't load Tyme settings.");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string RecipientName(string id) =>
+        recipientOptions.FirstOrDefault(o => o.Key == id).Text ?? id;
+
+    private void RemoveRecipient(string id) =>
+        recipientIds = (recipientIds ?? []).Where(k => k != id).ToList();
+
+    private async Task SaveAsync()
+    {
+        saving = true;
+        try
+        {
+            var resp = await client.PutAsJsonAsync(Constants.API.TimeSubmission.NotifySettings,
+                new UpdateTymeSubmitNotifySettingsDto
+                {
+                    RecipientIds = (recipientIds ?? []).ToList(),
+                    MonthsBefore = monthsBefore,
+                    MonthsAfter = monthsAfter
+                });
+            resp.EnsureSuccessStatusCode();
+            var reminderResp = await client.PutAsJsonAsync(Constants.API.TimeSubmission.ReminderSettings,
+                new TymeReminderSettingsDto
+                {
+                    Coverage = reminderCoverage,
+                    MonthsBefore = reminderBefore,
+                    MonthsAfter = reminderAfter,
+                    Statuses = (reminderStatuses ?? []).ToList()
+                });
+            reminderResp.EnsureSuccessStatusCode();
+            var savedReminder = await reminderResp.Content.ReadFromJsonAsync<TymeReminderSettingsDto>();
+            if (savedReminder != null)
+            {
+                reminderCoverage = savedReminder.Coverage;
+                reminderBefore = savedReminder.MonthsBefore;
+                reminderAfter = savedReminder.MonthsAfter;
+                reminderStatuses = savedReminder.Statuses;
+            }
+            var saved =await resp.Content.ReadFromJsonAsync<TymeSubmitNotifySettingsDto>();
+            if (saved != null)
+            {
+                recipientIds = saved.Recipients.Select(r => r.UserId).ToList();
+                monthsBefore = saved.MonthsBefore;
+                monthsAfter = saved.MonthsAfter;
+            }
+            Snackbar.Add("Settings saved.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.AddApiError(ex, "Couldn't save settings.");
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+}

@@ -1,0 +1,113 @@
+.sub-grid-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.sub-grid-field--status {
+    flex: 0 0 200px;
+    width: 200px;
+}
+
+.sub-grid-field--month {
+    flex: 0 0 140px;
+    width: 140px;
+}
+
+.sub-grid-field--employees {
+    flex: 0 0 220px;
+    width: 220px;
+}
+
+.sub-grid-wrap {
+    overflow-x: auto;
+}
+
+.sub-grid-table {
+    border-collapse: collapse;
+    min-width: 100%;
+}
+
+.sub-grid-table th,
+.sub-grid-table td {
+    border: 1px solid var(--mud-palette-lines-default);
+    padding: 6px 14px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.sub-grid-table th {
+    background: var(--mud-palette-background-gray);
+    font-weight: 600;
+}
+
+.sub-grid-table .sub-grid-name {
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: var(--mud-palette-surface);
+}
+
+.sub-grid-table th.sub-grid-name {
+    background: var(--mud-palette-background-gray);
+}
+
+.sub-grid-legend {
+    font-size: 0.8rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+.sub-grid-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Color blocks use the same palette colors as the Team status chips. */
+.sub-grid-cell--submitted {
+    background: var(--mud-palette-success);
+    color: var(--mud-palette-success-text);
+}
+
+.sub-grid-cell--unsubmitted {
+    background: var(--mud-palette-warning);
+    color: var(--mud-palette-warning-text);
+}
+
+.sub-grid-cell--open {
+    background: var(--mud-palette-info);
+    color: var(--mud-palette-info-text);
+}
+
+.sub-grid-cell--nodata {
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 12%, transparent);
+    color: var(--mud-palette-text-secondary);
+}
+
+.sub-grid-table td[class*="sub-grid-cell--"] {
+    min-width: 90px;
+}
+
+/* Actionable cells look like any other cell. The menu fills the cell and only opens on click. */
+.sub-grid-table td.sub-grid-cell--action {
+    padding: 0;
+}
+
+.sub-grid-table td.sub-grid-cell--action ::deep .mud-menu {
+    display: block;
+    width: 100%;
+}
+
+.sub-grid-cell-fill {
+    padding: 6px 14px;
+    cursor: pointer;
+}
+
+.sub-grid-swatch {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+}

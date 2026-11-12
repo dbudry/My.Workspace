@@ -1,0 +1,48 @@
+@page "/crm/report"
+@attribute [Authorize(Policy = "CrmRead")]
+@using My.Shared.Dtos.Crm
+
+<PageTitle>Reporting</PageTitle>
+
+<PageHeader Title="Reporting" />
+
+<MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+    <MudSelect T="string" Value="stageFilter" ValueChanged="OnStageChanged" Label="Stage"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Clearable="true" Style="width:14rem;">
+        @foreach (var stage in stages)
+        {
+            <MudSelectItem T="string" Value="@stage.CrmStageId">@stage.Name</MudSelectItem>
+        }
+    </MudSelect>
+    <MudTextField @bind-Value="search" Label="Search" Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Immediate="false" OnBlur="ReloadAsync" Style="width:16rem;" />
+    <MudDatePicker Date="fromDate" DateChanged="OnFromChanged" Label="Closing from" Variant="Variant.Outlined" Margin="Margin.Dense" />
+    <MudDatePicker Date="toDate" DateChanged="OnToChanged" Label="Closing to" Variant="Variant.Outlined" Margin="Margin.Dense" />
+</MudStack>
+
+<MudTable @ref="table" ServerData="LoadServerData" Hover="true" Dense="true" RowsPerPage="50"
+          OnRowClick="@((TableRowClickEventArgs<CrmReportRowDto> args) => Open(args.Item))">
+    <HeaderContent>
+        <MudTh>Account Name</MudTh>
+        <MudTh>Potential Name</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh>Stage</MudTh>
+        <MudTh>Probability %</MudTh>
+        <MudTh>Amount</MudTh>
+        <MudTh>Closing Date</MudTh>
+        <MudTh>Status</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Account Name">@context.AccountName</MudTd>
+        <MudTd DataLabel="Potential Name">@context.PotentialName</MudTd>
+        <MudTd DataLabel="Description" Style="max-width:16rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@context.Description</MudTd>
+        <MudTd DataLabel="Stage">@context.StageName</MudTd>
+        <MudTd DataLabel="Probability %">@context.Probability</MudTd>
+        <MudTd DataLabel="Amount">@(context.Amount?.ToString("C"))</MudTd>
+        <MudTd DataLabel="Closing Date">@(context.ClosingDate?.ToString("yyyy-MM-dd"))</MudTd>
+        <MudTd DataLabel="Status" Style="max-width:16rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@context.Status</MudTd>
+    </RowTemplate>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="@(new int[] { 50 })" />
+    </PagerContent>
+</MudTable>

@@ -1,9 +1,10 @@
 namespace My.Shared.Rules;
 
 /// <summary>
-/// Personal dashboard packing on a 12-column CSS grid. Widgets occupy a
-/// (Col, Row, Columns, Rows) rectangle and keep it unless the user moves
-/// them into free space (or swaps with one overlapping tile).
+/// Personal dashboard packing on a 12-column CSS grid. A tile keeps its
+/// rectangle until it is moved into free space or swapped with one tile.
+/// A drop that would cover several tiles settles into the nearest open row
+/// instead of landing on top of them.
 /// </summary>
 public static class DashboardLayoutRules
 {
@@ -12,6 +13,7 @@ public static class DashboardLayoutRules
     public const string Favorites = "favorites";
     public const string UnsubmittedTime = "unsubmittedTime";
     public const string LastMonthExpenses = "lastMonthExpenses";
+    public const string Crm = "crm";
 
     public const int GridColumns = 12;
     public const int ColThird = 4;
@@ -26,7 +28,8 @@ public static class DashboardLayoutRules
             compactMinColumns: 2, compactMinRows: 2),
         new(Favorites, col: 1, row: 4, columns: 4, rows: 1, minColumns: 3, minRows: 1),
         new(UnsubmittedTime, col: 5, row: 4, columns: 8, rows: 2, minColumns: 6, minRows: 1),
-        new(LastMonthExpenses, col: 1, row: 6, columns: 12, rows: 2, minColumns: 6, minRows: 1)
+        new(LastMonthExpenses, col: 1, row: 6, columns: 12, rows: 2, minColumns: 6, minRows: 1),
+        new(Crm, col: 1, row: 8, columns: 12, rows: 2, minColumns: 6, minRows: 1)
     ];
 
     public static DashboardWidgetSpec Spec(string id) =>
@@ -108,7 +111,7 @@ public static class DashboardLayoutRules
                 return swapped;
         }
 
-        return next;
+        return NearestOpenRow(next, original: item, moving: proposed) ?? next;
     }
 
     public static List<DashboardLayoutItem> TryResize(
@@ -221,6 +224,49 @@ public static class DashboardLayoutRules
         }
 
         return FromSpec(spec);
+    }
+
+    /// <summary>
+    /// The requested row covers other tiles. Search outward from it, back
+    /// toward <paramref name="original"/> first, and use the closest row
+    /// the tile fits in without covering anyone.
+    /// </summary>
+    private static List<DashboardLayoutItem>? NearestOpenRow(
+        List<DashboardLayoutItem> layout,
+        DashboardLayoutItem original,
+        DashboardLayoutItem moving)
+    {
+        var towardStart = Math.Sign(original.Row - moving.Row);
+        if (towardStart == 0)
+            towardStart = 1;
+
+        for (var distance = 0; distance <= 40; distance++)
+        {
+            var toward = OpenAt(layout, moving, moving.Row + towardStart * distance);
+            if (toward != null)
+                return toward;
+            if (distance == 0)
+                continue;
+            var away = OpenAt(layout, moving, moving.Row - towardStart * distance);
+            if (away != null)
+                return away;
+        }
+
+        return null;
+    }
+
+    private static List<DashboardLayoutItem>? OpenAt(
+        List<DashboardLayoutItem> layout, DashboardLayoutItem moving, int row)
+    {
+        if (row < 1 || row > 40)
+            return null;
+        var trial = CloneItem(moving);
+        trial.Row = row;
+        if (OverlapsAny(layout, trial, trial.Id))
+            return null;
+        var next = Clone(layout);
+        Replace(next, trial);
+        return next;
     }
 
     private static List<DashboardLayoutItem>? TrySwap(

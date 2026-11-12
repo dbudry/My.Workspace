@@ -5,7 +5,7 @@ namespace My.Functions.Helpers;
 
 /// <summary>
 /// Clears CRM links before an organization or contact row is removed.
-/// Opportunity.OrganizationId is ON DELETE SET NULL. ContactId is not a foreign key,
+/// Potential.OrganizationId is ON DELETE SET NULL. ContactId is not a foreign key,
 /// so it has to be cleared here or the deal keeps an id that no longer exists.
 /// </summary>
 public static class CrmReferenceCleanup
@@ -22,7 +22,7 @@ public static class CrmReferenceCleanup
 
         if (contactIds.Count > 0)
         {
-            await db.Opportunities
+            await db.Potentials
                 .Where(o => o.ContactId != null && contactIds.Contains(o.ContactId))
                 .ExecuteUpdateAsync(
                     s => s.SetProperty(o => o.ContactId, (string?)null),
@@ -35,7 +35,7 @@ public static class CrmReferenceCleanup
         string contactId,
         CancellationToken cancellationToken = default)
     {
-        await db.Opportunities
+        await db.Potentials
             .Where(o => o.ContactId == contactId)
             .ExecuteUpdateAsync(
                 s => s.SetProperty(o => o.ContactId, (string?)null),

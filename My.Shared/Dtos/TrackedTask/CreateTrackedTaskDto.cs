@@ -33,5 +33,12 @@ namespace My.Shared.Dtos.TrackedTask
         /// When set, the entry is a stopwatch session for this work item (must belong to the caller).
         /// </summary>
         public string? StopwatchItemId { get; set; }
+
+        /// <summary>
+        /// Optional id the client picks (a GUID) and reuses for every retry of the same create.
+        /// If a row with this id already exists for the caller, the server returns that row
+        /// instead of inserting a second copy. Null keeps the old behavior (server-made id).
+        /// </summary>
+        public string? TaskId { get; set; }
     }
 }

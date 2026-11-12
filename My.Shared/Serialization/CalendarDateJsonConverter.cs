@@ -40,3 +40,27 @@ public sealed class CalendarDateJsonConverter : JsonConverter<DateTime>
             DateTime.SpecifyKind(value.Date, DateTimeKind.Unspecified)
                 .ToString(Format, CultureInfo.InvariantCulture));
 }
+
+/// <summary>Same calendar-day wire format for a date the caller may leave empty.</summary>
+public sealed class NullableCalendarDateJsonConverter : JsonConverter<DateTime?>
+{
+    private readonly CalendarDateJsonConverter inner = new();
+
+    public override DateTime? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+            return null;
+        return inner.Read(ref reader, typeof(DateTime), options);
+    }
+
+    public override void Write(Utf8JsonWriter writer, DateTime? value, JsonSerializerOptions options)
+    {
+        if (value == null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        inner.Write(writer, value.Value, options);
+    }
+}

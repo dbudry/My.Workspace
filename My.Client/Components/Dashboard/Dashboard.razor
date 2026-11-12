@@ -318,6 +318,24 @@
                                 </MudCardContent>
                             </MudCard>
                             break;
+                        case DashboardLayoutRules.Crm:
+                            <MudCard>
+                                <MudCardHeader>
+                                    <CardHeaderContent>
+                                        <MudText Typo="Typo.h6">CRM</MudText>
+                                    </CardHeaderContent>
+                                    <CardHeaderActions>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                                                   OnClick="@(() => Navigation.NavigateTo("crm"))">
+                                            Open CRM
+                                        </MudButton>
+                                    </CardHeaderActions>
+                                </MudCardHeader>
+                                <MudCardContent>
+                                    <CrmDashboard />
+                                </MudCardContent>
+                            </MudCard>
+                            break;
                     }
                     </div>
                 </div>

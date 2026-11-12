@@ -9,6 +9,7 @@ using My.DAL.Data;
 using My.DAL.Models;
 using My.Functions.Authorization;
 using My.Functions.Helpers;
+using My.Functions.Services;
 using My.Shared.Constants;
 using My.Shared.Dtos.TimeSubmission;
 using My.Shared.Rules;
@@ -21,17 +22,194 @@ namespace My.Functions
         private readonly ILogger<TimeSubmissionFunction> _logger;
         private readonly IValidator<CreateTimeSubmissionDto> _createValidator;
         private readonly IValidator<CreateManagerTimeSubmissionDto> _createOnBehalfValidator;
+        private readonly IValidator<UpdateTymeSubmitNotifySettingsDto> _notifySettingsValidator;
+        private readonly SubmissionGridService _gridService;
+        private readonly TymeSubmitNotifier _notifier;
+        private readonly IValidator<SendUnsubmittedReminderDto> _reminderValidator;
+        private readonly UnsubmittedReminderService _reminder;
+        private readonly IValidator<TymeReminderSettingsDto> _reminderSettingsValidator;
 
         public TimeSubmissionFunction(
             ApplicationDbContext dbContext,
             ILogger<TimeSubmissionFunction> logger,
             IValidator<CreateTimeSubmissionDto> createValidator,
-            IValidator<CreateManagerTimeSubmissionDto> createOnBehalfValidator)
+            IValidator<CreateManagerTimeSubmissionDto> createOnBehalfValidator,
+            IValidator<UpdateTymeSubmitNotifySettingsDto> notifySettingsValidator,
+            SubmissionGridService gridService,
+            TymeSubmitNotifier notifier,
+            IValidator<SendUnsubmittedReminderDto> reminderValidator,
+            UnsubmittedReminderService reminder,
+            IValidator<TymeReminderSettingsDto> reminderSettingsValidator)
         {
+            _reminderSettingsValidator = reminderSettingsValidator;
             _dbContext = dbContext;
             _logger = logger;
             _createValidator = createValidator;
             _createOnBehalfValidator = createOnBehalfValidator;
+            _notifySettingsValidator = notifySettingsValidator;
+            _gridService = gridService;
+            _notifier = notifier;
+            _reminderValidator = reminderValidator;
+            _reminder = reminder;
+        }
+
+        /// <summary>
+        /// Preview of the "you may have forgotten to submit your time" email for one employee.
+        /// Manager:Tyme, and only when the TymeUnsubmittedReminderEnabled app setting is on.
+        /// </summary>
+        [Function("GetUnsubmittedReminderPreview")]
+        public async Task<IActionResult> GetReminderPreviewAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/reminder")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, out var managerId, Constants.Roles.Manager) is IActionResult unauth)
+                return unauth;
+
+            var employeeId = (req.Query["userId"] ?? "").Trim();
+            if (string.IsNullOrEmpty(employeeId))
+                return new BadRequestObjectResult("Employee is required.");
+            if (!int.TryParse(req.Query["year"], out var year) || !int.TryParse(req.Query["month"], out var month)
+                || year < 2000 || year > 9999 || month < 1 || month > 12)
+                return new BadRequestObjectResult("Invalid Year/Month.");
+
+            var result = await PrepareReminderAsync(principal, managerId, employeeId, year, month);
+            return result.Error != null ? result.Error : new OkObjectResult(result.Prepared!.Preview);
+        }
+
+        [Function("GetTymeReminderSettings")]
+        public async Task<IActionResult> GetReminderSettingsAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/reminder-settings")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            return new OkObjectResult(await _reminder.LoadSettingsAsync());
+        }
+
+        [Function("UpdateTymeReminderSettings")]
+        public async Task<IActionResult> UpdateReminderSettingsAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "timesubmissions/reminder-settings")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+
+            var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, _reminderSettingsValidator);
+            if (validationError != null)
+                return validationError;
+
+            return new OkObjectResult(await _reminder.SaveSettingsAsync(dto!));
+        }
+
+        /// <summary>Sends the reminder email shown by <see cref="GetReminderPreviewAsync"/>.</summary>
+        [Function("SendUnsubmittedReminder")]
+        public async Task<IActionResult> SendReminderAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "timesubmissions/reminder")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, out var managerId, Constants.Roles.Manager) is IActionResult unauth)
+                return unauth;
+
+            var (body, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, _reminderValidator);
+            if (validationError != null)
+                return validationError;
+
+            var result = await PrepareReminderAsync(principal, managerId, body!.UserId.Trim(), body.Year, body.Month);
+            if (result.Error != null)
+                return result.Error;
+
+            var sendError = await _reminder.SendAsync(result.Prepared!);
+            if (sendError != null)
+                return new ObjectResult(sendError) { StatusCode = 502 };
+            return new OkObjectResult(result.Prepared!.Preview);
+        }
+
+        private async Task<(UnsubmittedReminderService.Prepared? Prepared, IActionResult? Error)> PrepareReminderAsync(
+            ClaimsPrincipal principal, string managerId, string employeeId, int year, int month)
+        {
+            if (!await _reminder.IsEnabledAsync())
+                return (null, new BadRequestObjectResult(UnsubmittedReminderRules.DisabledMessage));
+            if (!await CanManageSubmissionUserAsync(principal, employeeId))
+                return (null, new ForbidResult());
+
+            var (prepared, error) = await _reminder.PrepareAsync(
+                employeeId, managerId, year, month,
+                roles => Constants.Roles.IsVisibleInTymeTeamView(principal, roles), DateTime.UtcNow);
+            return error != null ? (null, new BadRequestObjectResult(error)) : (prepared, null);
+        }
+
+        /// <summary>
+        /// Manager team grid: every visible active Tyme employee × a month window. Query:
+        /// ?from=yyyy-MM&amp;to=yyyy-MM&amp;userIds=a,b. Defaults: last month to next month, everyone.
+        /// </summary>
+        [Function("GetTimeSubmissionGrid")]
+        public async Task<IActionResult> GetGridAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/grid")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+
+            var nowUtc = DateTime.UtcNow;
+            var (defaultFrom, defaultTo) = SubmissionGridRules.DefaultRange(nowUtc);
+            var from = defaultFrom;
+            var to = defaultTo;
+
+            var fromText = req.Query["from"];
+            var toText = req.Query["to"];
+            if (!string.IsNullOrWhiteSpace(fromText))
+            {
+                var parsed = SubmissionGridRules.ParseMonth(fromText);
+                if (parsed == null) return new BadRequestObjectResult("Invalid from month. Use yyyy-MM.");
+                from = parsed.Value;
+            }
+            if (!string.IsNullOrWhiteSpace(toText))
+            {
+                var parsed = SubmissionGridRules.ParseMonth(toText);
+                if (parsed == null) return new BadRequestObjectResult("Invalid to month. Use yyyy-MM.");
+                to = parsed.Value;
+            }
+            if (!SubmissionGridRules.IsValidRange(from, to))
+                return new BadRequestObjectResult(
+                    $"Choose a range of 1 to {SubmissionGridRules.MaxMonths} months, start before end.");
+
+            var userIds = (req.Query["userIds"] ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var grid = await _gridService.BuildAsync(
+                from, to, userIds, roles => Constants.Roles.IsVisibleInTymeTeamView(principal, roles), nowUtc);
+            return new OkObjectResult(grid);
+        }
+
+        [Function("GetTymeSubmitNotifySettings")]
+        public async Task<IActionResult> GetNotifySettingsAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/notify-settings")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            return new OkObjectResult(await _notifier.LoadSettingsAsync());
+        }
+
+        [Function("UpdateTymeSubmitNotifySettings")]
+        public async Task<IActionResult> UpdateNotifySettingsAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "timesubmissions/notify-settings")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+
+            var (dto, validationError) = await RequestValidator.ReadJsonAndValidateAsync(req, _notifySettingsValidator);
+            if (validationError != null)
+                return validationError;
+
+            return new OkObjectResult(await _notifier.SaveSettingsAsync(dto!));
+        }
+
+        [Function("GetTymeSubmitNotifyDirectory")]
+        public async Task<IActionResult> GetNotifyDirectoryAsync(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "timesubmissions/notify-directory")] HttpRequestData req)
+        {
+            var principal = new ClaimsPrincipal(req.Identities);
+            if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
+            return new OkObjectResult(await _notifier.LoadDirectoryAsync());
         }
 
 
@@ -93,8 +271,8 @@ namespace My.Functions
         /// <summary>
         /// Manager team view: one row per (user × month) for users in the caller's scope
         /// where the user has tracked time in that past month, with submitted/unsubmitted
-        /// status. Optional query string filters: ?status=submitted|unsubmitted|all (default
-        /// "all"), ?userId, ?year, ?month. Used by the Submit page (full filters) and the
+        /// status. Optional query string filters: ?status= a comma list of
+        /// submitted, unsubmitted, open, notime (default all), ?userId, ?from and ?to (yyyy-MM). Used by the Submit page (full filters) and the
         /// Dashboard widget (pre-filtered to status=unsubmitted).
         /// </summary>
         [Function("GetTeamTimeSubmissions")]
@@ -106,10 +284,30 @@ namespace My.Functions
             // by virtue of being a super-role. Caller must be Manager:Tyme or Admin:Tyme.
             if (AuthGates.RequireScopedTyme(principal, Constants.Roles.Manager) is IActionResult unauth) return unauth;
 
-            var statusFilter = (req.Query["status"] ?? "all").ToLowerInvariant();
-            var userIdFilter = req.Query["userId"];
-            int? yearFilter = int.TryParse(req.Query["year"], out var y) ? y : null;
-            int? monthFilter = int.TryParse(req.Query["month"], out var m) ? m : null;
+            // status is a comma-separated list (submitted, unsubmitted, open, notime) or "all".
+            var statuses = SubmissionGridRules.ParseStatusFilter(req.Query["status"]);
+            // userId may be one id or a comma-separated list (Employee multi-select).
+            var userIdFilter = (req.Query["userId"] ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.Ordinal);
+            // Optional month range (yyyy-MM, inclusive). Either end may be left off for open-ended.
+            (int Year, int Month)? fromMonth = null;
+            (int Year, int Month)? toMonth = null;
+            var fromText = req.Query["from"];
+            var toText = req.Query["to"];
+            if (!string.IsNullOrWhiteSpace(fromText))
+            {
+                fromMonth = SubmissionGridRules.ParseMonth(fromText);
+                if (fromMonth == null) return new BadRequestObjectResult("Invalid from month. Use yyyy-MM.");
+            }
+            if (!string.IsNullOrWhiteSpace(toText))
+            {
+                toMonth = SubmissionGridRules.ParseMonth(toText);
+                if (toMonth == null) return new BadRequestObjectResult("Invalid to month. Use yyyy-MM.");
+            }
+            if (fromMonth.HasValue && toMonth.HasValue
+                && !SubmissionGridRules.IsInRange(toMonth.Value.Year, toMonth.Value.Month, fromMonth, null))
+                return new BadRequestObjectResult("The from month must not be after the to month.");
 
             var nowUtc = DateTime.UtcNow;
             var currentMonthStart = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -138,8 +336,6 @@ namespace My.Functions
             // Restrict to users visible in manager Tyme team surfaces. Pre-fetch each
             // user's roles once (Managers and scoped admins see Tyme-scoped users; global Admin sees everyone).
             var userIds = keys.Select(k => k.UserId).Distinct().ToList();
-            if (userIds.Count == 0)
-                return new OkObjectResult(new List<TeamSubmissionRowDto>());
 
             var users = await _dbContext.ApplicationUsers
                 .Where(u => userIds.Contains(u.Id))
@@ -165,13 +361,11 @@ namespace My.Functions
                 var roles = roleSetByUser.TryGetValue(key.UserId, out var rs) ? rs : Array.Empty<string>();
                 if (!Constants.Roles.IsVisibleInTymeTeamView(principal, roles)) continue;
 
-                if (!string.IsNullOrEmpty(userIdFilter) && key.UserId != userIdFilter) continue;
-                if (yearFilter.HasValue && key.Year != yearFilter.Value) continue;
-                if (monthFilter.HasValue && key.Month != monthFilter.Value) continue;
+                if (userIdFilter.Count > 0 && !userIdFilter.Contains(key.UserId)) continue;
+                if (!SubmissionGridRules.IsInRange(key.Year, key.Month, fromMonth, toMonth)) continue;
 
                 var submitted = submissionByKey.TryGetValue(key, out var s);
-                if (statusFilter == "submitted" && !submitted) continue;
-                if (statusFilter == "unsubmitted" && submitted) continue;
+                if (!statuses.Contains(submitted ? "submitted" : "unsubmitted")) continue;
 
                 rows.Add(new TeamSubmissionRowDto
                 {
@@ -183,6 +377,47 @@ namespace My.Functions
                     SubmittedAt = submitted ? s!.SubmittedAt : null,
                     TimeSubmissionId = submitted ? s!.TimeSubmissionId : null
                 });
+            }
+
+            // "No time" rows (a past month with nothing tracked) and "Open" rows (current or future
+            // month with time, not due yet) come from the Grid service. They need a month range
+            // (there are endless such months otherwise), so the dashboard widget never gets them.
+            // Capped at the latest MaxMonths of the range, same cap as the Grid.
+            var wantNoTime = statuses.Contains("notime");
+            var wantOpen = statuses.Contains("open");
+            if ((wantNoTime || wantOpen) && fromMonth.HasValue && toMonth.HasValue)
+            {
+                var noTimeFrom = fromMonth.Value;
+                if (SubmissionGridRules.CountMonths(noTimeFrom, toMonth.Value) > SubmissionGridRules.MaxMonths)
+                    noTimeFrom = SubmissionGridRules.AddMonths(
+                        toMonth.Value.Year, toMonth.Value.Month, -(SubmissionGridRules.MaxMonths - 1));
+
+                var grid = await _gridService.BuildAsync(
+                    noTimeFrom, toMonth.Value, userIdFilter.Count > 0 ? userIdFilter : null,
+                    roles => Constants.Roles.IsVisibleInTymeTeamView(principal, roles), nowUtc);
+
+                foreach (var gridRow in grid.Rows)
+                {
+                    for (var i = 0; i < grid.Months.Count; i++)
+                    {
+                        var month = grid.Months[i];
+                        var cellStatus = gridRow.Cells[i].Status;
+                        var isOpen = cellStatus == SubmissionCellStatus.Open;
+                        var isNoTime = cellStatus == SubmissionCellStatus.NoData
+                            && !TimeSubmissionRules.IsEarlySubmission(month.Year, month.Month, nowUtc);
+                        if (!(isOpen && wantOpen) && !(isNoTime && wantNoTime)) continue;
+
+                        rows.Add(new TeamSubmissionRowDto
+                        {
+                            UserId = gridRow.UserId,
+                            UserName = gridRow.UserName,
+                            Year = month.Year,
+                            Month = month.Month,
+                            Open = isOpen,
+                            NoTime = isNoTime
+                        });
+                    }
+                }
             }
 
             // Default sort: newest months first, then user name. Predictable for both
@@ -241,6 +476,8 @@ namespace My.Functions
 
             _logger.LogInformation("User {UserId} submitted time for {Year}-{Month:00}.", userId, body.Year, body.Month);
 
+            var emailWarning = await _notifier.NotifyAsync(userId, body.Year, body.Month);
+
             return new OkObjectResult(new TimeSubmissionDto
             {
                 TimeSubmissionId = entity.TimeSubmissionId,
@@ -248,7 +485,8 @@ namespace My.Functions
                 Year = entity.Year,
                 Month = entity.Month,
                 SubmittedAt = entity.SubmittedAt,
-                SubmittedByUserId = entity.SubmittedByUserId
+                SubmittedByUserId = entity.SubmittedByUserId,
+                EmailWarning = emailWarning
             });
         }
 
@@ -313,6 +551,8 @@ namespace My.Functions
                 "User {ActorId} submitted time on behalf of {TargetId} for {Year}-{Month:00}.",
                 actorId, targetUserId, body.Year, body.Month);
 
+            var emailWarning = await _notifier.NotifyAsync(targetUserId, body.Year, body.Month);
+
             return new OkObjectResult(new TimeSubmissionDto
             {
                 TimeSubmissionId = entity.TimeSubmissionId,
@@ -320,7 +560,8 @@ namespace My.Functions
                 Year = entity.Year,
                 Month = entity.Month,
                 SubmittedAt = entity.SubmittedAt,
-                SubmittedByUserId = entity.SubmittedByUserId
+                SubmittedByUserId = entity.SubmittedByUserId,
+                EmailWarning = emailWarning
             });
         }
 

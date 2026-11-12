@@ -15,6 +15,7 @@ public static class AppDriveLayoutRules
     public const string SharedDriveId = "";
     public const string IntranetFolderName = "Intranet";
     public const string ExpensesFolderName = "Expenses";
+    public const string CrmFolderName = "CRM";
 
     public static string SharedDriveUrl =>
         string.IsNullOrWhiteSpace(SharedDriveId)

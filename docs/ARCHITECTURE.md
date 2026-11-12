@@ -272,8 +272,8 @@ banner for the user and a colored kebab badge in the nav menu's Submit link.
 
 `GET /api/timesubmissions/team` (Manager:Tyme+ only) returns one row per
 (user × month) for users the caller can manage, with submitted/unsubmitted
-status. Optional query filters: `?status=submitted|unsubmitted|all`,
-`?userId`, `?year`, `?month`. Scope filtering routes through
+status. Optional query filters: `?status=` (comma list of `submitted|unsubmitted|open|notime`, default all),
+`?userId`, `?from`, `?to` (yyyy-MM). Scope filtering routes through
 `Constants.Roles.CanManageUser` so a Manager:Tyme can't reach users with
 global or other-scope-only roles.
 
@@ -285,6 +285,46 @@ month) and a per-row Unsubmit button. Two consumers:
   below the user's own "Your months" section.
 - Dashboard "Employees with unsubmitted time" widget — `ShowFilters="false"`,
   `DefaultStatusFilter="unsubmitted"`, `MaxRows="10"`.
+
+### Submission grid and submit email
+
+`GET /api/timesubmissions/grid?from=yyyy-MM&to=yyyy-MM&userIds=a,b` (Manager:Tyme+)
+returns employees × months with a status per cell (`Submitted`, `Unsubmitted`, `Open`,
+`NoData`). Defaults are last month to next month, all employees. At most 12 months.
+`SubmissionGridService` builds it and also feeds the email, so both show the same data.
+The Submit page shows it as the **Grid** toggle beside My and Team
+(`SubmissionGridView.razor`).
+
+After a submit (`POST /api/timesubmissions` and `/onbehalf`), `TymeSubmitNotifier` emails the
+recipients from AppSettings (`TymeSubmitNotifyUserIds`) an HTML grid with the submitter's row
+highlighted. The grid always lists every active Tyme user; the month window is centered on the month being
+submitted (not today's month) and comes from
+`TymeSubmitNotifyMonthsBefore` and `TymeSubmitNotifyMonthsAfter`. Recipients are picked from
+Tyme Editors and Managers. A Tyme Manager edits them on `/tyme/settings`. Mail goes through Azure Communication Services (`TymeSubmitMailer`; same
+`ACS_*` environment variables as expenses). A send failure is returned as
+`TimeSubmissionDto.EmailWarning` and never undoes the submission.
+
+The Employee filter on Team and the Grid use `MultiSelectCheckList` (empty selection = all).
+
+Grid cells stay plain color blocks. Clicking a Submitted cell offers Unsubmit, and a Not submitted
+cell offers Submit for employee (only when `TymeAllowManagerSubmitOnBehalf` is on). Both call
+`SubmissionActionsService`, the same code Team uses, so dialogs and endpoints match. The grid
+cell DTO carries `TimeSubmissionId` for Submitted cells.
+
+**Unsubmitted-time reminder.** A Manager can email an employee a reminder about unsubmitted months.
+It is off until an Admin turns on
+`TymeUnsubmittedReminderEnabled` under Admin → App Settings → Tyme. When on, a Not submitted Grid cell's
+menu gets **Send reminder** (menu items are alphabetical: Send reminder, Submit for employee, Unsubmit),
+and Team gets a **Remind** button on Not submitted rows. The clicked month is where coverage starts.
+A Manager sets the grid on `/tyme/settings` (`GET|PUT /api/timesubmissions/reminder-settings`, keys
+`TymeReminderCoverage|MonthsBefore|MonthsAfter|Statuses`): coverage is month clicked (default; only Not
+submitted can be shown), month range (months before/after the clicked month) or the clicked month's calendar
+year, and which statuses show. Not submitted is always shown. The text names only the Not submitted months.
+`GET /api/timesubmissions/reminder?userId=&year=&month=` returns the exact email (`UnsubmittedReminderPreviewDto`),
+shown in `UnsubmittedReminderDialog`; `POST` with `SendUnsubmittedReminderDto` sends it. Both re-check the
+setting, `CanManageSubmissionUserAsync`, and that the months are still unsubmitted.
+`UnsubmittedReminderService` builds and sends it through `TymeSubmitMailer`;
+`UnsubmittedReminderEmailBuilder` renders it, reusing `SubmissionGridEmailBuilder.TableHtml`.
 
 This is the only feed for the manager team view; the older
 `/api/timesubmissions/overdue/all` and `UserOverdueDto` were removed when the
@@ -369,7 +409,21 @@ TimerTrigger functions:
 
 - **`GoogleCalendarWatchRenewalFunction`** — daily at 06:00 UTC. Renews any
   Google push channel that expires within 96 hours so the inbound calendar sync
-  keeps flowing.
+  keeps flowing. Webhook URL is `Google__WebhookUrl`, else `WEBSITE_HOSTNAME`.
+  Admin → Debug → Google Calendar can run the same renewal immediately.
+- **`PullMissedEventsNightly`** — daily at 07:00 UTC. Backup re-scan of connected
+  calendars if a live webhook import was missed, and fills recurring `[slug]`
+  instances as they enter the import lookahead. Linked events unchanged in Google
+  since the last sync are skipped; a changed event overwrites Tyme times only when
+  Google's start/end moved (see `docs/initiatives/personal-calendar-migration.md`,
+  2026-11-11).
+- **`GoogleCalendarImportFromQueue`** — Storage Queue trigger on
+  `AzureWebJobsStorage` (the function storage account, queue `google-calendar-import`).
+  The Google webhook enqueues and returns 200 without SQL; this function
+  imports after SQL has resumed. Per-user blob lease in container
+  `google-calendar-import-locks` (same account) so two workers cannot race
+  the same sync token. EventIds 3101–3118; poison warning is **3113**;
+  watch renewal is **3116–3118**.
 
 There is **no** SQL keepalive timer. If you host Azure SQL **serverless** with
 auto-pause, the database may sleep when idle; Function/SQL cold starts after

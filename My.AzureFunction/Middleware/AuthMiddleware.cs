@@ -245,7 +245,8 @@ namespace My.Functions
                 or Constants.Roles.Editor
                 or Constants.Roles.User
                 or Constants.Roles.UserAccess
-                or Constants.Roles.Navigation))
+                or Constants.Roles.Navigation
+                or Constants.Roles.Analyst))
                 return false;
             var scope = parts[1];
             if (string.IsNullOrEmpty(scope)) return false;

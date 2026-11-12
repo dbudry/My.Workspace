@@ -400,6 +400,7 @@ public class AppDriveStatusDto
     public string? SharedDriveName { get; set; }
     public string? IntranetFolderId { get; set; }
     public string? ExpensesFolderId { get; set; }
+    public string? CrmFolderId { get; set; }
     public bool? DomainUsersOnly { get; set; }
     public bool? DriveMembersOnly { get; set; }
     public bool? SharingFoldersRequiresOrganizerPermission { get; set; }

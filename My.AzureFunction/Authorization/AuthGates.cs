@@ -64,6 +64,18 @@ public static class AuthGates
         string minRole = Constants.Roles.User)
         => RequireScoped(principal, Constants.Scopes.Crm, out userId, minRole);
 
+    /// <summary>
+    /// CRM read: User:Crm and above, or Analyst:Crm. Global Admin and User Access do not pass.
+    /// </summary>
+    public static IActionResult? RequireCrmRead(ClaimsPrincipal principal, out string userId)
+    {
+        if (RequireAuthenticated(principal, out userId) is { } unauth)
+            return unauth;
+        if (!Constants.Roles.HasCrmRead(principal))
+            return new StatusCodeResult(403);
+        return null;
+    }
+
     /// <summary>Authenticated caller only — no module role check.</summary>
     public static IActionResult? RequireAuthenticated(ClaimsPrincipal principal, out string userId)
     {

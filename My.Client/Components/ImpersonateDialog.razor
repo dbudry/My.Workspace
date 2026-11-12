@@ -27,13 +27,17 @@
             }
             else
             {
-                @foreach (var role in visibleRoles)
+                @foreach (var group in Grouped(visibleRoles))
                 {
-                    <div class="impersonate-role-row">
-                        <MudCheckBox T="bool" Value="@selected.Contains(role)"
-                                     ValueChanged="@((bool v) => Toggle(role, v))"
-                                     Label="@role" Color="Color.Primary" Dense="true" />
-                    </div>
+                    <div class="impersonate-scope">@group.Scope</div>
+                    @foreach (var role in group.Roles)
+                    {
+                        <div class="impersonate-role-row">
+                            <MudCheckBox T="bool" Value="@selected.Contains(role)"
+                                         ValueChanged="@((bool v) => Toggle(role, v))"
+                                         Label="@RoleLabel(role)" Color="Color.Primary" Dense="true" />
+                        </div>
+                    }
                 }
             }
         </div>
@@ -41,7 +45,7 @@
             @if (selected.Count > 0)
             {
                 <MudText Typo="Typo.caption" Style="color: var(--mud-palette-text-secondary);">
-                    Selected: @string.Join(", ", selected)
+                    Selected: @string.Join(", ", selected.OrderBy(RoleSortKey, StringComparer.Ordinal).Select(Constants.Roles.FormatRole))
                 </MudText>
             }
         </DialogFormStack>
@@ -64,6 +68,15 @@
         border: 1px solid var(--mud-palette-divider);
         border-radius: 4px;
         padding: 4px 0;
+    }
+
+    .impersonate-scope {
+        padding: 8px 12px 2px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--mud-palette-text-secondary);
     }
 
     .impersonate-role-row {
@@ -92,10 +105,69 @@
         selected = new HashSet<string>(Impersonation.Roles, StringComparer.Ordinal);
     }
 
+    private static readonly string[] ScopeOrder =
+    [
+        "Global",
+        Constants.Scopes.Tyme,
+        Constants.Scopes.Intranet,
+        Constants.Scopes.Organizations,
+        Constants.Scopes.Expenses,
+        Constants.Scopes.Crm
+    ];
+
+    private static readonly string[] RoleRank =
+    [
+        Constants.Roles.User,
+        Constants.Roles.Editor,
+        Constants.Roles.Manager,
+        Constants.Roles.Analyst,
+        Constants.Roles.Navigation,
+        Constants.Roles.UserAccess,
+        Constants.Roles.Admin
+    ];
+
     private IEnumerable<string> FilteredRoles =>
         string.IsNullOrWhiteSpace(filter)
             ? AvailableRoles
-            : AvailableRoles.Where(r => r.Contains(filter, StringComparison.OrdinalIgnoreCase));
+            : AvailableRoles.Where(r =>
+                r.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || ScopeLabel(r).Contains(filter, StringComparison.OrdinalIgnoreCase)
+                || RoleLabel(r).Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    private static IEnumerable<(string Scope, IReadOnlyList<string> Roles)> Grouped(IEnumerable<string> roles) =>
+        roles
+            .GroupBy(ScopeLabel)
+            .OrderBy(group => ScopeIndex(group.Key))
+            .Select(group => (group.Key, (IReadOnlyList<string>)group.OrderBy(RoleSortKey, StringComparer.Ordinal).ToList()));
+
+    private static int ScopeIndex(string scope)
+    {
+        var index = Array.IndexOf(ScopeOrder, scope);
+        return index < 0 ? ScopeOrder.Length : index;
+    }
+
+    private static string RoleSortKey(string role)
+    {
+        var index = Array.IndexOf(RoleRank, RoleName(role));
+        if (index < 0)
+            index = RoleRank.Length;
+        return $"{index:D2}{role}";
+    }
+
+    private static string ScopeLabel(string role)
+    {
+        var split = role.IndexOf(':');
+        return split < 0 ? "Global" : role[(split + 1)..];
+    }
+
+    private static string RoleName(string role)
+    {
+        var split = role.IndexOf(':');
+        return split < 0 ? role : role[..split];
+    }
+
+    private static string RoleLabel(string role) =>
+        RoleName(role) == Constants.Roles.UserAccess ? "User Access" : RoleName(role);
 
     private void Toggle(string role, bool isSelected)
     {

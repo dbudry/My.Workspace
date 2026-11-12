@@ -48,6 +48,12 @@ namespace My.Client.Components.TrackedTasks
             public string? StopwatchItemId { get; set; }
             public CancellationTokenSource? DebounceCts { get; set; }
             public int SaveGeneration { get; set; }
+
+            /// <summary>One save at a time; a second request waits for the first.</summary>
+            public CellSaveGate SaveGate { get; } = new();
+
+            /// <summary>Id sent with a create and reused until a create succeeds.</summary>
+            public string? PendingCreateId { get; set; }
             public bool IsReadOnly => IsSubmitted || IsStopwatch;
         }
 
@@ -899,6 +905,8 @@ namespace My.Client.Components.TrackedTasks
                     row.DraftTaskName = taskName;
             }
 
+            // While a create is on the wire cell.TaskId is empty, so a second save for the
+            // same cell would create again. Wait for the first, then save once more.
             var decision = WeekEntryGridRules.DecideMutation(
                 cell.TaskId, cell.SavedDuration, newDuration);
 
@@ -908,6 +916,9 @@ namespace My.Client.Components.TrackedTasks
                 await InvokeAsync(StateHasChanged);
                 return;
             }
+
+            if (!cell.SaveGate.TryBegin())
+                return;
 
             cell.Status = CellSaveStatus.Saving;
             await InvokeAsync(StateHasChanged);
@@ -952,6 +963,14 @@ namespace My.Client.Components.TrackedTasks
                 Snackbar.AddApiError(ex, "Couldn't save day entry.");
                 await InvokeAsync(StateHasChanged);
             }
+            finally
+            {
+                if (cell.SaveGate.End() && !disposed)
+                {
+                    var next = ++cell.SaveGeneration;
+                    _ = SaveCellAsync(row, dayIndex, next);
+                }
+            }
         }
 
         private async Task CreateCellAsync(TaskRow row, DayCell cell, string taskName, TimeSpan duration)
@@ -967,7 +986,8 @@ namespace My.Client.Components.TrackedTasks
                 StartDate = SettingsService.ConvertFromUserTime(startLocal),
                 Duration = duration,
                 IsAllDay = false,
-                ProjectId = selectedProject!.ProjectId
+                ProjectId = selectedProject!.ProjectId,
+                TaskId = cell.PendingCreateId ??= Guid.NewGuid().ToString()
             };
 
             var response = await client.PostAsJsonAsync(Constants.API.TrackedTask.Create, dto);
@@ -985,6 +1005,7 @@ namespace My.Client.Components.TrackedTasks
             weekTasks.Add(model);
 
             cell.TaskId = model.TaskId;
+            cell.PendingCreateId = null;
             cell.BoundStartDate = model.StartDate;
             cell.SavedDuration = WeekEntryGridRules.NormalizeDuration(model.Duration);
             cell.DurationText = WeekEntryGridRules.FormatDayDurationInput(cell.SavedDuration);

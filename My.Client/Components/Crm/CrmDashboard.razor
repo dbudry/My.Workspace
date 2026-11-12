@@ -1,0 +1,42 @@
+@using My.Shared.Dtos.Crm
+@using My.Shared.Rules
+@inject CrmService Crm
+
+@if (dashboard == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+        @foreach (var stage in dashboard.Stages)
+        {
+            <MudPaper Outlined="true" Class="pa-3" Style="min-width: 9rem;">
+                <MudText Typo="Typo.subtitle2" Color="@StageColor(stage.Outcome)">@stage.Name</MudText>
+                <MudText Typo="Typo.h5">@stage.Count</MudText>
+                <MudText Typo="Typo.caption">@stage.ForecastRevenue.ToString("C")</MudText>
+                <MudText Typo="Typo.caption">@stage.ExpectedRevenue.ToString("C")</MudText>
+            </MudPaper>
+        }
+        <MudPaper Outlined="true" Class="pa-3" Style="min-width: 9rem;">
+            <MudText Typo="Typo.subtitle2" Color="Color.Info">Open</MudText>
+            <MudText Typo="Typo.h6">@dashboard.OpenExpectedRevenue.ToString("C")</MudText>
+        </MudPaper>
+    </MudStack>
+}
+
+@code {
+    private CrmDashboardDto? dashboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        dashboard = await Crm.DashboardAsync();
+    }
+
+    private static Color StageColor(string outcome) => outcome switch
+    {
+        CrmStageRules.ClosedWon => Color.Success,
+        CrmStageRules.ClosedLost => Color.Error,
+        _ => Color.Info
+    };
+}

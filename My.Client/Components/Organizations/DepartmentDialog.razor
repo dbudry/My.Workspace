@@ -3,6 +3,7 @@
 @using My.Client.Services
 @using My.Shared.Rules
 @using My.Shared.Dtos.Contact
+@using My.Shared.Dtos.Crm
 @using My.Shared.Constants
 @using System.Net.Http.Json
 
@@ -28,6 +29,7 @@
                     <thead>
                         <tr>
                             <th>Name</th>
+                            <th>Role</th>
                             <th>Type</th>
                             <th>Title</th>
                             <th>Phone</th>
@@ -43,6 +45,12 @@
                                 {
                                     <td><MudTextField @bind-Value="editName" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                     <td><ContactTypeSelect @bind-Value="editContactType" Types="contactTypes" /></td>
+                                    <td><MudSelect T="string" @bind-Value="editRelationshipType" Variant="Variant.Text" Margin="Margin.Dense" Dense="true" Clearable="true">
+                                        @foreach (var type in relationshipTypes)
+                                        {
+                                            <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                        }
+                                    </MudSelect></td>
                                     <td><MudTextField @bind-Value="editTitle" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                     <td><MudTextField @bind-Value="editPhone" Variant="Variant.Text" Margin="Margin.Dense" /></td>
                                     <td><MudTextField @bind-Value="editEmail" Variant="Variant.Text" Margin="Margin.Dense" /></td>
@@ -57,6 +65,7 @@
                                 {
                                     <td>@c.Name</td>
                                     <td>@(string.IsNullOrWhiteSpace(c.ContactType) ? "—" : c.ContactType)</td>
+                                    <td>@(string.IsNullOrWhiteSpace(c.RelationshipType) ? "—" : c.RelationshipType)</td>
                                     <td>@c.Title</td>
                                     <td>@c.PhoneNumber</td>
                                     <td>@c.Email</td>
@@ -86,6 +95,14 @@
                         </MudItem>
                         <MudItem xs="6">
                             <ContactTypeSelect @bind-Value="newContactType" Types="contactTypes" />
+                        </MudItem>
+                        <MudItem xs="6">
+                            <MudSelect T="string" @bind-Value="newRelationshipType" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true">
+                                @foreach (var type in relationshipTypes)
+                                {
+                                    <MudSelectItem T="string" Value="@type.Name">@type.Name</MudSelectItem>
+                                }
+                            </MudSelect>
                         </MudItem>
                         <MudItem xs="6">
                             <MudTextField @bind-Value="newTitle" Label="Title" Variant="Variant.Outlined" Margin="Margin.Dense" />
@@ -139,14 +156,15 @@
     private HttpClient client = null!;
     private List<ContactModel> contacts = new();
     private IReadOnlyList<string> contactTypes = ContactTypeRules.DefaultTypes;
+    private List<CrmRelationshipTypeDto> relationshipTypes = new();
 
     // Add contact state
     private bool isAdding;
-    private string newName = "", newTitle = "", newPhone = "", newEmail = "", newContactType = "";
+    private string newName = "", newTitle = "", newPhone = "", newEmail = "", newContactType = "", newRelationshipType = "";
 
     // Edit contact state
     private string? editingContactId;
-    private string editName = "", editTitle = "", editPhone = "", editEmail = "", editContactType = "";
+    private string editName = "", editTitle = "", editPhone = "", editEmail = "", editContactType = "", editRelationshipType = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -154,6 +172,14 @@
         contacts = Model.Contacts?.ToList() ?? new();
         contactTypes = await ContactTypeOptions.GetAsync(AppSettingsCache);
         newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+        try
+        {
+            relationshipTypes = await client.GetFromJsonAsync<List<CrmRelationshipTypeDto>>(Constants.API.Crm.RelationshipTypes) ?? new();
+        }
+        catch
+        {
+            relationshipTypes = new();
+        }
     }
 
     private void AddContact()
@@ -162,6 +188,7 @@
         isAdding = true;
         newName = ""; newTitle = ""; newPhone = ""; newEmail = "";
         newContactType = ContactTypeOptions.DefaultForNew(contactTypes);
+        newRelationshipType = "";
     }
 
     private void CancelAdd() => isAdding = false;
@@ -177,6 +204,7 @@
                 PhoneNumber = string.IsNullOrWhiteSpace(newPhone) ? null : newPhone,
                 Email = string.IsNullOrWhiteSpace(newEmail) ? null : newEmail,
                 ContactType = newContactType,
+                RelationshipType = newRelationshipType ?? "",
                 OrganizationId = Model.OrganizationId,
                 DepartmentId = Model.DepartmentId
             };
@@ -205,6 +233,7 @@
         editTitle = c.Title ?? "";
         editPhone = c.PhoneNumber ?? "";
         editEmail = c.Email ?? "";
+        editRelationshipType = c.RelationshipType ?? "";
     }
 
     private void CancelEdit() => editingContactId = null;
@@ -221,6 +250,7 @@
                 ContactId = c.ContactId,
                 Name = editName,
                 ContactType = editContactType,
+                RelationshipType = editRelationshipType ?? "",
                 Title = string.IsNullOrWhiteSpace(editTitle) ? null : editTitle,
                 PhoneNumber = string.IsNullOrWhiteSpace(editPhone) ? null : editPhone,
                 Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail
@@ -229,6 +259,7 @@
             response.EnsureSuccessStatusCode();
             c.Name = editName;
             c.ContactType = editContactType;
+            c.RelationshipType = string.IsNullOrWhiteSpace(editRelationshipType) ? null : editRelationshipType;
             c.Title = string.IsNullOrWhiteSpace(editTitle) ? null : editTitle;
             c.PhoneNumber = string.IsNullOrWhiteSpace(editPhone) ? null : editPhone;
             c.Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail;

@@ -21,6 +21,10 @@ namespace My.DAL.Models
         [MaxLength(50)]
         public string? ContactType { get; set; }
 
+        /// <summary>CRM relationship, once per person. Blank until someone sets it.</summary>
+        [MaxLength(50)]
+        public string? RelationshipType { get; set; }
+
         public string? OrganizationId { get; set; }
         public Organization? Organization { get; set; }
 

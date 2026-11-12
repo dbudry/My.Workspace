@@ -14,6 +14,12 @@ namespace My.Shared.Validation
                 .Must(n => WeekEntryGridRules.SanitizeTaskDetails(n).Length <= TaskDetailsRules.MaxLength)
                     .WithMessage(TaskDetailsRules.MaxLengthMessage);
 
+            // Client-chosen id for safe retries; must be a GUID so it cannot collide with
+            // anything else stored in the key column.
+            RuleFor(x => x.TaskId)
+                .Must(id => id == null || Guid.TryParse(id, out _))
+                .WithMessage("Task id must be a GUID.");
+
             // Timed entries only — all-day duration is derived server-side after this gate.
             // SQL time columns reject 24h+; never let that hit SaveChanges as a 500.
             RuleFor(x => x.Duration)

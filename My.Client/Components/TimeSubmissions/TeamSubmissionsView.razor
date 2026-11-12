@@ -1,4 +1,5 @@
 @namespace My.Client.Components.TimeSubmissions
+@using My.Client.Components.Common
 @using My.Client.Services
 @using My.Shared.Constants
 @using My.Shared.Dtos.TimeSubmission
@@ -8,8 +9,7 @@
 
 @inject IHttpClientFactory ClientFactory
 @inject ISnackbar Snackbar
-@inject IDialogService DialogService
-@inject TimeSubmissionEvents SubmissionEvents
+@inject SubmissionActionsService Actions
 @inject AppSettingsCache AppSettingsCache
 
 
@@ -27,41 +27,25 @@
 <div>
     @if (ShowFilters)
     {
-        <div class="d-flex flex-wrap gap-3 mb-3">
-            <MudSelect T="string" @bind-Value="statusFilter" Label="Status" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="min-width:160px;">
-                <MudSelectItem Value="@("all")">All</MudSelectItem>
-                <MudSelectItem Value="@("submitted")">Submitted</MudSelectItem>
-                <MudSelectItem Value="@("unsubmitted")">Unsubmitted</MudSelectItem>
-            </MudSelect>
-            <MudSelect T="string" @bind-Value="userFilter" Label="Employee" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="min-width:200px;">
-                <MudSelectItem T="string" Value="@((string?)null)">All employees</MudSelectItem>
-                @foreach (var u in distinctUsers)
-                {
-                    <MudSelectItem T="string" Value="@u.UserId">@u.UserName</MudSelectItem>
-                }
-            </MudSelect>
-            <MudSelect T="int?" @bind-Value="yearFilter" Label="Year" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="min-width:120px;">
-                <MudSelectItem T="int?" Value="@((int?)null)">All years</MudSelectItem>
-                @foreach (var y in yearOptions)
-                {
-                    <MudSelectItem T="int?" Value="@y">@y</MudSelectItem>
-                }
-            </MudSelect>
-            <MudSelect T="int?" @bind-Value="monthFilter" Label="Month" Variant="Variant.Outlined"
-                       Margin="Margin.Dense" Dense="true" Style="min-width:140px;">
-                <MudSelectItem T="int?" Value="@((int?)null)">All months</MudSelectItem>
-                @for (int m = 1; m <= 12; m++)
-                {
-                    var month = m;
-                    <MudSelectItem T="int?" Value="@month">@(new DateTime(2000, month, 1).ToString("MMMM"))</MudSelectItem>
-                }
-            </MudSelect>
-            <MudSpacer />
-            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Refresh"
-                       OnClick="ReloadAsync">Refresh</MudButton>
+        <div class="d-flex flex-wrap align-center gap-3 mb-3">
+            <div style="flex:0 0 200px; width:200px;">
+                <MultiSelectCheckList Options="@SubmissionGridRules.StatusOptions" SelectedKeys="@statusFilter"
+                                      SelectedKeysChanged="OnStatusChanged" Label="Status"
+                                      AllLabel="All statuses" ShowSearch="false" />
+            </div>
+            <div style="flex:0 0 220px; width:220px;">
+                <MultiSelectCheckList Options="@employeeOptions" SelectedKeys="@selectedUserIds"
+                                      SelectedKeysChanged="OnEmployeesChanged" Label="Employee"
+                                      AllLabel="All employees" />
+            </div>
+            <div style="flex:0 0 140px; width:140px;">
+                <MonthPicker Value="@fromDate" ValueChanged="OnFromChanged" Label="From month" />
+            </div>
+            <div style="flex:0 0 140px; width:140px;">
+                <MonthPicker Value="@toDate" ValueChanged="OnToChanged" Label="To month" />
+            </div>
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="ReloadAsync"
+                           title="Refresh" aria-label="Refresh" />
         </div>
     }
 
@@ -84,7 +68,7 @@
                 <MudTh Style="width:140px;">Status</MudTh>
                 @if (ShowActions)
                 {
-                    <MudTh Style="width:200px; text-align:right;">Actions</MudTh>
+                    <MudTh Style="width:280px; text-align:right;">Actions</MudTh>
                 }
             </HeaderContent>
             <RowTemplate>
@@ -97,6 +81,18 @@
                             Submitted
                         </MudChip>
                     }
+                    else if (context.NoTime)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Icon="@Icons.Material.Filled.HorizontalRule">
+                            No time
+                        </MudChip>
+                    }
+                    else if (context.Open)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Icon="@Icons.Material.Filled.HourglassEmpty">
+                            In progress
+                        </MudChip>
+                    }
                     else
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Warning" Icon="@Icons.Material.Filled.Schedule">
@@ -107,7 +103,17 @@
                 @if (ShowActions)
                 {
                     <MudTd DataLabel="Actions" Style="text-align:right;">
-                        @if (!context.IsSubmitted && allowManagerSubmitOnBehalf)
+                        @if (!context.IsSubmitted && !context.NoTime && !context.Open && reminderEnabled)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.Email"
+                                       OnClick="@(() => SendReminderAsync(context))"
+                                       Disabled="@(busyKey == BusyKeyFor(context))"
+                                       Class="mr-1">
+                                Remind
+                            </MudButton>
+                        }
+                        @if (!context.IsSubmitted && !context.NoTime && !context.Open && allowManagerSubmitOnBehalf)
                         {
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                                        StartIcon="@Icons.Material.Filled.Send"
@@ -148,13 +154,9 @@
     /// <summary>When false, the table is awareness-only (no Submit/Unsubmit). Dashboard uses this.</summary>
     [Parameter] public bool ShowActions { get; set; } = true;
 
-    /// <summary>Initial status filter ("all" | "submitted" | "unsubmitted").</summary>
+    /// <summary>Initial status filter: "all" or a comma list of submitted, unsubmitted, open, notime.</summary>
     [Parameter] public string DefaultStatusFilter { get; set; } = "all";
 
-    /// <summary>Initial year filter. Submit page passes the current year so the table
-    /// stays bounded once the workspace has years of history; user can clear to "All
-    /// years" via the dropdown. Dashboard leaves it null (already capped by MaxRows).</summary>
-    [Parameter] public int? DefaultYearFilter { get; set; }
 
     /// <summary>Cap visible rows. Used by the dashboard widget to keep the card compact.</summary>
     [Parameter] public int? MaxRows { get; set; }
@@ -166,44 +168,47 @@
     private bool isLoading = true;
     private string? busyKey;
     private bool allowManagerSubmitOnBehalf;
+    private bool reminderEnabled;
 
 
-    // Filter fields are wrapped as properties so a UI change (via @bind-Value) triggers
-    // a server re-fetch automatically. Without this, MudSelect would update the field
-    // but the table never refreshes until the user manually hits Refresh.
-    private string _statusFilter = "all";
-    private string statusFilter
+    /// <summary>Picked status keys (submitted, unsubmitted, open, notime). null = all, empty = none.</summary>
+    private IReadOnlyCollection<string>? statusFilter;
+    private async Task OnStatusChanged(IReadOnlyCollection<string>? keys)
     {
-        get => _statusFilter;
-        set { if (_statusFilter == value) return; _statusFilter = value; _ = ReloadAsync(); }
+        statusFilter = keys;
+        await ReloadAsync();
     }
-    private string? _userFilter;
-    private string? userFilter
+    /// <summary>null = all employees, empty = none, otherwise the picked ids.</summary>
+    private IReadOnlyCollection<string>? selectedUserIds;
+    private async Task OnEmployeesChanged(IReadOnlyCollection<string>? keys)
     {
-        get => _userFilter;
-        set { if (_userFilter == value) return; _userFilter = value; _ = ReloadAsync(); }
+        selectedUserIds = keys;
+        await ReloadAsync();
     }
-    private int? _yearFilter;
-    private int? yearFilter
+    // Month range (first day of each month). Starts at last, this and next month, like the Grid.
+    // Left null when the filters are hidden (dashboard widget), which means no date limit.
+    private DateTime? fromDate;
+    private DateTime? toDate;
+
+    private async Task OnFromChanged(DateTime? value)
     {
-        get => _yearFilter;
-        set { if (_yearFilter == value) return; _yearFilter = value; _ = ReloadAsync(); }
+        if (value == null) return;
+        fromDate = new DateTime(value.Value.Year, value.Value.Month, 1);
+        await ReloadAsync();
     }
-    private int? _monthFilter;
-    private int? monthFilter
+
+    private async Task OnToChanged(DateTime? value)
     {
-        get => _monthFilter;
-        set { if (_monthFilter == value) return; _monthFilter = value; _ = ReloadAsync(); }
+        if (value == null) return;
+        toDate = new DateTime(value.Value.Year, value.Value.Month, 1);
+        await ReloadAsync();
     }
 
     private List<TeamSubmissionRowDto> allRows = new();
-    private List<(string UserId, string UserName)> distinctUsers = new();
-    /// <summary>Fixed range so picking a prior year doesn't require first widening to "All
-    /// years" (the server-filtered result set wouldn't otherwise contain old years to choose
-    /// from). Goes back five years from today, which covers the realistic correction window.</summary>
-    private List<int> yearOptions = Enumerable.Range(0, 6)
-        .Select(i => DateTime.Today.Year - i)
-        .ToList();
+    // Every employee seen on any load so far. Never shrinks when a filter narrows the rows,
+    // so a picked employee keeps showing their name instead of falling back to their id.
+    private readonly Dictionary<string, string> knownUsers = new();
+    private IReadOnlyList<(string Key, string Text)> employeeOptions = [];
 
     private List<TeamSubmissionRowDto> visibleRows =>
         MaxRows.HasValue ? allRows.Take(MaxRows.Value).ToList() : allRows;
@@ -211,10 +216,17 @@
     protected override async Task OnInitializedAsync()
     {
         client = ClientFactory.CreateClient(Constants.API.ClientName);
-        // Set backing fields directly to avoid the property setters firing extra
-        // ReloadAsync calls before we've assigned the HttpClient.
-        _statusFilter = DefaultStatusFilter ?? "all";
-        _yearFilter = DefaultYearFilter;
+        // "all" (or unset) is a null selection; anything else is a comma list of status keys.
+        statusFilter = SubmissionGridRules.ParseStatusFilter(DefaultStatusFilter).Count
+                       == SubmissionGridRules.StatusOptions.Count
+            ? null
+            : SubmissionGridRules.ParseStatusFilter(DefaultStatusFilter).ToList();
+        if (ShowFilters)
+        {
+            var (from, to) = SubmissionGridRules.DefaultRange(DateTime.UtcNow);
+            fromDate = new DateTime(from.Year, from.Month, 1);
+            toDate = new DateTime(to.Year, to.Month, 1);
+        }
         await ReloadAsync();
     }
 
@@ -225,6 +237,7 @@
         try
         {
             allowManagerSubmitOnBehalf = false;
+            reminderEnabled = false;
             if (ShowActions)
             {
                 try
@@ -233,29 +246,38 @@
                     var row = settings.FirstOrDefault(s =>
                         string.Equals(s.Key, Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf, StringComparison.Ordinal));
                     allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(row?.Value);
+                    var reminder = settings.FirstOrDefault(s =>
+                        string.Equals(s.Key, Constants.SettingKeys.TymeUnsubmittedReminderEnabled, StringComparison.Ordinal));
+                    reminderEnabled = UnsubmittedReminderRules.IsEnabled(reminder?.Value);
                 }
                 catch
                 {
                     allowManagerSubmitOnBehalf = false;
+                    reminderEnabled = false;
                 }
             }
 
-            var qs = new List<string> { $"status={Uri.EscapeDataString(statusFilter)}" };
-            if (!string.IsNullOrEmpty(userFilter)) qs.Add($"userId={Uri.EscapeDataString(userFilter)}");
-            if (yearFilter.HasValue) qs.Add($"year={yearFilter}");
-            if (monthFilter.HasValue) qs.Add($"month={monthFilter}");
+            if (selectedUserIds is { Count: 0 } || statusFilter is { Count: 0 })
+            {
+                // Every employee or status box is cleared: nothing to show, no request needed.
+                allRows = new();
+                return;
+            }
+
+            var statusText = statusFilter == null ? "all" : string.Join(",", statusFilter);
+            var qs = new List<string> { $"status={Uri.EscapeDataString(statusText)}" };
+            if (selectedUserIds != null) qs.Add($"userId={Uri.EscapeDataString(string.Join(",", selectedUserIds))}");
+            if (fromDate.HasValue) qs.Add($"from={SubmissionGridRules.FormatMonth(fromDate.Value.Year, fromDate.Value.Month)}");
+            if (toDate.HasValue) qs.Add($"to={SubmissionGridRules.FormatMonth(toDate.Value.Year, toDate.Value.Month)}");
             var url = $"{Constants.API.TimeSubmission.GetTeam}?{string.Join("&", qs)}";
 
             var rows = await client.GetFromJsonAsync<List<TeamSubmissionRowDto>>(url);
             allRows = rows ?? new();
-            // Employee dropdown is built from the result set — when no employee filter is
-            // active, this lists every employee with at least one row matching the other
-            // filters. Year dropdown is a fixed range (yearOptions) so picking a prior
-            // year still works after the default current-year filter narrows the result.
-            distinctUsers = allRows
-                .GroupBy(r => r.UserId)
-                .Select(g => (UserId: g.Key, UserName: g.First().UserName))
-                .OrderBy(x => x.UserName)
+            foreach (var r in allRows)
+                knownUsers[r.UserId] = r.UserName;
+            employeeOptions = knownUsers
+                .Select(kv => (Key: kv.Key, Text: kv.Value))
+                .OrderBy(x => x.Text, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
@@ -276,43 +298,28 @@
         }
     }
 
+    private async Task SendReminderAsync(TeamSubmissionRowDto row)
+    {
+        busyKey = BusyKeyFor(row);
+        try
+        {
+            await Actions.SendReminderAsync(row.UserId, row.UserName, row.Year, row.Month);
+        }
+        finally
+        {
+            busyKey = null;
+        }
+    }
+
     private async Task SubmitOnBehalfAsync(TeamSubmissionRowDto row)
     {
         if (row.IsSubmitted) return;
 
-        var monthLabel = new DateTime(row.Year, row.Month, 1).ToString("MMMM yyyy");
-        var confirm = await DialogService.ShowMessageBoxAsync(
-            "Submit for employee?",
-            $"Submit {row.UserName}'s {monthLabel} on their behalf? This locks their tracked tasks for that month the same as if they submitted themselves.",
-            yesText: "Submit", cancelText: "Cancel");
-        if (confirm != true) return;
-
         busyKey = BusyKeyFor(row);
         try
         {
-            var payload = new CreateManagerTimeSubmissionDto
-            {
-                UserId = row.UserId,
-                Year = row.Year,
-                Month = row.Month
-            };
-            var resp = await client.PostAsJsonAsync(Constants.API.TimeSubmission.CreateOnBehalf, payload);
-            if (!resp.IsSuccessStatusCode)
-            {
-                var detail = await resp.Content.ReadAsStringAsync();
-                Snackbar.Add(string.IsNullOrWhiteSpace(detail)
-                    ? $"Couldn't submit: {(int)resp.StatusCode}"
-                    : detail.Trim('"'), Severity.Error);
-                return;
-            }
-
-            Snackbar.Add($"Submitted {row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMM yyyy}.", Severity.Success);
-            SubmissionEvents.NotifyChanged();
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Couldn't submit: {ex.Message}", Severity.Error);
+            if (await Actions.SubmitOnBehalfAsync(row.UserId, row.UserName, row.Year, row.Month))
+                await ReloadAsync();
         }
         finally
         {
@@ -321,80 +328,14 @@
     }
 
     private async Task UnsubmitAsync(TeamSubmissionRowDto row)
-
     {
         if (string.IsNullOrEmpty(row.TimeSubmissionId)) return;
 
         busyKey = BusyKeyFor(row);
         try
         {
-            var corrections = await client.GetFromJsonAsync<TimeSubmissionCorrectionsDto>(
-                $"{Constants.API.TimeSubmission.GetCorrections}{row.TimeSubmissionId}/corrections");
-
-            string? reconciliation = null;
-            if (corrections?.Items.Any(i => i.Kind == "Alias") == true)
-            {
-                var monthLabel = new DateTime(row.Year, row.Month, 1).ToString("MMMM yyyy");
-                var parameters = new DialogParameters
-                {
-                    ["EmployeeName"] = row.UserName,
-                    ["MonthLabel"] = monthLabel,
-                    ["DirectCorrectionCount"] = corrections.DirectCorrectionCount,
-                    ["AliasItems"] = corrections.Items.Where(i => i.Kind == "Alias").ToList()
-                };
-                var dialog = await DialogService.ShowAsync<UnsubmitReconciliationDialog>(
-                    "Unsubmit with corrections",
-                    parameters,
-                    new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
-                var dialogResult = await dialog.Result;
-                if (dialogResult is null or { Canceled: true })
-                    return;
-
-                reconciliation = dialogResult.Data as string;
-            }
-            else if (corrections?.DirectCorrectionCount > 0)
-            {
-                var warn = await DialogService.ShowMessageBoxAsync(
-                    "Unsubmit with direct corrections?",
-                    $"{row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMMM yyyy} has {corrections.DirectCorrectionCount} direct correction(s). Unsubmitting lets the employee edit entries, but correction audit history is kept.",
-                    yesText: "Unsubmit", cancelText: "Cancel");
-                if (warn != true) return;
-            }
-            else
-            {
-                var confirm = await DialogService.ShowMessageBoxAsync(
-                    "Unsubmit?",
-                    $"Unsubmit {row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMMM yyyy} so they can edit their tracked tasks again?",
-                    yesText: "Unsubmit", cancelText: "Cancel");
-                if (confirm != true) return;
-            }
-
-            HttpResponseMessage resp;
-            if (!string.IsNullOrEmpty(reconciliation))
-            {
-                var payload = new UnsubmitTimeSubmissionDto { AliasReconciliation = reconciliation };
-                resp = await client.PostAsJsonAsync(
-                    $"{Constants.API.TimeSubmission.Unsubmit}{row.TimeSubmissionId}/unsubmit", payload);
-            }
-            else if (corrections?.DirectCorrectionCount > 0)
-            {
-                resp = await client.PostAsJsonAsync(
-                    $"{Constants.API.TimeSubmission.Unsubmit}{row.TimeSubmissionId}/unsubmit",
-                    new UnsubmitTimeSubmissionDto());
-            }
-            else
-            {
-                resp = await client.DeleteAsync($"{Constants.API.TimeSubmission.Delete}{row.TimeSubmissionId}");
-            }
-
-            resp.EnsureSuccessStatusCode();
-            Snackbar.Add($"Unsubmitted {row.UserName}'s {new DateTime(row.Year, row.Month, 1):MMM yyyy}.", Severity.Success);
-            SubmissionEvents.NotifyChanged();
-            await ReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Couldn't unsubmit: {ex.Message}", Severity.Error);
+            if (await Actions.UnsubmitAsync(row.TimeSubmissionId, row.UserName, row.Year, row.Month))
+                await ReloadAsync();
         }
         finally
         {
