@@ -43,6 +43,22 @@ namespace My.DAL.Models
         public DateTime? GoogleEventUpdatedUtc { get; set; }
 
         /// <summary>
+        /// Google's event start (UTC instant, or the all-day date at 00:00) as of the last
+        /// import from, or successful push to, this event. Inbound sync compares Google's
+        /// current start/end with this snapshot: only when Google's times actually moved does
+        /// it overwrite <see cref="StartDate"/>/<see cref="EndDate"/>/<see cref="Duration"/>.
+        /// That keeps a time the user corrected in Tyme on an invite they do not organize
+        /// (Tyme cannot move the organizer's event). Null for rows synced before this column
+        /// existed — treated as "moved", so those rows keep the old overwrite behavior once.
+        /// </summary>
+        public DateTime? GoogleEventStartUtc { get; set; }
+
+        /// <summary>
+        /// Google's event end as of the last sync. See <see cref="GoogleEventStartUtc"/>.
+        /// </summary>
+        public DateTime? GoogleEventEndUtc { get; set; }
+
+        /// <summary>
         /// When true, this entry covers full calendar days (Vacation/OOO style); StartDate
         /// is the first day at 00:00 in the user's zone and EndDate is the last day at 23:59.
         /// Duration is the elapsed work time. Timed entries stay under 24h and map to
@@ -58,5 +74,12 @@ namespace My.DAL.Models
         /// and the workspace has configured a calendar id. Null otherwise.
         /// </summary>
         public string? TeamAvailabilityEventId { get; set; }
+
+        /// <summary>
+        /// When this row was first saved (UTC). Stamped by <c>ApplicationDbContext.SaveChanges</c>
+        /// for every new row, whatever created it (manual entry, Duplicate, stopwatch, Google import).
+        /// Null for rows saved before this column existed — unknown, not backfilled.
+        /// </summary>
+        public DateTime? CreatedUtc { get; set; }
     }
 }

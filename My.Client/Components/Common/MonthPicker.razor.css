@@ -1,0 +1,21 @@
+.month-picker-panel {
+    width: 248px;
+    padding: 4px 8px 8px;
+}
+
+.month-picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.month-picker-year {
+    font-weight: 600;
+}
+
+.month-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+}

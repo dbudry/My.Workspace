@@ -51,6 +51,12 @@ public partial class WeekDayAcrossGrid : IDisposable
         public CellSaveStatus Status { get; set; }
         public int SaveGeneration { get; set; }
         public CancellationTokenSource? DebounceCts { get; set; }
+
+        /// <summary>One save at a time; a second request waits for the first.</summary>
+        public CellSaveGate SaveGate { get; } = new();
+
+        /// <summary>Id sent with a create and reused until a create succeeds.</summary>
+        public string? PendingCreateId { get; set; }
     }
 
     private sealed class RowVm
@@ -733,6 +739,8 @@ public partial class WeekDayAcrossGrid : IDisposable
             }
         }
 
+        // Enter saves at once, then blur schedules another save. While the first create is
+        // still on the wire cell.TaskId is empty, so the second would create again.
         var decision = WeekEntryGridRules.DecideMutation(cell.TaskId, cell.SavedDuration, newDuration);
         if (decision.Kind == WeekEntryGridRules.CellMutationKind.None)
         {
@@ -740,6 +748,9 @@ public partial class WeekDayAcrossGrid : IDisposable
             await InvokeAsync(StateHasChanged);
             return;
         }
+
+        if (!cell.SaveGate.TryBegin())
+            return;
 
         cell.Status = CellSaveStatus.Saving;
         await InvokeAsync(StateHasChanged);
@@ -777,6 +788,11 @@ public partial class WeekDayAcrossGrid : IDisposable
             Snackbar.AddApiError(ex, "Couldn't save day entry.");
             await InvokeAsync(StateHasChanged);
         }
+        finally
+        {
+            if (cell.SaveGate.End() && !disposed)
+                ScheduleSave(row, dayIndex);
+        }
     }
 
     private static void ApplyDraftIdentity(RowVm row, string taskName)
@@ -805,7 +821,8 @@ public partial class WeekDayAcrossGrid : IDisposable
             StartDate = SettingsService.ConvertFromUserTime(startLocal),
             Duration = duration,
             IsAllDay = false,
-            ProjectId = projectId
+            ProjectId = projectId,
+            TaskId = cell.PendingCreateId ??= Guid.NewGuid().ToString()
         };
 
         var response = await client.PostAsJsonAsync(Constants.API.TrackedTask.Create, dto);
@@ -823,6 +840,7 @@ public partial class WeekDayAcrossGrid : IDisposable
         weekTasks.Add(model);
 
         cell.TaskId = model.TaskId;
+        cell.PendingCreateId = null;
         cell.BoundStartDate = model.StartDate;
         cell.SavedDuration = WeekEntryGridRules.NormalizeDuration(model.Duration);
         cell.DurationText = WeekEntryGridRules.FormatDayDurationInput(cell.SavedDuration);

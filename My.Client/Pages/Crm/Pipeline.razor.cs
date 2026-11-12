@@ -1,34 +1,31 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
-using MudBlazor;
-using My.Client.Components.Crm;
 using My.Client.Services;
 using My.Shared.Constants;
 using My.Shared.Dtos.Crm;
 using My.Shared.Dtos.Paging;
-using My.Shared.Rules;
 
 namespace My.Client.Pages.Crm;
 
 public partial class Pipeline
 {
     [Inject] private CrmService Crm { get; set; } = null!;
-    [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
     [CascadingParameter] private Task<AuthenticationState> AuthStateTask { get; set; } = null!;
 
-    private List<OpportunityListItemDto> items = new();
+    private List<PotentialListItemDto> items = new();
+    private List<CrmStageDto> stages = new();
     private string? stageFilter;
     private string? search;
     private bool includeArchived;
     private bool loading = true;
     private bool canEdit;
-    private bool canManage;
 
     protected override async Task OnInitializedAsync()
     {
         var user = (await AuthStateTask).User;
         canEdit = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Crm, Constants.Roles.Editor);
-        canManage = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Crm, Constants.Roles.Manager);
+        stages = await Crm.StagesAsync() ?? new();
         await ReloadAsync();
     }
 
@@ -56,7 +53,7 @@ public partial class Pipeline
                 Search = search,
                 IncludeArchived = includeArchived
             }, stageFilter);
-            items = response?.Items?.ToList() ?? new List<OpportunityListItemDto>();
+            items = response?.Items?.ToList() ?? new List<PotentialListItemDto>();
         }
         finally
         {
@@ -64,22 +61,10 @@ public partial class Pipeline
         }
     }
 
-    private Task CreateAsync() => OpenAsync(null);
-
-    private async Task OpenAsync(string? opportunityId)
+    private void Open(PotentialListItemDto? item)
     {
-        var parameters = new DialogParameters<OpportunityDialog>
-        {
-            { x => x.OpportunityId, opportunityId },
-            { x => x.CanEdit, canEdit },
-            { x => x.CanManage, canManage }
-        };
-        var dialog = await DialogService.ShowAsync<OpportunityDialog>(
-            opportunityId == null ? "New opportunity" : "Opportunity",
-            parameters,
-            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is { Canceled: false })
-            await ReloadAsync();
+        if (item == null)
+            return;
+        Navigation.NavigateTo($"crm/potential/{item.PotentialId}");
     }
 }

@@ -20,6 +20,7 @@
                         Class="submit-view-toggle">
             <MudToggleItem Value="@("my")">My</MudToggleItem>
             <MudToggleItem Value="@("team")">Team</MudToggleItem>
+            <MudToggleItem Value="@("grid")">Grid</MudToggleItem>
         </MudToggleGroup>
     </MudStack>
 }
@@ -28,6 +29,10 @@
     @if (ShowMyMonths)
     {
         <SectionCard Title="Your months">
+            @if (busyKey != null)
+            {
+                <MudProgressLinear Indeterminate="true" Class="mb-2" />
+            }
             @if (rows.Count == 0)
             {
                 <EmptyState Icon="@Icons.Material.Outlined.AccessTime"
@@ -72,11 +77,20 @@
                                avoids the "Submit" / "Unsubmit" toggle confusion in this row. *@
                             @if (!context.IsSubmitted)
                             {
+                                var rowBusy = busyKey == $"{context.Year}-{context.Month}";
                                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                           StartIcon="@Icons.Material.Filled.Send"
+                                           StartIcon="@(rowBusy ? null : Icons.Material.Filled.Send)"
                                            OnClick="@(() => SubmitAsync(context))"
-                                           Disabled="@(busyKey == $"{context.Year}-{context.Month}")">
-                                    Submit@(context.IsEarly ? " early" : "")
+                                           Disabled="@(busyKey != null)">
+                                    @if (rowBusy)
+                                    {
+                                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                        <span>Submitting…</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Submit@(context.IsEarly ? " early" : "")</span>
+                                    }
                                 </MudButton>
                             }
                         </MudTd>
@@ -86,17 +100,23 @@
         </SectionCard>
     }
 
+    @if (ShowGrid)
+    {
+        <SectionCard Title="Submission grid">
+            <SubmissionGridView />
+        </SectionCard>
+    }
+
     @if (ShowTeamSubmissions)
     {
         <SectionCard Title="Team submissions">
             <MudText Typo="Typo.body2" Class="mb-3" Style="color: var(--mud-palette-text-secondary);">
-                Every (employee × month) you can manage. Filter by status, employee, or month.
+                Every (employee × month) you can manage. Filter by status, employee, or a range of months.
                 Click <strong>Unsubmit</strong> on any submitted row to unlock that month for the
                 employee — useful if they need to correct an entry after submitting.
             </MudText>
             <TeamSubmissionsView ShowFilters="true"
                                  DefaultStatusFilter="all"
-                                 DefaultYearFilter="@DateTime.Today.Year"
                                  EmptyMessage="No matching rows. Adjust the filters or wait for employees to track more time." />
         </SectionCard>
     }

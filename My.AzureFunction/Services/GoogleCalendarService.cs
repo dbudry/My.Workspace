@@ -126,9 +126,73 @@ namespace My.Functions.Services
             => MutateAsync(encryptedRefreshToken, async svc =>
                 await svc.Events.Insert(BuildEvent(task, projectSlug, timeZone, matchedColorId, unmatchedColorId), calendarId).ExecuteAsync(ct));
 
-        public Task<Event> UpdateEventAsync(string encryptedRefreshToken, string calendarId, string eventId, TrackedTask task, string? projectSlug, string? timeZone, string? matchedColorId, string? unmatchedColorId, CancellationToken ct = default)
+        /// <summary>
+        /// Writes a Tyme edit onto an existing event: read, change only the Tyme-owned
+        /// fields (title, start/end, color, Tyme private properties), write back. A blind
+        /// PUT built from <see cref="BuildEvent"/> used to drop description, location,
+        /// attendees and the Meet link from meetings the user organizes.
+        ///
+        /// No write for an invite the user does not organize (only the organizer can move
+        /// it) — see <see cref="CalendarPushRules.CanPushUpdate"/>. A cancelled event is
+        /// reported as <see cref="CalendarEventUpdateKind.Gone"/> so the caller recreates
+        /// instead of reviving it.
+        /// </summary>
+        public Task<CalendarEventUpdateResult> UpdateEventAsync(string encryptedRefreshToken, string calendarId, string eventId, TrackedTask task, string? projectSlug, string? timeZone, string? matchedColorId, string? unmatchedColorId, CancellationToken ct = default)
             => MutateAsync(encryptedRefreshToken, async svc =>
-                await svc.Events.Update(BuildEvent(task, projectSlug, timeZone, matchedColorId, unmatchedColorId), calendarId, eventId).ExecuteAsync(ct));
+            {
+                var current = await svc.Events.Get(calendarId, eventId).ExecuteAsync(ct);
+                if (CalendarPushRules.IsCancelled(current.Status))
+                    return new CalendarEventUpdateResult(CalendarEventUpdateKind.Gone, current);
+                if (!CalendarPushRules.CanPushUpdate(current.Organizer?.Self))
+                    return new CalendarEventUpdateResult(CalendarEventUpdateKind.NotOrganizer, current);
+
+                ApplyTymeFields(current, task, projectSlug, timeZone, matchedColorId, unmatchedColorId);
+                var updated = await svc.Events.Update(current, calendarId, eventId).ExecuteAsync(ct);
+                return new CalendarEventUpdateResult(CalendarEventUpdateKind.Pushed, updated);
+            });
+
+        /// <summary>
+        /// Stamps the sync state Tyme keeps for a Google event it just created, updated or
+        /// imported: id, Google's <c>updated</c>, and Google's start/end snapshot. Inbound
+        /// sync uses these to skip unchanged events and to tell whether Google's times moved.
+        /// </summary>
+        public static void RecordSyncedEvent(TrackedTask task, Event ev)
+        {
+            task.GoogleEventId = ev.Id;
+            task.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
+            var (start, end) = ReadEventTimes(ev);
+            task.GoogleEventStartUtc = start;
+            task.GoogleEventEndUtc = end;
+        }
+
+        /// <summary>Clears the sync state when Tyme drops its link to a Google event.</summary>
+        public static void ClearSyncedEvent(TrackedTask task)
+        {
+            task.GoogleEventId = null;
+            task.GoogleEventUpdatedUtc = null;
+            task.GoogleEventStartUtc = null;
+            task.GoogleEventEndUtc = null;
+        }
+
+        /// <summary>
+        /// Google's start/end in the same shape inbound import stores on TrackedTask
+        /// (timed = UTC instant with Kind=Utc; all-day = date at 00:00 / last day 23:59).
+        /// Null when the event has no usable dates.
+        /// </summary>
+        public static (DateTime? Start, DateTime? End) ReadEventTimes(Event ev)
+        {
+            var parsed = CalendarEventDateRules.Parse(
+                ev.Start?.DateTimeDateTimeOffset?.UtcDateTime,
+                ev.End?.DateTimeDateTimeOffset?.UtcDateTime,
+                ev.Start?.Date,
+                ev.End?.Date);
+            if (parsed == null)
+                return (null, null);
+            if (parsed.IsAllDay)
+                return (parsed.StartDate, parsed.EndDate);
+            return (DateTime.SpecifyKind(parsed.StartDate, DateTimeKind.Utc),
+                    DateTime.SpecifyKind(parsed.EndDate, DateTimeKind.Utc));
+        }
 
         public Task DeleteEventAsync(string encryptedRefreshToken, string calendarId, string eventId, CancellationToken ct = default)
             => MutateAsync(encryptedRefreshToken, async svc =>
@@ -322,24 +386,28 @@ namespace My.Functions.Services
 
         private static Event BuildEvent(TrackedTask task, string? projectSlug, string? timeZone, string? matchedColorId, string? unmatchedColorId)
         {
+            var ev = new Event();
+            ApplyTymeFields(ev, task, projectSlug, timeZone, matchedColorId, unmatchedColorId);
+            return ev;
+        }
+
+        /// <summary>
+        /// Sets the fields Tyme owns on a personal-calendar event. Used for a new event and
+        /// for read-modify-write updates, so every other field Google holds stays as it is.
+        /// </summary>
+        private static void ApplyTymeFields(Event ev, TrackedTask task, string? projectSlug, string? timeZone, string? matchedColorId, string? unmatchedColorId)
+        {
             // Prefix the title with the project slug in [brackets] so the event reads
             // round-trip correctly: inbound sync (or a user manually editing in Google
             // Calendar) can re-route via the same tag.
             var hasSlug = !string.IsNullOrEmpty(projectSlug);
-            var summary = hasSlug ? $"[{projectSlug}] {task.Details}" : task.Details;
+            ev.Summary = hasSlug ? $"[{projectSlug}] {task.Details}" : task.Details;
 
-            var ev = new Event
-            {
-                Summary = summary,
-                ExtendedProperties = new Event.ExtendedPropertiesData
-                {
-                    Private__ = new Dictionary<string, string>
-                    {
-                        [ExtendedPropSource] = ExtendedPropSourceValue,
-                        [ExtendedPropTymeTaskId] = task.TaskId
-                    }
-                }
-            };
+            // Merge Tyme's private properties; keep any others already on the event.
+            ev.ExtendedProperties ??= new Event.ExtendedPropertiesData();
+            ev.ExtendedProperties.Private__ ??= new Dictionary<string, string>();
+            ev.ExtendedProperties.Private__[ExtendedPropSource] = ExtendedPropSourceValue;
+            ev.ExtendedProperties.Private__[ExtendedPropTymeTaskId] = task.TaskId;
 
             ApplyTimeBounds(ev, task, timeZone);
 
@@ -348,14 +416,10 @@ namespace My.Functions.Services
             //   - Unmatched events: "11" (Tomato) → visual "needs a project" flag.
             // We deliberately don't emit an empty string for ColorId — Google's Insert endpoint
             // rejects "" as an invalid color value, which previously broke backfill. The .NET
-            // client only serializes set properties, so leaving the field unassigned omits it
-            // from the request body; on Update, omission clears any stale color via PUT semantics.
-            var chosenColor = GoogleEventColors.NormalizeOrNull(
+            // client only serializes set properties, so a null field is omitted from the
+            // request body; on Update (PUT of the fetched event), omission clears a stale color.
+            ev.ColorId = GoogleEventColors.NormalizeOrNull(
                 hasSlug ? matchedColorId : unmatchedColorId ?? GoogleEventColors.DefaultUnmatchedColorId);
-            if (chosenColor != null)
-                ev.ColorId = chosenColor;
-
-            return ev;
         }
 
         private static Event BuildTeamAvailabilityEvent(TrackedTask task, string displayName, string? projectName, string? timeZone)

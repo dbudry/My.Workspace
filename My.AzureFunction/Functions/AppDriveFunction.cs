@@ -208,6 +208,8 @@ public class AppDriveFunction
             token, shared.Id, AppDriveLayoutRules.ExpensesFolderName);
         await drive.FindOrCreateFolderAsync(
             token, expenses.Id, ExpenseDriveNamingRules.FiledFolderName);
+        var crm = await drive.FindOrCreateFolderAsync(
+            token, shared.Id, AppDriveLayoutRules.CrmFolderName);
 
         await UpsertSettingAsync(
             Constants.SettingKeys.IntranetDriveParentFolderId,
@@ -217,6 +219,10 @@ public class AppDriveFunction
             Constants.SettingKeys.ExpensesDriveParentFolderId,
             expenses.Id ?? "",
             "Google Drive folder ID for the Expenses root under the App Shared Drive.");
+        await UpsertSettingAsync(
+            Constants.SettingKeys.CrmDriveParentFolderId,
+            crm.Id ?? "",
+            "Google Drive folder ID for the CRM root under the App Shared Drive.");
         await db.SaveChangesAsync();
     }
 
@@ -228,6 +234,8 @@ public class AppDriveFunction
             .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.IntranetDriveParentFolderId);
         var expenses = await db.AppSettings.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.ExpensesDriveParentFolderId);
+        var crm = await db.AppSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Key == Constants.SettingKeys.CrmDriveParentFolderId);
 
         var dto = new AppDriveStatusDto
         {
@@ -236,7 +244,8 @@ public class AppDriveFunction
             SharedDriveId = row?.SharedDriveId ?? AppDriveLayoutRules.SharedDriveId,
             SharedDriveName = AppDriveLayoutRules.SharedDriveName,
             IntranetFolderId = string.IsNullOrWhiteSpace(intranet?.Value) ? null : intranet.Value.Trim(),
-            ExpensesFolderId = string.IsNullOrWhiteSpace(expenses?.Value) ? null : expenses.Value.Trim()
+            ExpensesFolderId = string.IsNullOrWhiteSpace(expenses?.Value) ? null : expenses.Value.Trim(),
+            CrmFolderId = string.IsNullOrWhiteSpace(crm?.Value) ? null : crm.Value.Trim()
         };
 
         if (!string.IsNullOrEmpty(row?.EncryptedRefreshToken))

@@ -1,0 +1,342 @@
+@namespace My.Client.Components.TimeSubmissions
+@using My.Client.Components.Common
+@using My.Client.Services
+@using My.Shared.Constants
+@using My.Shared.Dtos.TimeSubmission
+@using My.Shared.Rules
+@using System.Net
+@using System.Net.Http.Json
+
+@inject IHttpClientFactory ClientFactory
+@inject ISnackbar Snackbar
+@inject SubmissionActionsService Actions
+@inject AppSettingsCache AppSettingsCache
+
+@*
+    Manager grid: employees down, months across. Defaults to last, this and next month for
+    everyone. The range and the employee list can be changed. Data: GET /api/timesubmissions/grid.
+*@
+
+<div class="sub-grid-toolbar">
+    <div class="sub-grid-field sub-grid-field--status">
+        <MultiSelectCheckList Options="@SubmissionGridRules.StatusOptions" SelectedKeys="@statusFilter"
+                              SelectedKeysChanged="@(k => statusFilter = k)" Label="Status"
+                              AllLabel="All statuses" ShowSearch="false" />
+    </div>
+    <div class="sub-grid-field sub-grid-field--month">
+        <MonthPicker Value="@fromDate" ValueChanged="OnFromChanged" Label="From month" />
+    </div>
+    <div class="sub-grid-field sub-grid-field--month">
+        <MonthPicker Value="@toDate" ValueChanged="OnToChanged" Label="To month" />
+    </div>
+    <div class="sub-grid-field sub-grid-field--employees">
+        <MultiSelectCheckList Options="@employeeOptions" SelectedKeys="@selectedIds"
+                              SelectedKeysChanged="OnEmployeesChanged" Label="Employees"
+                              AllLabel="All employees" />
+    </div>
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="LoadAsync"
+                   title="Refresh" aria-label="Refresh" />
+    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ResetAsync">Reset</MudButton>
+</div>
+
+@if (isLoading)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-2" />
+}
+else if (grid == null || grid.Rows.Count == 0)
+{
+    <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+        @(selectedIds is { Count: 0 } ? "No employees selected." : "No employees to show for this selection.")
+    </MudText>
+}
+else if (visibleRows.Count == 0)
+{
+    <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">
+        @(statusFilter is { Count: 0 } ? "No statuses selected." : "No employee has a month with that status in this range.")
+    </MudText>
+}
+else
+{
+    <div class="sub-grid-wrap">
+        <table class="sub-grid-table">
+            <thead>
+                <tr>
+                    <th class="sub-grid-name">Employee</th>
+                    @foreach (var m in grid.Months)
+                    {
+                        <th>@SubmissionGridRules.MonthLabel(m.Year, m.Month)</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in visibleRows)
+                {
+                    <tr>
+                        <td class="sub-grid-name">@row.UserName</td>
+                        @for (var i = 0; i < row.Cells.Count; i++)
+                        {
+                            var cell = row.Cells[i];
+                            var month = grid.Months[i];
+                            @if (!SubmissionGridRules.CellMatchesStatus(cell.Status, statusFilter))
+                            {
+                                <td></td>
+                            }
+                            else if (CanAct(row, cell))
+                            {
+                                // Looks like any other cell. Clicking opens a small menu, nothing is added to the cell.
+                                var r = row;
+                                <td class="@CellClass(cell.Status) sub-grid-cell--action" title="@CellTitle(cell)">
+                                    <MudMenu Dense="true" Disabled="@(busy)" AnchorOrigin="Origin.BottomCenter"
+                                             TransformOrigin="Origin.TopCenter">
+                                        <ActivatorContent>
+                                            <div class="sub-grid-cell-fill" @onclick="context.ToggleAsync">@SubmissionGridRules.StatusLabel(cell.Status)</div>
+                                        </ActivatorContent>
+                                        <ChildContent>
+                                            @* Alphabetical: Send reminder, Submit for employee, Unsubmit. *@
+                                            @if (CanRemind(cell))
+                                            {
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Email"
+                                                             OnClick="@(() => SendReminderAsync(r, month))">Send reminder</MudMenuItem>
+                                            }
+                                            @if (CanSubmitOnBehalf(cell))
+                                            {
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Send"
+                                                             OnClick="@(() => SubmitOnBehalfAsync(r, month))">Submit for employee</MudMenuItem>
+                                            }
+                                            @if (CanUnsubmit(cell))
+                                            {
+                                                <MudMenuItem Icon="@Icons.Material.Filled.LockOpen"
+                                                             OnClick="@(() => UnsubmitAsync(r, cell, month))">Unsubmit</MudMenuItem>
+                                            }
+                                        </ChildContent>
+                                    </MudMenu>
+                                </td>
+                            }
+                            else
+                            {
+                                <td class="@CellClass(cell.Status)" title="@CellTitle(cell)"
+                                    aria-label="@SubmissionGridRules.StatusLabel(cell.Status)">@SubmissionGridRules.StatusLabel(cell.Status)</td>
+                            }
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="d-flex flex-wrap align-center gap-3 mt-2 sub-grid-legend">
+        @foreach (var s in new[] { SubmissionCellStatus.Submitted, SubmissionCellStatus.Unsubmitted,
+                                   SubmissionCellStatus.Open, SubmissionCellStatus.NoData })
+        {
+            <span class="sub-grid-legend-item">
+                <span class="sub-grid-swatch @CellClass(s)"></span>@SubmissionGridRules.StatusLabel(s)
+            </span>
+        }
+    </div>
+}
+
+@code {
+    private HttpClient client = null!;
+    private bool isLoading = true;
+    private SubmissionGridDto? grid;
+
+    /// <summary>
+    /// Picked status keys (submitted, unsubmitted, open, notime). null = all, empty = none.
+    /// Cells with another status are blanked, and employees left with no visible cell are hidden.
+    /// </summary>
+    private IReadOnlyCollection<string>? statusFilter;
+
+    private IReadOnlyList<SubmissionGridRowDto> visibleRows =>
+        grid == null
+            ? []
+            : grid.Rows.Where(r => r.Cells.Any(c => SubmissionGridRules.CellMatchesStatus(c.Status, statusFilter))).ToList();
+
+    private DateTime? fromDate;
+    private DateTime? toDate;
+    /// <summary>null = all employees, empty = none, otherwise the picked ids.</summary>
+    private IReadOnlyCollection<string>? selectedIds;
+
+    /// <summary>Filled from the first load (everyone) so picking one person does not shrink the list.</summary>
+    private IReadOnlyList<(string Key, string Text)> employeeOptions = [];
+
+    /// <summary>App setting: managers may submit for an employee (same switch as Team).</summary>
+    private bool allowManagerSubmitOnBehalf;
+    private bool busy;
+
+    /// <summary>App setting: managers may email an employee a reminder about unsubmitted months.</summary>
+    private bool reminderEnabled;
+
+    private bool CanUnsubmit(SubmissionGridCellDto cell) =>
+        cell.Status == SubmissionCellStatus.Submitted && !string.IsNullOrEmpty(cell.TimeSubmissionId);
+
+    private bool CanSubmitOnBehalf(SubmissionGridCellDto cell) =>
+        cell.Status == SubmissionCellStatus.Unsubmitted && allowManagerSubmitOnBehalf;
+
+    /// <summary>Only a Not submitted cell offers the reminder. The clicked month is where coverage starts.</summary>
+    private bool CanRemind(SubmissionGridCellDto cell) =>
+        reminderEnabled && UnsubmittedReminderRules.IsUnsubmitted(cell);
+
+    private bool CanAct(SubmissionGridRowDto row, SubmissionGridCellDto cell) =>
+        !busy && (CanUnsubmit(cell) || CanSubmitOnBehalf(cell) || CanRemind(cell));
+
+    private async Task SendReminderAsync(SubmissionGridRowDto row, SubmissionGridMonthDto month)
+    {
+        // Nothing changes in the data, so no reload.
+        busy = true;
+        try
+        {
+            await Actions.SendReminderAsync(row.UserId, row.UserName, month.Year, month.Month);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task UnsubmitAsync(SubmissionGridRowDto row, SubmissionGridCellDto cell, SubmissionGridMonthDto month)
+    {
+        await RunActionAsync(() => Actions.UnsubmitAsync(cell.TimeSubmissionId!, row.UserName, month.Year, month.Month));
+    }
+
+    private async Task SubmitOnBehalfAsync(SubmissionGridRowDto row, SubmissionGridMonthDto month)
+    {
+        await RunActionAsync(() => Actions.SubmitOnBehalfAsync(row.UserId, row.UserName, month.Year, month.Month));
+    }
+
+    private async Task RunActionAsync(Func<Task<bool>> action)
+    {
+        busy = true;
+        try
+        {
+            if (await action())
+                await LoadAsync();
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        client = ClientFactory.CreateClient(Constants.API.ClientName);
+        try
+        {
+            var settings = await AppSettingsCache.GetAsync();
+            var setting = settings.FirstOrDefault(s =>
+                string.Equals(s.Key, Constants.SettingKeys.TymeAllowManagerSubmitOnBehalf, StringComparison.Ordinal));
+            allowManagerSubmitOnBehalf = ManagerSubmitOnBehalfRules.IsEnabled(setting?.Value);
+            var reminder = settings.FirstOrDefault(s =>
+                string.Equals(s.Key, Constants.SettingKeys.TymeUnsubmittedReminderEnabled, StringComparison.Ordinal));
+            reminderEnabled = UnsubmittedReminderRules.IsEnabled(reminder?.Value);
+        }
+        catch
+        {
+            allowManagerSubmitOnBehalf = false;
+            reminderEnabled = false;
+        }
+        SetDefaultRange();
+        await LoadAsync();
+    }
+
+    private void SetDefaultRange()
+    {
+        var (from, to) = SubmissionGridRules.DefaultRange(DateTime.UtcNow);
+        fromDate = new DateTime(from.Year, from.Month, 1);
+        toDate = new DateTime(to.Year, to.Month, 1);
+    }
+
+    private async Task ResetAsync()
+    {
+        SetDefaultRange();
+        selectedIds = null;
+        statusFilter = null;
+        await LoadAsync();
+    }
+
+    private async Task OnFromChanged(DateTime? value)
+    {
+        if (value == null) return;
+        fromDate = new DateTime(value.Value.Year, value.Value.Month, 1);
+        await LoadAsync();
+    }
+
+    private async Task OnToChanged(DateTime? value)
+    {
+        if (value == null) return;
+        toDate = new DateTime(value.Value.Year, value.Value.Month, 1);
+        await LoadAsync();
+    }
+
+    private async Task OnEmployeesChanged(IReadOnlyCollection<string>? keys)
+    {
+        selectedIds = keys;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (fromDate == null || toDate == null) return;
+
+        var from = (fromDate.Value.Year, fromDate.Value.Month);
+        var to = (toDate.Value.Year, toDate.Value.Month);
+        if (!SubmissionGridRules.IsValidRange(from, to))
+        {
+            Snackbar.Add($"Choose a range of 1 to {SubmissionGridRules.MaxMonths} months, start before end.", Severity.Warning);
+            return;
+        }
+
+        if (selectedIds is { Count: 0 })
+        {
+            // Every employee box is cleared: show nothing, no request needed.
+            grid = null;
+            return;
+        }
+
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            var qs = new List<string>
+            {
+                $"from={SubmissionGridRules.FormatMonth(from.Item1, from.Item2)}",
+                $"to={SubmissionGridRules.FormatMonth(to.Item1, to.Item2)}"
+            };
+            if (selectedIds != null)
+                qs.Add($"userIds={Uri.EscapeDataString(string.Join(",", selectedIds))}");
+
+            grid = await client.GetFromJsonAsync<SubmissionGridDto>(
+                $"{Constants.API.TimeSubmission.GetGrid}?{string.Join("&", qs)}");
+
+            if (selectedIds == null && grid != null)
+                employeeOptions = grid.Rows.Select(r => (r.UserId, r.UserName)).ToList();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            grid = null;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Couldn't load the submission grid: {ex.Message}", Severity.Error);
+            grid = null;
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Cells are plain color blocks in the same palette colors as the Team status chips.
+    private static string CellClass(SubmissionCellStatus status) => status switch
+    {
+        SubmissionCellStatus.Submitted => "sub-grid-cell--submitted",
+        SubmissionCellStatus.Unsubmitted => "sub-grid-cell--unsubmitted",
+        SubmissionCellStatus.Open => "sub-grid-cell--open",
+        _ => "sub-grid-cell--nodata"
+    };
+
+    private static string? CellTitle(SubmissionGridCellDto cell) =>
+        cell.Status == SubmissionCellStatus.Submitted && cell.SubmittedAt.HasValue
+            ? $"Submitted {cell.SubmittedAt.Value.ToLocalTime():MM/dd/yyyy}"
+            : SubmissionGridRules.StatusLabel(cell.Status);
+}

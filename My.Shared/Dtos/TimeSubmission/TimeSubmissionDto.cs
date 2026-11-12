@@ -8,6 +8,8 @@ namespace My.Shared.Dtos.TimeSubmission
         public int Month { get; set; }
         public DateTime SubmittedAt { get; set; }
         public string SubmittedByUserId { get; set; } = null!;
+        /// <summary>Set on submit when the notification email did not send. The submission still saved.</summary>
+        public string? EmailWarning { get; set; }
     }
 
     public class CreateTimeSubmissionDto
@@ -47,6 +49,16 @@ namespace My.Shared.Dtos.TimeSubmission
         public int Year { get; set; }
         public int Month { get; set; }
         public bool IsSubmitted { get; set; }
+        /// <summary>
+        /// True for a past month in which the employee tracked no time. Such a row is neither
+        /// submitted nor outstanding, so it has no Submit or Unsubmit action.
+        /// </summary>
+        public bool NoTime { get; set; }
+        /// <summary>
+        /// True for the current or a future month with tracked time that is not submitted yet.
+        /// Not due, so it has no Submit or Unsubmit action.
+        /// </summary>
+        public bool Open { get; set; }
         /// <summary>When IsSubmitted=true. Null otherwise.</summary>
         public DateTime? SubmittedAt { get; set; }
         /// <summary>Set when IsSubmitted=true — needed by the manager Unsubmit button.</summary>

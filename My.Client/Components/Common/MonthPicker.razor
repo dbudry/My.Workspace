@@ -1,0 +1,84 @@
+@namespace My.Client.Components.Common
+
+@*
+    Month + year picker. MudBlazor has no month-only picker (checked through 9.12), and MudDatePicker
+    with OpenTo.Month renders a clipped popup with the day toolbar when the field is narrow.
+    Shows "Oct 2026" in a read-only field; the popup is a year header with arrows and a 4x3 month grid.
+    Value is always the first day of the month, so it compares cleanly with other month values.
+*@
+
+<MudMenu @ref="menu" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" FullWidth="true"
+         Disabled="@Disabled">
+    <ActivatorContent>
+        <div @onclick="@(async (Microsoft.AspNetCore.Components.Web.MouseEventArgs e) => { OnOpened(); await context.ToggleAsync(e); })"
+             style="cursor: pointer;">
+            <MudTextField T="string" Value="@Text" Label="@Label"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" ReadOnly="true"
+                          Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.CalendarMonth"
+                          Disabled="@Disabled" />
+        </div>
+    </ActivatorContent>
+    <ChildContent>
+        <div class="month-picker-panel" @onclick:stopPropagation="true">
+            <div class="month-picker-header">
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small"
+                               Disabled="@(viewYear <= MinYear)" OnClick="PreviousYear" aria-label="Previous year" />
+                <span class="month-picker-year">@viewYear</span>
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small"
+                               Disabled="@(viewYear >= MaxYear)" OnClick="NextYear" aria-label="Next year" />
+            </div>
+            <div class="month-picker-grid">
+                @for (var m = 1; m <= 12; m++)
+                {
+                    var month = m;
+                    var selected = Value.HasValue && Value.Value.Year == viewYear && Value.Value.Month == month;
+                    <MudButton Variant="@(selected ? Variant.Filled : Variant.Text)"
+                               Color="@(selected ? Color.Primary : Color.Default)" Size="Size.Small"
+                               OnClick="@(() => PickAsync(month))">
+                        @MonthName(month)
+                    </MudButton>
+                }
+            </div>
+        </div>
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private MudMenu menu = null!;
+    private int viewYear = DateTime.Today.Year;
+
+    /// <summary>First day of the picked month, or null for none.</summary>
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Month";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public int MinYear { get; set; } = 2000;
+    [Parameter] public int MaxYear { get; set; } = 2100;
+
+    private string Text => Value.HasValue ? Value.Value.ToString("MMM yyyy") : "";
+
+    private static string MonthName(int month) => new DateTime(2000, month, 1).ToString("MMM");
+
+    protected override void OnParametersSet()
+    {
+        // Open on the year that is currently picked.
+        if (Value.HasValue) viewYear = Math.Clamp(Value.Value.Year, MinYear, MaxYear);
+    }
+
+    private void OnOpened()
+    {
+        viewYear = Math.Clamp(Value?.Year ?? DateTime.Today.Year, MinYear, MaxYear);
+    }
+
+    private void PreviousYear() => viewYear = Math.Max(MinYear, viewYear - 1);
+
+    private void NextYear() => viewYear = Math.Min(MaxYear, viewYear + 1);
+
+    private async Task PickAsync(int month)
+    {
+        Value = new DateTime(viewYear, month, 1);
+        await ValueChanged.InvokeAsync(Value);
+        await menu.CloseMenuAsync();
+    }
+}

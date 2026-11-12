@@ -447,7 +447,10 @@
                         connect, a dialog asks you to choose Export and Import (and a one-time backfill)
                         before sync starts. Tagged events import when you save them in Google Calendar
                         (a few seconds later if the app was idle). Edits you make in Google on a
-                        Tyme-created event come back into Tyme.
+                        Tyme-created event come back into Tyme. If you change the time in Tyme on a
+                        meeting someone else organized, the change stays in Tyme (only the organizer
+                        can move the Google event). It is replaced only if the organizer later moves
+                        the meeting in Google.
                         Use <strong>Pull missed events</strong>
                         in Settings for a manual rescan — the result lists what changed and names any
                         [tag] that did not match a project. A nightly job re-scans ±7 days as a backup.
@@ -516,6 +519,37 @@
                         <MudText Typo="Typo.body2" Class="mb-2">
                             On <strong>Submit</strong>, <strong>Team submissions</strong> lists employee × month
                             rows in scope. <strong>Unsubmit</strong> reopens that one person's month only.
+                            It starts with last month, this month and next month. Change <strong>From month</strong>
+                            and <strong>To month</strong> to look further back.
+                        </MudText>
+                        <MudText Typo="Typo.subtitle2" Class="mb-1">Grid and submit email</MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            On <strong>Submit</strong>, <strong>Grid</strong> shows each employee by month. It starts with
+                            last month, this month and next month for everyone. Change the months or pick employees
+                            with the checkboxes. Orange means a finished month is not submitted yet.
+                            <strong>Status</strong> is a checkbox list on both Grid and Team. Only the statuses you tick
+                            show: Grid blanks the other cells and hides employees with nothing left to show.
+                            <strong>In progress</strong> is the current or a future month with time that is not due yet.
+                            On <strong>Team</strong>, <strong>No time</strong> lists finished months in the
+                            range where an employee tracked nothing.
+                            Click a submitted cell to <strong>Unsubmit</strong> it. When App Settings allows managers to
+                            submit for employees, click an orange cell to <strong>Submit for employee</strong>.
+                            These work the same as the buttons on Team.
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            When an Admin turns on <strong>Allow reminder emails for unsubmitted time</strong> (Admin →
+                            App Settings → Tyme), click an orange cell and choose
+                            <strong>Send reminder</strong>. On Team, use <strong>Remind</strong> on a Not submitted row.
+                            You see the email first, with a grid, and choose <strong>Send</strong>
+                            or <strong>Cancel</strong>. The email goes to the employee and is signed with your name.
+                            Under <strong>Tyme → Settings → Reminder Email Grid</strong>, pick the date coverage (the month
+                            you clicked, a range of months around it, or its whole year) and which time statuses the grid shows.
+                            Not submitted always shows. The month you click is where the coverage starts.
+                        </MudText>
+                        <MudText Typo="Typo.body2" Class="mb-2">
+                            Under <strong>Tyme → Settings</strong>, choose which Tyme Editors and Managers are emailed when someone submits, and how many
+                            months the grid in the email shows. The grid lists every active Tyme user. The email names the person who submitted and
+                            highlights their row. With nobody listed, no email is sent.
                         </MudText>
                         <MudText Typo="Typo.body2">
                             Time-off categories live under <strong>Tyme → Availability</strong> — see Availability

@@ -782,7 +782,7 @@ namespace My.Functions
                 .Where(t => t.UserId == user.Id && t.GoogleEventId != null)
                 .ToListAsync();
             foreach (var t in taskRows)
-                t.GoogleEventId = null;
+                GoogleCalendarService.ClearSyncedEvent(t);
 
             // Force re-auth: revoking the calendar grant typically invalidates the SPA's
             // sign-in access_token too (shared OAuth grant). Setting this makes the app

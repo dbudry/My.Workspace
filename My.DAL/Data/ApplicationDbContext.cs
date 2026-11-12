@@ -35,8 +35,34 @@ namespace My.DAL.Data
         public DbSet<ExpenseCurrency> ExpenseCurrencies { get; set; } = null!;
         public DbSet<ExpenseFiledPdf> ExpenseFiledPdfs { get; set; } = null!;
         public DbSet<AppDriveCredential> AppDriveCredentials { get; set; } = null!;
-        public DbSet<Opportunity> Opportunities { get; set; } = null!;
-        public DbSet<CrmActivity> CrmActivities { get; set; } = null!;
+        public DbSet<CrmStage> CrmStages { get; set; } = null!;
+        public DbSet<Potential> Potentials { get; set; } = null!;
+        public DbSet<PotentialStatus> PotentialStatuses { get; set; } = null!;
+        public DbSet<CrmDiscussion> CrmDiscussions { get; set; } = null!;
+        public DbSet<CrmAttachment> CrmAttachments { get; set; } = null!;
+
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            StampCreatedUtc();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            StampCreatedUtc();
+            return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        /// <summary>One place for every insert path, so a new TrackedTask never lacks a created time.</summary>
+        private void StampCreatedUtc()
+        {
+            var now = DateTime.UtcNow;
+            foreach (var entry in ChangeTracker.Entries<TrackedTask>())
+            {
+                if (entry.State == EntityState.Added && entry.Entity.CreatedUtc == null)
+                    entry.Entity.CreatedUtc = now;
+            }
+        }
 
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
         {
@@ -93,6 +119,10 @@ namespace My.DAL.Data
                 .WithMany(d => d.Contacts)
                 .HasForeignKey(c => c.DepartmentId)
                 .OnDelete(DeleteBehavior.NoAction);
+
+            builder.Entity<Contact>()
+                .Property(c => c.RelationshipType)
+                .HasMaxLength(50);
 
             // Project
             builder.Entity<Project>()
@@ -617,90 +647,199 @@ namespace My.DAL.Data
             builder.Entity<AppDriveCredential>()
                 .HasKey(c => c.AppDriveCredentialId);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.OpportunityId)
+            builder.Entity<CrmStage>()
+                .Property(s => s.CrmStageId)
                 .ValueGeneratedOnAdd()
                 .IsRequired();
 
-            builder.Entity<Opportunity>().HasKey(o => o.OpportunityId);
+            builder.Entity<CrmStage>().HasKey(s => s.CrmStageId);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.Name)
+            builder.Entity<CrmStage>()
+                .Property(s => s.Name)
                 .IsRequired()
-                .HasMaxLength(200);
+                .HasMaxLength(50);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.Stage)
+            builder.Entity<CrmStage>()
+                .Property(s => s.Outcome)
                 .IsRequired()
                 .HasMaxLength(20);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.Amount)
+            builder.Entity<CrmStage>()
+                .HasIndex(s => s.SortOrder);
+
+            builder.Entity<Potential>()
+                .Property(p => p.PotentialId)
+                .ValueGeneratedOnAdd()
+                .IsRequired();
+
+            builder.Entity<Potential>().HasKey(p => p.PotentialId);
+
+            builder.Entity<Potential>()
+                .Property(p => p.Name)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            builder.Entity<Potential>()
+                .Property(p => p.Description)
+                .HasMaxLength(500);
+
+            builder.Entity<Potential>()
+                .Property(p => p.Amount)
                 .HasPrecision(18, 2);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.ExpectedCloseDate)
+            builder.Entity<Potential>()
+                .Property(p => p.ExpectedCloseDate)
                 .HasColumnType("date");
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.OwnerUserId)
+            builder.Entity<Potential>()
+                .Property(p => p.ActualCloseDate)
+                .HasColumnType("date");
+
+            builder.Entity<Potential>()
+                .Property(p => p.OwnerUserId)
                 .HasMaxLength(450);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.ContactId)
+            builder.Entity<Potential>()
+                .Property(p => p.CreatedByUserId)
                 .HasMaxLength(450);
 
-            builder.Entity<Opportunity>()
-                .Property(o => o.Note)
-                .HasMaxLength(500);
+            builder.Entity<Potential>()
+                .Property(p => p.ModifiedByUserId)
+                .HasMaxLength(450);
+
+            builder.Entity<Potential>()
+                .Property(p => p.ContactId)
+                .HasMaxLength(450);
 
             // SetNull so an organization delete still succeeds. ContactId is intentionally
-            // not a foreign key — see Opportunity.ContactId.
-            builder.Entity<Opportunity>()
-                .HasOne(o => o.Organization)
+            // not a foreign key — see Potential.ContactId. Stage delete is refused while
+            // a potential, status, discussion, or attachment still points at it.
+            builder.Entity<Potential>()
+                .HasOne(p => p.Organization)
                 .WithMany()
-                .HasForeignKey(o => o.OrganizationId)
+                .HasForeignKey(p => p.OrganizationId)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            builder.Entity<Opportunity>()
-                .HasIndex(o => o.OrganizationId);
+            builder.Entity<Potential>()
+                .HasOne(p => p.Stage)
+                .WithMany()
+                .HasForeignKey(p => p.CrmStageId)
+                .OnDelete(DeleteBehavior.Restrict);
 
-            builder.Entity<Opportunity>()
-                .HasIndex(o => o.Stage);
+            builder.Entity<Potential>()
+                .HasIndex(p => p.OrganizationId);
 
-            builder.Entity<CrmActivity>()
-                .Property(a => a.CrmActivityId)
+            builder.Entity<Potential>()
+                .HasIndex(p => p.CrmStageId);
+
+            builder.Entity<PotentialStatus>()
+                .Property(s => s.PotentialStatusId)
                 .ValueGeneratedOnAdd()
                 .IsRequired();
 
-            builder.Entity<CrmActivity>().HasKey(a => a.CrmActivityId);
+            builder.Entity<PotentialStatus>().HasKey(s => s.PotentialStatusId);
 
-            builder.Entity<CrmActivity>()
-                .Property(a => a.ActivityType)
+            builder.Entity<PotentialStatus>()
+                .Property(s => s.Body)
                 .IsRequired()
-                .HasMaxLength(20);
+                .HasMaxLength(500);
 
-            builder.Entity<CrmActivity>()
-                .Property(a => a.Subject)
+            builder.Entity<PotentialStatus>()
+                .Property(s => s.StatusDate)
+                .HasColumnType("date");
+
+            builder.Entity<PotentialStatus>()
+                .Property(s => s.CreatedByUserId)
+                .HasMaxLength(450);
+
+            builder.Entity<PotentialStatus>()
+                .HasOne(s => s.Potential)
+                .WithMany(p => p.Statuses)
+                .HasForeignKey(s => s.PotentialId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<PotentialStatus>()
+                .HasOne(s => s.Stage)
+                .WithMany()
+                .HasForeignKey(s => s.CrmStageId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<PotentialStatus>()
+                .HasIndex(s => s.PotentialId);
+
+            builder.Entity<CrmDiscussion>()
+                .Property(d => d.CrmDiscussionId)
+                .ValueGeneratedOnAdd()
+                .IsRequired();
+
+            builder.Entity<CrmDiscussion>().HasKey(d => d.CrmDiscussionId);
+
+            builder.Entity<CrmDiscussion>()
+                .Property(d => d.Message)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            builder.Entity<CrmDiscussion>()
+                .Property(d => d.AuthorUserId)
+                .IsRequired()
+                .HasMaxLength(450);
+
+            builder.Entity<CrmDiscussion>()
+                .HasOne(d => d.Potential)
+                .WithMany(p => p.Discussions)
+                .HasForeignKey(d => d.PotentialId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Entity<CrmDiscussion>()
+                .HasOne(d => d.Stage)
+                .WithMany()
+                .HasForeignKey(d => d.CrmStageId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<CrmDiscussion>()
+                .HasIndex(d => d.PotentialId);
+
+            builder.Entity<CrmAttachment>()
+                .Property(a => a.CrmAttachmentId)
+                .ValueGeneratedOnAdd()
+                .IsRequired();
+
+            builder.Entity<CrmAttachment>().HasKey(a => a.CrmAttachmentId);
+
+            builder.Entity<CrmAttachment>()
+                .Property(a => a.OriginalFileName)
                 .IsRequired()
                 .HasMaxLength(200);
 
-            builder.Entity<CrmActivity>()
-                .Property(a => a.Body)
-                .HasMaxLength(500);
+            builder.Entity<CrmAttachment>()
+                .Property(a => a.MimeType)
+                .IsRequired()
+                .HasMaxLength(100);
 
-            builder.Entity<CrmActivity>()
-                .Property(a => a.OwnerUserId)
+            builder.Entity<CrmAttachment>()
+                .Property(a => a.DriveFileId)
+                .IsRequired()
+                .HasMaxLength(128);
+
+            builder.Entity<CrmAttachment>()
+                .Property(a => a.UploadedByUserId)
+                .IsRequired()
                 .HasMaxLength(450);
 
-            builder.Entity<CrmActivity>()
-                .HasOne(a => a.Opportunity)
-                .WithMany(o => o.Activities)
-                .HasForeignKey(a => a.OpportunityId)
+            builder.Entity<CrmAttachment>()
+                .HasOne(a => a.Potential)
+                .WithMany(p => p.Attachments)
+                .HasForeignKey(a => a.PotentialId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            builder.Entity<CrmActivity>()
-                .HasIndex(a => a.OpportunityId);
+            builder.Entity<CrmAttachment>()
+                .HasOne(a => a.Stage)
+                .WithMany()
+                .HasForeignKey(a => a.CrmStageId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<CrmAttachment>()
+                .HasIndex(a => a.PotentialId);
 
             FillDataToDB(builder);
         }
@@ -816,6 +955,24 @@ namespace My.DAL.Data
                     Key = "ExpensesDriveParentFolderId",
                     Value = "",
                     Description = "Google Drive folder ID for the private Expenses root. Not shared company-wide."
+                },
+                new AppSetting
+                {
+                    Key = "CrmDriveParentFolderId",
+                    Value = "",
+                    Description = "Google Drive folder ID for the CRM root under the App Shared Drive."
+                },
+                new AppSetting
+                {
+                    Key = "CrmRelationshipTypes",
+                    Value = My.Shared.Rules.CrmRelationshipTypeRules.DefaultJson,
+                    Description = "JSON array of CRM relationship types (name and description) stored on contacts."
+                },
+                new AppSetting
+                {
+                    Key = "CrmDiscussionNotifyUserIds",
+                    Value = "[]",
+                    Description = "JSON array of user ids emailed when someone posts a CRM discussion."
                 },
                 new AppSetting
                 {
@@ -969,7 +1126,7 @@ namespace My.DAL.Data
                     Id = "30a1b2c3-d4e5-4678-9abc-def012345801",
                     Name = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.User, Constants.Scopes.Crm).ToUpper(),
-                    Description = "CRM-scoped user role (view the pipeline).",
+                    Description = "CRM-scoped user role (view the pipeline and post discussion).",
                     ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345801"
                 },
                 new ApplicationRole
@@ -977,7 +1134,7 @@ namespace My.DAL.Data
                     Id = "30a1b2c3-d4e5-4678-9abc-def012345802",
                     Name = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Editor, Constants.Scopes.Crm).ToUpper(),
-                    Description = "CRM-scoped editor role (create and edit opportunities and activities).",
+                    Description = "CRM-scoped editor role (create and edit potentials, contacts, status, and attachments).",
                     ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345802"
                 },
                 new ApplicationRole
@@ -985,7 +1142,7 @@ namespace My.DAL.Data
                     Id = "30a1b2c3-d4e5-4678-9abc-def012345803",
                     Name = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm),
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.Manager, Constants.Scopes.Crm).ToUpper(),
-                    Description = "CRM-scoped manager role (archive and delete).",
+                    Description = "CRM-scoped manager role (archive, delete, and CRM settings).",
                     ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345803"
                 },
                 new ApplicationRole
@@ -995,6 +1152,14 @@ namespace My.DAL.Data
                     NormalizedName = Constants.Roles.Scoped(Constants.Roles.UserAccess, Constants.Scopes.Crm).ToUpper(),
                     Description = "CRM User Access — assign CRM roles on Users. Does not operate CRM.",
                     ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345804"
+                },
+                new ApplicationRole
+                {
+                    Id = "30a1b2c3-d4e5-4678-9abc-def012345805",
+                    Name = Constants.Roles.Scoped(Constants.Roles.Analyst, Constants.Scopes.Crm),
+                    NormalizedName = Constants.Roles.Scoped(Constants.Roles.Analyst, Constants.Scopes.Crm).ToUpper(),
+                    Description = "CRM Analyst — read the pipeline, report, dashboard, and attachments. Cannot post, upload, or edit.",
+                    ConcurrencyStamp = "30a1b2c3-d4e5-4678-9abc-def012345805"
                 });
 
             // Note: If you add/remove roles, AppSettings, or other HasData here,

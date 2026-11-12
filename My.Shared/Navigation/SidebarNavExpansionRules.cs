@@ -25,6 +25,10 @@ public static class SidebarNavExpansionRules
         relativePath.Equals("expenses", StringComparison.OrdinalIgnoreCase)
         || relativePath.StartsWith("expenses/", StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsCrmRoute(string relativePath) =>
+        relativePath.Equals("crm", StringComparison.OrdinalIgnoreCase)
+        || relativePath.StartsWith("crm/", StringComparison.OrdinalIgnoreCase);
+
     public static bool IsIntranetMaintenanceRoute(string relativePath) =>
         relativePath.Equals("intranet/pages", StringComparison.OrdinalIgnoreCase)
         || relativePath.Equals("intranet/navigation", StringComparison.OrdinalIgnoreCase)

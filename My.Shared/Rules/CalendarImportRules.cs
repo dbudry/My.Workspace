@@ -180,6 +180,55 @@ public static class CalendarImportRules
     }
 
     /// <summary>
+    /// True when a linked event has not changed in Google since Tyme last synced it, so a
+    /// full-range scan (nightly self-heal, Pull from Google) must not touch the Tyme row.
+    ///
+    /// <para>
+    /// Applies to every linked event, not only <c>source=tyme</c> ones. Before this, an
+    /// invite the user does not organize was re-imported on every nightly run, and its
+    /// Google times overwrote a duration the user corrected in Tyme (Tyme cannot move the
+    /// organizer's event, so Google still held the old times).
+    /// </para>
+    ///
+    /// <para>
+    /// Same comparison as <see cref="IsGenuineExternalEdit"/>: missing data counts as changed.
+    /// </para>
+    /// </summary>
+    public static bool IsUnchangedSinceLastSync(
+        System.DateTime? googleUpdatedUtc, System.DateTime? lastSyncedUpdatedUtc) =>
+        !IsGenuineExternalEdit(googleUpdatedUtc, lastSyncedUpdatedUtc);
+
+    /// <summary>
+    /// True when Google's start/end differ from the snapshot Tyme stored at the last sync
+    /// (<c>TrackedTask.GoogleEventStartUtc</c>/<c>GoogleEventEndUtc</c>). Only then does an
+    /// inbound change overwrite the Tyme row's times. An organizer edit to the description,
+    /// attendees or title bumps Google's <c>updated</c> but keeps the times, so a time the
+    /// user corrected in Tyme stays.
+    ///
+    /// <para>
+    /// No snapshot (row synced before the columns existed) counts as moved, which keeps the
+    /// old overwrite behavior for that one sync and then stores a snapshot. A switch between
+    /// all-day and timed also counts as moved.
+    /// </para>
+    /// </summary>
+    public static bool GoogleTimesMoved(
+        System.DateTime? lastSyncedStart, System.DateTime? lastSyncedEnd, bool lastSyncedAllDay,
+        System.DateTime googleStart, System.DateTime googleEnd, bool googleAllDay)
+    {
+        if (lastSyncedStart == null || lastSyncedEnd == null)
+            return true;
+        if (lastSyncedAllDay != googleAllDay)
+            return true;
+        return !SameInstant(lastSyncedStart.Value, googleStart, googleAllDay)
+            || !SameInstant(lastSyncedEnd.Value, googleEnd, googleAllDay);
+    }
+
+    private static bool SameInstant(System.DateTime a, System.DateTime b, bool allDay) =>
+        allDay
+            ? a.Date == b.Date
+            : System.Math.Abs((a - b).TotalSeconds) < 1;
+
+    /// <summary>
     /// Outcome of the invite rule. <see cref="Skip"/> additionally implies that
     /// if a previously-imported entry exists for this event, the caller should
     /// remove it (gated on month-not-submitted so we don't rewrite billable history).

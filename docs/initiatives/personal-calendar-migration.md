@@ -168,3 +168,30 @@ silently coerces anything outside the valid set to null. Applied at create/updat
 existing events keep their stored color until the user next touches the task. Migration
 `AddTymeEventColors` adds the columns; existing rows are backfilled to Tomato for the
 unmatched setting so the "needs a project" flag works without a Settings visit.
+
+**2026-11-11** — A time corrected in Tyme on an invite the user **does not organize**
+no longer resets overnight. Before: the user stretched a 30-minute meeting to 60 in
+Tyme; Tyme's push to Google could not move the organizer's event, and the nightly
+`PullMissedEventsNightly` re-imported every `[slug]` event in its window and wrote
+Google's 30 minutes back. The "unchanged since last sync" check only ran for
+`source=tyme` events.
+
+Now:
+- `TryImportEventAsync` returns `SkippedUnchanged` for **any** linked event whose Google
+  `updated` is not newer than `TrackedTask.GoogleEventUpdatedUtc`
+  (`CalendarImportRules.IsUnchangedSinceLastSync`).
+- When Google did change, Tyme's start/end/duration are overwritten **only when Google's
+  own start/end moved** since the last sync (`CalendarImportRules.GoogleTimesMoved`,
+  snapshot in new columns `GoogleEventStartUtc` / `GoogleEventEndUtc`, migration
+  `AddTrackedTaskGoogleEventTimes`). An organizer edit to the description, attendees or
+  title keeps the Tyme time; the organizer moving the meeting wins. Rows without a
+  snapshot (synced before this change) keep the old overwrite behavior once.
+- Outbound `GoogleCalendarService.UpdateEventAsync` is read-modify-write: `Events.Get`,
+  change only title, start/end, color and Tyme private properties, then `Events.Update`
+  on the fetched event. The old blind PUT dropped description, location, attendees and
+  the Meet link from meetings the user organizes. No write when `organizer.self` is
+  false (`CalendarPushRules.CanPushUpdate`) — the edit stays in Tyme only. A cancelled
+  event is treated like a 404 (recreate, do not revive).
+- Every create/update/import stamps id, `updated` and the start/end snapshot through
+  `GoogleCalendarService.RecordSyncedEvent`; unlink paths use `ClearSyncedEvent`.
+  Manager time corrections now record the push too, so their webhook echo is skipped.

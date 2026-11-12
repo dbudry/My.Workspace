@@ -458,8 +458,7 @@ namespace My.Functions
                 {
                     var slug = project?.Slug;
                     var ev = await google.CreateEventAsync(settings.GoogleRefreshToken, settings.GoogleCalendarId, t, slug, settings.TimeZone, settings.TymeEventColorId, settings.TymeUnmatchedEventColorId);
-                    t.GoogleEventId = ev.Id;
-                    t.GoogleEventUpdatedUtc = ev.UpdatedDateTimeOffset?.UtcDateTime;
+                    GoogleCalendarService.RecordSyncedEvent(t, ev);
                     await taskRepository.Update(t);
                     result.Created++;
                 }
@@ -588,6 +587,7 @@ namespace My.Functions
                         case EventImportOutcome.SkippedMonthSubmitted: result.SkippedMonthSubmitted++; break;
                         case EventImportOutcome.SkippedAvailabilityOnly: result.SkippedAvailabilityOnly++; break;
                         case EventImportOutcome.SkippedBeyondLookahead: break;
+                        case EventImportOutcome.SkippedUnchanged: break;
                     }
                 }
                 catch (Exception ex)
@@ -918,6 +918,7 @@ namespace My.Functions
                         case EventImportOutcome.SkippedMonthSubmitted:
                         case EventImportOutcome.SkippedAvailabilityOnly:
                         case EventImportOutcome.SkippedBeyondLookahead:
+                        case EventImportOutcome.SkippedUnchanged:
                             break;
                     }
                 }
@@ -962,6 +963,7 @@ namespace My.Functions
             SkippedMonthSubmitted,
             SkippedAvailabilityOnly,
             SkippedBeyondLookahead,
+            SkippedUnchanged,
         }
 
         /// <summary>
@@ -1029,7 +1031,7 @@ namespace My.Functions
                     }
                     else
                     {
-                        linked.GoogleEventId = null;
+                        GoogleCalendarService.ClearSyncedEvent(linked);
                         linked.TeamAvailabilityEventId = null;
                         await taskRepository.Update(linked);
                         logger.LogInformation(
@@ -1055,6 +1057,14 @@ namespace My.Functions
             var existing = (await taskRepository.Get(
                 t => t.UserId == settings.UserId && t.GoogleEventId == ev.Id)).FirstOrDefault();
             var googleUpdated = ev.UpdatedDateTimeOffset?.UtcDateTime;
+
+            // Linked event that has not changed in Google since Tyme last synced it: nothing
+            // to do. Full-range scans (nightly self-heal, Pull from Google) list every event
+            // in the window, and without this an invite the user does not organize had its
+            // Google times re-applied every night — wiping a duration corrected in Tyme.
+            if (existing != null
+                && CalendarImportRules.IsUnchangedSinceLastSync(googleUpdated, existing.GoogleEventUpdatedUtc))
+                return EventImportOutcome.SkippedUnchanged;
 
             // Parse start/end via the pure CalendarEventDateRules helper so the logic
             // can be unit-tested without the Google SDK. Returns null when neither shape
@@ -1168,7 +1178,7 @@ namespace My.Functions
                     }
                     else
                     {
-                        existing.GoogleEventId = null;
+                        GoogleCalendarService.ClearSyncedEvent(existing);
                         existing.TeamAvailabilityEventId = null;
                         await taskRepository.Update(existing);
                         logger.LogInformation(
@@ -1199,15 +1209,37 @@ namespace My.Functions
             {
                 if (await IsMonthSubmittedAsync(settings.UserId, existing.StartDate.Year, existing.StartDate.Month))
                     return EventImportOutcome.SkippedMonthSubmitted;
+
+                // Google changed something, but only a move of Google's own start/end may
+                // overwrite Tyme's times. An organizer edit to the description, attendees or
+                // title keeps a time the user corrected in Tyme.
+                var timesMoved = CalendarImportRules.GoogleTimesMoved(
+                    existing.GoogleEventStartUtc, existing.GoogleEventEndUtc, existing.IsAllDay,
+                    startDate, endDate, isAllDay);
+                var projectChanged = !string.Equals(existing.ProjectId, matchedProjectId, StringComparison.Ordinal);
+                if (timesMoved)
+                {
+                    existing.StartDate = startDate;
+                    existing.EndDate = endDate;
+                    existing.IsAllDay = isAllDay;
+                    existing.Duration = DurationStorageRules.ForSqlTimeColumn(derivedDuration);
+                }
+                else
+                {
+                    // All-day duration depends on the project (CountsAsTime).
+                    if (isAllDay && projectChanged)
+                        existing.Duration = DurationStorageRules.ForSqlTimeColumn(derivedDuration);
+                    logger.LogInformation(
+                        "Google event {EventId} changed for user {UserId} but its times did not move; kept Tyme times on TrackedTask {TaskId}.",
+                        ev.Id, settings.UserId, existing.TaskId);
+                }
                 existing.Details = finalName;
-                existing.StartDate = startDate;
-                existing.EndDate = endDate;
-                existing.Duration = DurationStorageRules.ForSqlTimeColumn(derivedDuration);
-                existing.IsAllDay = isAllDay;
                 existing.ProjectId = matchedProjectId;
                 existing.IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, matchedProjectId);
                 existing.GoogleEventId = ev.Id;
                 existing.GoogleEventUpdatedUtc = googleUpdated;
+                existing.GoogleEventStartUtc = startDate;
+                existing.GoogleEventEndUtc = endDate;
                 await taskRepository.Update(existing);
                 saved = existing;
                 outcome = EventImportOutcome.Updated;
@@ -1224,6 +1256,8 @@ namespace My.Functions
                     ProjectId = matchedProjectId,
                     GoogleEventId = ev.Id,
                     GoogleEventUpdatedUtc = googleUpdated,
+                    GoogleEventStartUtc = startDate,
+                    GoogleEventEndUtc = endDate,
                     IsBillable = await TrackedTaskBillableResolver.ResolveAsync(dbContext, matchedProjectId)
                 };
                 await taskRepository.Insert(saved);

@@ -80,6 +80,11 @@
                                     <MudNavLink Href="tyme/data" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Storage">Data</MudNavLink>
                                 </Authorized>
                             </ScopedAuthorizeView>
+                            <ScopedAuthorizeView Scope="Tyme" MinimumRole="Manager" ScopedOnly="true">
+                                <Authorized>
+                                    <MudNavLink Href="tyme/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Tune">Settings</MudNavLink>
+                                </Authorized>
+                            </ScopedAuthorizeView>
                         </MudNavGroup>
                     </Authorized>
                 </ScopedAuthorizeView>
@@ -131,7 +136,16 @@
 
                 @if (hasCrmReader)
                 {
-                    <MudNavLink Href="crm" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Handshake" Class="nav-top-level">CRM</MudNavLink>
+                    <MudNavGroup Title="CRM" Icon="@Icons.Material.Filled.Handshake" Class="nav-top-level"
+                                 Expanded="@navAccordion.IsBuiltInExpanded(SidebarNavAccordionState.BuiltInCrmKey)"
+                                 ExpandedChanged="@(e => OnNavGroupExpanded(SidebarNavAccordionState.BuiltInCrmKey, e))">
+                        <MudNavLink Href="crm" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Handshake">CRM</MudNavLink>
+                        <MudNavLink Href="crm/report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Assessment">Reporting</MudNavLink>
+                        @if (hasCrmManager)
+                        {
+                            <MudNavLink Href="crm/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Tune">Settings</MudNavLink>
+                        }
+                    </MudNavGroup>
                 }
 
                 @if (isAnyAdmin)
@@ -190,6 +204,7 @@
     private bool isGlobalAdmin;
     private bool hasOrganizationsReader;
     private bool hasCrmReader;
+    private bool hasCrmManager;
     private bool hasExpensesReader;
     private bool hasExpensesManager;
     private bool hasIntranetReader;
@@ -263,7 +278,8 @@
             isAnyAdmin = Constants.Roles.IsAnyAdmin(user);
             isGlobalAdmin = user.IsInRole(Constants.Roles.Admin);
             hasOrganizationsReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Organizations);
-            hasCrmReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Crm);
+            hasCrmReader = Constants.Roles.HasCrmRead(user);
+            hasCrmManager = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Crm, Constants.Roles.Manager);
             hasExpensesReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses);
             hasExpensesManager = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Expenses, Constants.Roles.Manager);
             hasIntranetReader = Constants.Roles.HasScopedAccess(user, Constants.Scopes.Intranet);
@@ -302,6 +318,7 @@
             isGlobalAdmin = false;
             hasOrganizationsReader = false;
             hasCrmReader = false;
+            hasCrmManager = false;
             hasExpensesReader = false;
             hasExpensesManager = false;
             hasIntranetReader = false;
@@ -484,6 +501,10 @@
         else if (SidebarNavExpansionRules.IsExpensesRoute(relativePath))
         {
             navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInExpensesKey, null, null);
+        }
+        else if (SidebarNavExpansionRules.IsCrmRoute(relativePath))
+        {
+            navAccordion.ApplyRouteExpansion(SidebarNavAccordionState.BuiltInCrmKey, null, null);
         }
         else if (SidebarNavExpansionRules.TryGetCuratedExpansion(intranetNavItems, relativePath, out var topKey, out var nestedKeys)
                  && !string.IsNullOrEmpty(topKey))

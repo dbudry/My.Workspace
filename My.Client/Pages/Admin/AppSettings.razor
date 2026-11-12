@@ -163,6 +163,14 @@
                                 <MudLink Href="@AppDriveLayoutRules.FolderUrl(appDriveStatus.ExpensesFolderId)" Target="_blank" Class="ml-1">open</MudLink>
                             }
                         </MudText>
+                        <MudText Typo="Typo.body2">
+                            @AppDriveLayoutRules.CrmFolderName
+                            — @FolderReadyLabel(appDriveStatus?.CrmFolderId)
+                            @if (!string.IsNullOrWhiteSpace(appDriveStatus?.CrmFolderId))
+                            {
+                                <MudLink Href="@AppDriveLayoutRules.FolderUrl(appDriveStatus.CrmFolderId)" Target="_blank" Class="ml-1">open</MudLink>
+                            }
+                        </MudText>
                     </div>
                 </SectionCard>
 
@@ -376,6 +384,15 @@
                         When enabled, Tyme managers and admins can submit an employee's month from the Team view
                         on Submit Tasks — for when someone is out or unresponsive. Off by default.
                         The submission is recorded as submitted by the manager (audit field).
+                    </MudText>
+
+                    <MudSwitch T="bool" Value="unsubmittedReminderEnabled" Label="Allow reminder emails for unsubmitted time"
+                               Color="Color.Primary" Class="mb-2"
+                               ValueChanged="@((bool v) => unsubmittedReminderEnabled = v)" />
+                    <MudText Typo="Typo.caption" Class="mb-4" Style="color: var(--mud-palette-text-secondary);">
+                        When enabled, Tyme managers can email an employee a reminder listing their unsubmitted past months.
+                        It shows as "Send reminder" in the Grid cell menu and as a "Remind" button on Not submitted rows
+                        in the Team view. The manager sees the email and confirms before it sends. Off by default.
                     </MudText>
 
                     <MudSwitch T="bool" Value="allowUserTeamReports" Label="Allow users to view other employees on Reports"

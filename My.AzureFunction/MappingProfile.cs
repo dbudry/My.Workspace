@@ -18,9 +18,12 @@ namespace My.Functions
         [MapperIgnoreSource(nameof(TrackedTask.IsBillable))]
         [MapperIgnoreSource(nameof(TrackedTask.GoogleEventId))]
         [MapperIgnoreSource(nameof(TrackedTask.GoogleEventUpdatedUtc))]
+        [MapperIgnoreSource(nameof(TrackedTask.GoogleEventStartUtc))]
+        [MapperIgnoreSource(nameof(TrackedTask.GoogleEventEndUtc))]
         [MapperIgnoreSource(nameof(TrackedTask.TeamAvailabilityEventId))]
         [MapperIgnoreSource(nameof(TrackedTask.StopwatchItem))]
         [MapperIgnoreSource(nameof(TrackedTask.User))]
+        [MapperIgnoreSource(nameof(TrackedTask.CreatedUtc))]
         [MapperIgnoreTarget(nameof(TrackedTaskDto.IsMonthSubmitted))]
         [MapperIgnoreTarget(nameof(TrackedTaskDto.IsManagerAdjusted))]
         [MapperIgnoreTarget(nameof(TrackedTaskDto.AdjustmentKind))]
@@ -30,6 +33,7 @@ namespace My.Functions
 
         [MapperIgnoreSource(nameof(CreateTrackedTaskDto.Project))]
         [MapperIgnoreSource(nameof(CreateTrackedTaskDto.EndDate))]
+        [MapperIgnoreSource(nameof(CreateTrackedTaskDto.TaskId))]
         [MapperIgnoreTarget(nameof(TrackedTask.TaskId))]
         [MapperIgnoreTarget(nameof(TrackedTask.EndDate))]
         [MapperIgnoreTarget(nameof(TrackedTask.IsBillable))]
@@ -38,8 +42,11 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(TrackedTask.Project))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventUpdatedUtc))]
+        [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventStartUtc))]
+        [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventEndUtc))]
         [MapperIgnoreTarget(nameof(TrackedTask.TeamAvailabilityEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItem))]
+        [MapperIgnoreTarget(nameof(TrackedTask.CreatedUtc))]
         // StopwatchItemId is mapped when client logs a session against a work item.
         public partial TrackedTask DtoToTrackedTask(CreateTrackedTaskDto dto);
 
@@ -52,9 +59,12 @@ namespace My.Functions
         [MapperIgnoreTarget(nameof(TrackedTask.Project))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventUpdatedUtc))]
+        [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventStartUtc))]
+        [MapperIgnoreTarget(nameof(TrackedTask.GoogleEventEndUtc))]
         [MapperIgnoreTarget(nameof(TrackedTask.TeamAvailabilityEventId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItemId))]
         [MapperIgnoreTarget(nameof(TrackedTask.StopwatchItem))]
+        [MapperIgnoreTarget(nameof(TrackedTask.CreatedUtc))]
         public partial void UpdateTrackedTaskFromDto(UpdateTrackedTaskDto dto, TrackedTask target);
 
         // Project
@@ -111,6 +121,7 @@ namespace My.Functions
                 PhoneNumber = contact.PhoneNumber,
                 Email = contact.Email,
                 ContactType = contact.ContactType,
+                RelationshipType = contact.RelationshipType,
                 OrganizationId = contact.OrganizationId,
                 DepartmentId = contact.DepartmentId
             };
